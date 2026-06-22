@@ -1,0 +1,530 @@
+/* The Immersive Reader — spartan, low-distraction styling.
+   Dark mode is the primary, immersive target; sepia is the light alternate.
+   Word colors encode learning state: known blends in, learning draws subtle
+   attention, unknown stands out as an alert (the "red sea"). */
+
+:root {
+  --page-gap: 48px;
+  --reader-max-width: 44rem;
+  --topbar-h: 3rem;
+  --pager-h: 3.2rem;
+  --font-reading: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Color palettes. Each defines surface chrome plus the three word-state colors.
+   State hierarchy is preserved in every palette: known ≈ body text (blends in),
+   learning = gold/amber (subtle attention), unknown = red (alert / "red sea").
+   The preview swatch colors in src/reader/theme.js must mirror these. */
+
+/* --- Dark palettes --- */
+[data-theme='midnight'] {
+  --bg: #050505;
+  --surface: #161616;
+  --border: #2a2a2a;
+  --text: #e8e8e8;
+  --word-known: #cfcfcf;
+  --word-learning: #e8a33d;
+  --word-unknown: #e23b3b;
+}
+
+[data-theme='slate'] {
+  --bg: #0f141a;
+  --surface: #1a222c;
+  --border: #2c3744;
+  --text: #e6edf3;
+  --word-known: #aab4bf;
+  --word-learning: #e3b341;
+  --word-unknown: #f76d6d;
+}
+
+[data-theme='ocean'] {
+  --bg: #07171c;
+  --surface: #0f2730;
+  --border: #1d3c46;
+  --text: #e3f0f1;
+  --word-known: #a6c0c3;
+  --word-learning: #ffd166;
+  --word-unknown: #ff6b6b;
+}
+
+/* --- Light palettes --- */
+[data-theme='paper'] {
+  --bg: #fbfbf8;
+  --surface: #f0f0ea;
+  --border: #dcdcd2;
+  --text: #1c1c1c;
+  --word-known: #353535;
+  --word-learning: #b9740b;
+  --word-unknown: #c62828;
+}
+
+[data-theme='sepia'] {
+  --bg: #f7efdd;
+  --surface: #efe4cb;
+  --border: #ddccab;
+  --text: #3a3026;
+  --word-known: #4a3f30;
+  --word-learning: #a96a08;
+  --word-unknown: #b3271e;
+}
+
+[data-theme='mint'] {
+  --bg: #eef4ef;
+  --surface: #e2ebe4;
+  --border: #ccd9ce;
+  --text: #21302a;
+  --word-known: #2f3a33;
+  --word-learning: #936700;
+  --word-unknown: #bf3326;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+/* Icons */
+.icon {
+  width: 1.2em;
+  height: 1.2em;
+  flex: none;
+}
+
+/* Top bar: title + menu. Fixed overlay that slides away while reading. */
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.9rem;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+  transition: transform 0.25s ease;
+}
+
+.brand {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.menu-toggle {
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.menu-toggle:hover {
+  border-color: var(--text);
+}
+
+/* Menu panel */
+.menu[hidden] {
+  display: none; /* override .menu's display:flex when the hidden attribute is set */
+}
+
+.menu {
+  position: fixed;
+  top: calc(var(--topbar-h) + 0.4rem);
+  right: 0.8rem;
+  z-index: 19;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 12rem;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+}
+
+.menu__item:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.menu__field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.menu__field select,
+.menu__field input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+}
+
+.menu__field input {
+  width: 7.5rem;
+  min-width: 0;
+}
+
+.menu__divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.25rem 0;
+}
+
+/* Theme palette swatches */
+.menu__themes-wrap {
+  padding: 0.4rem 0.6rem;
+}
+
+.menu__label {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 0.45rem;
+}
+
+.menu__themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.swatch.is-selected {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 40%, transparent);
+}
+
+.swatch__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+/* Wrapper holds the reading gutters. Padding lives here, OUTSIDE the clip box,
+   so it never offsets the column math. Vertical padding clears the fixed bars and
+   stays CONSTANT whether the chrome is shown or hidden, so toggling never
+   repaginates. */
+.reader-wrap {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  padding: calc(var(--topbar-h) + 0.5rem) 1rem calc(var(--pager-h) + 0.5rem);
+}
+
+/* Reader viewport: clips the flowing columns; one column == one page.
+   It must have NO horizontal padding so column width == clientWidth exactly. */
+.reader {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  margin: 0 auto;
+  width: 100%;
+  max-width: var(--reader-max-width);
+  touch-action: pan-y; /* let vertical scroll pass; we handle horizontal swipes */
+}
+
+.reader__flow {
+  font-family: var(--font-reading);
+  font-size: 1.25rem;
+  line-height: 1.9;
+  white-space: pre-wrap;
+}
+
+/* PDF illustrations, sized to fit the page without breaking pagination. */
+.reader__image {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  height: auto;
+  margin: 1rem auto;
+  border-radius: 4px;
+}
+
+.reader__placeholder {
+  font-family: var(--font-ui);
+  opacity: 0.6;
+  text-align: center;
+  margin-top: 20vh;
+}
+
+/* Words */
+.word {
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.word[data-state='known'] {
+  color: var(--word-known);
+}
+.word[data-state='learning'] {
+  color: var(--word-learning);
+}
+.word[data-state='unknown'] {
+  color: var(--word-unknown);
+}
+
+.word:hover,
+.word:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+/* Pager: fixed overlay at the bottom; slides away with the top bar. */
+.pager {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  height: var(--pager-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+  transition: transform 0.25s ease;
+}
+
+/* Chrome auto-hide: slide both bars off-screen while reading. */
+body.chrome-hidden .topbar {
+  transform: translateY(-100%);
+}
+body.chrome-hidden .pager {
+  transform: translateY(100%);
+}
+
+.pager button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.9rem;
+  cursor: pointer;
+}
+
+.pager button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pager__indicator {
+  min-width: 5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+/* Popup */
+.popup {
+  position: fixed; /* viewport-relative; positioned in JS to stay on screen */
+  z-index: 30; /* above the top bar and pager (z-index 20) */
+  width: min(20rem, calc(100vw - 1rem));
+  max-height: 80vh; /* JS narrows this to the available space; content scrolls */
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.popup__word {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  font-family: var(--font-reading);
+}
+
+.popup__buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.popup__buttons button {
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+}
+
+.popup__buttons button:hover {
+  border-color: var(--text);
+}
+
+.popup__buttons button[data-state='known'] {
+  color: var(--word-known);
+}
+.popup__buttons button[data-state='learning'] {
+  color: var(--word-learning);
+}
+.popup__buttons button[data-state='unknown'] {
+  color: var(--word-unknown);
+}
+
+.popup__buttons button[aria-current='true'] {
+  border-color: var(--text);
+  font-weight: 600;
+}
+
+.popup__definition {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+}
+
+.popup__slot + .popup__slot:not([hidden]) {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--border);
+}
+
+.popup__slot[data-state='loading'] {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.popup__slot-text {
+  margin: 0 0 0.3rem;
+  line-height: 1.4;
+}
+
+.popup__slot-source {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+}
+
+.popup__links {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+}
+
+.popup__links a {
+  color: var(--word-learning);
+  text-decoration: none;
+}
+
+.popup__links a:hover {
+  text-decoration: underline;
+}
+
+/* AI usage panorama: list of context answers, newest first. */
+.ai-item + .ai-item {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+}
+
+.ai-item:not(.is-current) {
+  opacity: 0.65;
+}
+
+.ai-item__text {
+  margin: 0 0 0.2rem;
+  line-height: 1.4;
+}
+
+.ai-item.is-current .ai-item__text::before {
+  content: '▸ ';
+  color: var(--word-learning);
+}
+
+.ai-item.is-loading .ai-item__text {
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.ai-item__context {
+  margin: 0;
+  font-size: 0.78rem;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.popup__lang-btn,
+.popup__lookup-btn,
+.popup__refresh-btn {
+  margin-top: 0.6rem;
+  width: 100%;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+}
+
+.popup__lang-btn:hover,
+.popup__lookup-btn:hover,
+.popup__refresh-btn:hover {
+  border-style: solid;
+  border-color: var(--text);
+}

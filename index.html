@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Immersive Reader</title>
+    <link rel="stylesheet" href="/src/styles/main.css" />
+  </head>
+  <body>
+    <!-- Top bar: title + menu. Auto-hides while reading; a tap (mobile) or mouse
+         move (desktop) brings it back, together with the bottom pager. -->
+    <header id="topbar" class="topbar">
+      <span class="brand">The Immersive Reader</span>
+      <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Menu" aria-expanded="false">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" />
+        </svg>
+      </button>
+    </header>
+
+    <nav id="menu" class="menu" hidden>
+      <label class="menu__item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 20h14" />
+        </svg>
+        <span>Open file</span>
+        <input id="file-input" type="file" accept=".txt,.md,.pdf" hidden />
+      </label>
+
+      <button id="sample-button" class="menu__item" type="button">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z" /><path d="M8 3v18" />
+        </svg>
+        <span>Load sample</span>
+      </button>
+
+      <div class="menu__divider"></div>
+
+      <label class="menu__field">
+        <span>Language</span>
+        <select id="lang-select"></select>
+      </label>
+
+      <div class="menu__divider"></div>
+
+      <div class="menu__themes-wrap">
+        <span class="menu__label">Theme</span>
+        <div id="theme-swatches" class="menu__themes"></div>
+      </div>
+    </nav>
+
+    <main class="reader-wrap" aria-live="polite">
+      <div id="reader" class="reader">
+        <p class="reader__placeholder">Tap the <strong>☰</strong> menu to open a <code>.txt</code>, <code>.md</code>, or <code>.pdf</code> file.</p>
+      </div>
+    </main>
+
+    <footer id="pager" class="pager">
+      <button id="prev-page" type="button" disabled>&#9664;</button>
+      <span id="page-indicator" class="pager__indicator">—</span>
+      <button id="next-page" type="button" disabled>&#9654;</button>
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

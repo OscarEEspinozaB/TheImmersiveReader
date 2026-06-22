@@ -1,0 +1,18 @@
+{
+  "name": "the-immersive-reader",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A reading tool for learning English by immersion: words are color-coded by learning state.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.7.76"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}
