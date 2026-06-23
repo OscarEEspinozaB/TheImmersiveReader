@@ -11,6 +11,8 @@ import { attachMarking } from './marking.js';
 import { buildSentenceLookup } from './sentences.js';
 import { renderShelf } from './shelf.js';
 import { renderDashboard } from './dashboard.js';
+import { buildDeck } from './deck.js';
+import { renderSwiper } from './swiper.js';
 import { alertDialog } from './dialog.js';
 import {
   addBook,
@@ -46,6 +48,7 @@ const shelfGrid = document.getElementById('shelf-grid');
 const shelfButton = document.getElementById('shelf-button');
 const dashboard = document.getElementById('dashboard');
 const vocabButton = document.getElementById('vocab-button');
+const swiperEl = document.getElementById('swiper');
 const addBookInput = document.getElementById('add-book');
 const viewToggle = document.getElementById('view-toggle');
 const sortSelect = document.getElementById('sort-select');
@@ -76,8 +79,14 @@ loadVocabulary();
 // --- View switching: shelf / reader / vocabulary ---
 function setView(view) {
   const reading = view === 'reader';
+  // Tear down the swiper's key listener when leaving it.
+  if (view !== 'swiper' && swiperEl._cleanup) {
+    swiperEl._cleanup();
+    swiperEl._cleanup = null;
+  }
   shelf.hidden = view !== 'shelf';
   dashboard.hidden = view !== 'vocabulary';
+  swiperEl.hidden = view !== 'swiper';
   readerWrap.hidden = !reading;
   pager.hidden = !reading;
   shelfButton.hidden = !reading; // "back to library" only while reading
@@ -90,6 +99,19 @@ function setView(view) {
   }
 }
 
+async function openSwiper(id) {
+  setMenuOpen(false);
+  const content = await getBookContent(id);
+  if (!content) return;
+  const deck = buildDeck(content.text, { limit: 50 });
+  if (!deck.length) {
+    alertDialog('No new words to practice in this book — everything is already marked. 🎉');
+    return;
+  }
+  setView('swiper');
+  renderSwiper(swiperEl, { deck, onExit: showShelf });
+}
+
 function showDashboard() {
   setMenuOpen(false);
   setView('vocabulary');
@@ -97,7 +119,12 @@ function showDashboard() {
 }
 
 function renderLibrary() {
-  return renderShelf(shelfGrid, { view: currentView, sortBy: getSortBy(), onOpen: openBook });
+  return renderShelf(shelfGrid, {
+    view: currentView,
+    sortBy: getSortBy(),
+    onOpen: openBook,
+    onPractice: openSwiper,
+  });
 }
 
 async function showShelf() {

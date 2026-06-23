@@ -16,7 +16,7 @@ const sorters = {
  * @param {HTMLElement} container
  * @param {{ view: 'grid'|'list', sortBy?: string, onOpen: (id: string) => void }} opts
  */
-export async function renderShelf(container, { view, sortBy = 'lastRead', onOpen }) {
+export async function renderShelf(container, { view, sortBy = 'lastRead', onOpen, onPractice }) {
   for (const url of coverUrls) URL.revokeObjectURL(url);
   coverUrls = [];
 
@@ -34,12 +34,12 @@ export async function renderShelf(container, { view, sortBy = 'lastRead', onOpen
   }
 
   for (const book of books) {
-    container.appendChild(bookCard(book, container, { view, sortBy, onOpen }));
+    container.appendChild(bookCard(book, container, { view, sortBy, onOpen, onPractice }));
   }
 }
 
 function bookCard(book, container, opts) {
-  const { view, onOpen } = opts;
+  const { view, onOpen, onPractice } = opts;
   const reRender = () => renderShelf(container, opts);
   const card = document.createElement('div');
   card.className = 'book';
@@ -78,6 +78,9 @@ function bookCard(book, container, opts) {
   const actions = document.createElement('div');
   actions.className = 'book__actions';
 
+  const practice = iconButton('Practice words', 'M5 3l14 9-14 9z');
+  practice.addEventListener('click', () => onPractice?.(book.id));
+
   const rename = iconButton('Rename', 'M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z');
   rename.addEventListener('click', async () => {
     const name = await promptDialog('Book title:', book.title);
@@ -99,7 +102,7 @@ function bookCard(book, container, opts) {
     }
   });
 
-  actions.append(rename, del);
+  actions.append(practice, rename, del);
   meta.appendChild(actions);
   card.appendChild(meta);
   return card;

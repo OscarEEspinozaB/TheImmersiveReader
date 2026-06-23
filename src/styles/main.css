@@ -1074,3 +1074,171 @@ body.chrome-hidden .pager {
 .dict-mark-btn:hover {
   border-color: var(--text);
 }
+
+/* --- Word Swiper --- */
+.swiper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--topbar-h) + 0.5rem) 1rem 1rem;
+}
+
+.swiper__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 30rem;
+  width: 100%;
+  margin: 0 auto 0.5rem;
+}
+
+.swiper__exit {
+  font: inherit;
+  font-size: 1.1rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 2.2rem;
+  height: 2.2rem;
+  cursor: pointer;
+}
+
+.swiper__progress {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.swiper__stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.swipe-card {
+  width: min(22rem, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  padding: 1.5rem;
+  text-align: center;
+  cursor: grab;
+  touch-action: none; /* we handle the drag */
+  user-select: none;
+}
+
+.swipe-card:active {
+  cursor: grabbing;
+}
+
+.swipe-card__badge {
+  min-height: 1.2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.swipe-card__word {
+  font-family: var(--font-reading);
+  font-size: 2.2rem;
+  margin: 0.3rem 0;
+  word-break: break-word;
+}
+
+.swipe-card__count {
+  font-size: 0.85rem;
+  opacity: 0.6;
+  margin-bottom: 0.8rem;
+}
+
+.swipe-card__sentence {
+  font-family: var(--font-reading);
+  font-style: italic;
+  line-height: 1.5;
+  opacity: 0.85;
+  margin: 0 0 1rem;
+}
+
+.swipe-card__reveal {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}
+
+.swipe-card__reveal:hover {
+  border-style: solid;
+}
+
+.swipe-card__meaning {
+  margin-top: 0.8rem;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.swipe-card__def {
+  margin: 0 0 0.5rem;
+  line-height: 1.45;
+}
+
+.swipe-card__src {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+}
+
+.swiper__hint {
+  text-align: center;
+  font-size: 0.8rem;
+  opacity: 0.6;
+  margin: 0.5rem 0;
+}
+
+.swiper__buttons {
+  display: flex;
+  justify-content: center;
+  gap: 0.8rem;
+}
+
+.sw-btn {
+  font-size: 1.4rem;
+  width: 3rem;
+  height: 3rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.sw-btn:hover {
+  border-color: var(--text);
+}
+
+.swiper__summary {
+  text-align: center;
+}
+
+.swiper__summary h2 {
+  margin: 0 0 0.5rem;
+}
+
+.sw-summary-btn {
+  margin-top: 1rem;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--text);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
