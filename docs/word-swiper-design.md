@@ -63,16 +63,34 @@ session so they don't reappear immediately.)
 - A progress indicator (card i / N) and an **end-of-session summary** (how many marked
   Known / Learning / Unknown, words/min).
 
-## 5. Entry point
+## 4b. Images (visual association)
 
-- A **"Practice"** action on a book in the library (and/or in the reader menu),
-  since the deck is per book.
+Show **2–4 related images** per card to anchor meaning visually.
+
+- **API**: prefer a **keyless, CORS-friendly** source (to match the no-API-key
+  direction): **Openverse** (`api.openverse.org`, CC images) or **Wikimedia
+  Commons**. Keyed services (Unsplash/Pexels/Pixabay) are deliberately avoided.
+- **Disambiguating query** (the key idea): image search matches keywords, not full
+  sentences, AND a generic dictionary sense can't tell the brand from the fruit — only
+  a model that reads the CONTEXT can. Since the deck comes from a book, each card has
+  the book sentence, so:
+  - **Primary (AI, context-aware):** send `word` + the **book sentence** to Ollama and
+    ask for a short visual image-search query (2–3 keywords). This resolves
+    brand-vs-fruit etc. (e.g. "Apple was founded by…" → "apple computer logo"; "he ate
+    an apple" → "apple fruit").
+  - **Fallback (no AI):** build `word` + 1–2 key nouns from the dictionary definition.
+    Best-effort, uses the common sense, no context guarantee.
+- **Behavior**: lazy-load thumbnails; cache results per word (avoid refetching);
+  graceful when there are no good images (abstract/function words) — just show text.
+- **Licensing**: CC sources include attribution/license info; fine for personal use.
 
 ## 6. Modules
 
 - `deck.js` — build the ranked deck (unique unknown words + frequency + sample
   sentence) from a book's tokens.
 - `swiper.js` — the card UI, gesture/keyboard handling, animations, session summary.
+- `images.js` — build the disambiguating query and fetch/cache 2–4 images
+  (Openverse/Wikimedia, keyless).
 - Reuses: `vocabulary.setState` (timestamps), `sentences.js`, the definition layer,
   `main.js` view switching (a fourth view, or a modal over the reader).
 
@@ -81,12 +99,13 @@ session so they don't reappear immediately.)
 1. Deck builder (unique unknown words by frequency + sample sentence).
 2. Swiper UI with gestures/keys/buttons → set state, next card.
 3. Lazy meaning reveal + end-of-session summary.
-4. Polish: animations, "skip remembered for session", settings (include/exclude
-   common words, deck size, order).
+4. Images on the card (keyless API + disambiguating query, cached).
+5. Polish: animations, "skip remembered for session", settings (include/exclude
+   common words, deck size, order, images on/off).
 
 ## 8. Open questions
 
 - Left swipe = Skip or Learning? (Leaning Skip, with Learning on right.)
 - Deck size cap per session (e.g. 50 cards) to keep it a short, repeatable game?
-- Show meaning before or only after deciding (to avoid biasing the "do I know it?"
-  self-check)?
+- Show meaning/images before or only after deciding (to avoid biasing the self-check)?
+- Image source: Openverse vs Wikimedia Commons (both keyless) — pick during build.
