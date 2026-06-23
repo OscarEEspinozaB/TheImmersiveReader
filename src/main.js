@@ -10,6 +10,7 @@ import { initTheme, setTheme, getTheme, THEMES } from './reader/theme.js';
 import { attachMarking } from './marking.js';
 import { buildSentenceLookup } from './sentences.js';
 import { renderShelf } from './shelf.js';
+import { renderDashboard } from './dashboard.js';
 import { alertDialog } from './dialog.js';
 import {
   addBook,
@@ -43,6 +44,8 @@ const pager = document.getElementById('pager');
 const shelf = document.getElementById('shelf');
 const shelfGrid = document.getElementById('shelf-grid');
 const shelfButton = document.getElementById('shelf-button');
+const dashboard = document.getElementById('dashboard');
+const vocabButton = document.getElementById('vocab-button');
 const addBookInput = document.getElementById('add-book');
 const viewToggle = document.getElementById('view-toggle');
 const sortSelect = document.getElementById('sort-select');
@@ -70,10 +73,11 @@ let currentView = 'grid';
 initTheme();
 loadVocabulary();
 
-// --- View switching: shelf vs reader ---
+// --- View switching: shelf / reader / vocabulary ---
 function setView(view) {
   const reading = view === 'reader';
-  shelf.hidden = reading;
+  shelf.hidden = view !== 'shelf';
+  dashboard.hidden = view !== 'vocabulary';
   readerWrap.hidden = !reading;
   pager.hidden = !reading;
   shelfButton.hidden = !reading; // "back to library" only while reading
@@ -84,6 +88,12 @@ function setView(view) {
     document.body.classList.remove('chrome-hidden');
     clearTimeout(hideTimer);
   }
+}
+
+function showDashboard() {
+  setMenuOpen(false);
+  setView('vocabulary');
+  renderDashboard(dashboard, { onBack: showShelf });
 }
 
 function renderLibrary() {
@@ -270,6 +280,7 @@ function showDocument({ text, images = [] }, { restoreIndex = 0 } = {}) {
 
 // --- Shelf / add-book wiring ---
 shelfButton.addEventListener('click', showShelf);
+vocabButton.addEventListener('click', showDashboard);
 viewToggle.addEventListener('click', () => {
   currentView = currentView === 'grid' ? 'list' : 'grid';
   renderLibrary();

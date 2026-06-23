@@ -99,6 +99,11 @@
       <header class="shelf__bar">
         <span class="shelf__heading">My Library</span>
         <div class="shelf__actions">
+          <button id="vocab-button" class="menu-toggle" type="button" title="Vocabulary" aria-label="Vocabulary">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3v18h18" /><path d="m7 14 4-4 3 3 5-6" />
+            </svg>
+          </button>
           <select id="sort-select" class="shelf__sort" title="Sort by"></select>
           <label class="file-button" title="Add book">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -116,6 +121,9 @@
       </header>
       <div id="shelf-grid" class="shelf__grid" data-view="grid"></div>
     </section>
+
+    <!-- Vocabulary dashboard (stats + dictionary). -->
+    <section id="dashboard" class="dashboard" hidden></section>
 
     <main class="reader-wrap" aria-live="polite" hidden>
       <div id="reader" class="reader"></div>

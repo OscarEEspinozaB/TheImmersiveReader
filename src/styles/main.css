@@ -816,3 +816,261 @@ body.chrome-hidden .pager {
   background: color-mix(in srgb, var(--text) 45%, transparent);
   background-clip: padding-box;
 }
+
+/* --- Vocabulary dashboard --- */
+.dashboard {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: calc(var(--topbar-h) + 0.5rem) 1rem 1.5rem;
+}
+
+.dash__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  max-width: 60rem;
+  margin: 0 auto 1rem;
+}
+
+.dash__tabs {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.dash__tab {
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.9rem;
+  cursor: pointer;
+}
+
+.dash__tab.is-active {
+  border-color: var(--text);
+  font-weight: 600;
+}
+
+.dash__body {
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+.dash__empty {
+  opacity: 0.6;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+/* Stats */
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1.2rem;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.stat-card__value {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.stat-card__label {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.stat-split {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  margin-bottom: 1.5rem;
+}
+
+.donut {
+  width: 110px;
+  height: 110px;
+  flex: none;
+}
+
+.stat-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.dot {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+
+.dot--known {
+  background: var(--text);
+}
+.dot--learning {
+  background: var(--word-learning);
+}
+
+.stat-chart__title {
+  font-size: 0.9rem;
+  opacity: 0.7;
+  margin-bottom: 0.4rem;
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+}
+
+/* Dictionary */
+.dict-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.dict-search {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+}
+
+.dict-select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 0.5rem;
+}
+
+.dict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.dict-row {
+  padding: 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.dict-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.dict-row__word {
+  font-family: var(--font-reading);
+  font-size: 1.15rem;
+  cursor: default;
+}
+
+.dict-row__state {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.15rem 0.3rem;
+}
+
+.dict-row__def {
+  margin: 0.2rem 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.dict-row__ai {
+  border-top: 1px dashed var(--border);
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+}
+
+.dict-row__ctx {
+  margin: 0;
+  font-size: 0.78rem;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.dict-row__none {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.55;
+}
+
+.dict-lookup-btn {
+  margin-top: 0.4rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+}
+
+.dict-lookup-btn:hover {
+  border-style: solid;
+  border-color: var(--text);
+}
+
+.dict-row--new {
+  border-style: dashed;
+}
+
+.dict-row__mark {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.dict-mark-btn {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+}
+
+.dict-mark-btn[data-state='known'] {
+  color: var(--word-known);
+}
+.dict-mark-btn[data-state='learning'] {
+  color: var(--word-learning);
+}
+.dict-mark-btn:hover {
+  border-color: var(--text);
+}
