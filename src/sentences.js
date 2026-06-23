@@ -1,7 +1,7 @@
 // Sentence lookup: given a word index, find the full sentence it belongs to.
 // Used to send a word together with its context to the definition layer.
 
-const sentenceSegmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
+import { getReadingLang } from './settings.js';
 
 /**
  * Build a function mapping a word index to its sentence.
@@ -10,6 +10,7 @@ const sentenceSegmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
  * @returns {(wordIndex: number) => string}
  */
 export function buildSentenceLookup(text, tokens) {
+  const sentenceSegmenter = new Intl.Segmenter(getReadingLang(), { granularity: 'sentence' });
   // Character offset of each word token, by word index.
   const wordOffsets = [];
   let offset = 0;

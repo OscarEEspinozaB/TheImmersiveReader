@@ -51,3 +51,29 @@ function cssEscape(value) {
   if (window.CSS && CSS.escape) return CSS.escape(value);
   return value.replace(/["\\]/g, '\\$&');
 }
+
+/**
+ * Interleave images into the token stream by character offset. Each image is
+ * placed before the first token at/after its anchor offset. Object URLs are
+ * created here and collected (in urlSink) for later revocation.
+ * @param {import('../tokenizer.js').Token[]} tokens
+ * @param {{ start: number, width: number, height: number, blob: Blob }[]} images
+ * @param {string[]} urlSink
+ */
+export function mergeImages(tokens, images, urlSink) {
+  if (!images || images.length === 0) return tokens.slice();
+  const sorted = [...images].sort((a, b) => a.start - b.start);
+  const items = [];
+  let k = 0;
+  const pushImage = (img) => {
+    const url = URL.createObjectURL(img.blob);
+    urlSink.push(url);
+    items.push({ isImage: true, url, width: img.width, height: img.height });
+  };
+  for (const token of tokens) {
+    while (k < sorted.length && sorted[k].start <= token.start) pushImage(sorted[k++]);
+    items.push(token);
+  }
+  while (k < sorted.length) pushImage(sorted[k++]);
+  return items;
+}

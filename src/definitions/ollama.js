@@ -9,17 +9,18 @@
 //   - allow the browser origin: OLLAMA_ORIGINS=* (or the specific origin)
 
 import { explainPrompt, explainInLanguagePrompt } from './prompts.js';
+import { getOllamaUrl, getOllamaModel } from '../settings.js';
 
 const PORT = 11434;
-// Must be a model you have pulled (see `ollama list`). gemma3:4b is small + fast.
-const MODEL = 'gemma3:4b';
 
 const REACH_TIMEOUT = 1500; // ms — fast "is Ollama there?" probe
 const REACH_TTL = 15000; // ms — cache the probe result to avoid pinging every click
 const GENERATE_TIMEOUT = 60000; // ms — generation may be slow on first load
 
 function ollamaBaseUrl() {
-  return `http://${window.location.hostname}:${PORT}`;
+  // Use the configured URL if set; otherwise assume Ollama runs on the same host
+  // serving the app.
+  return getOllamaUrl() || `http://${window.location.hostname}:${PORT}`;
 }
 
 // fetch with an AbortController timeout.
@@ -68,7 +69,7 @@ export async function lookupOllama(word, sentence) {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, prompt, stream: false }),
+      body: JSON.stringify({ model: getOllamaModel(), prompt, stream: false }),
     },
     GENERATE_TIMEOUT,
   );
@@ -96,7 +97,7 @@ export async function explainInLanguage(word, sentence, language) {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, prompt, stream: false }),
+      body: JSON.stringify({ model: getOllamaModel(), prompt, stream: false }),
     },
     GENERATE_TIMEOUT,
   );

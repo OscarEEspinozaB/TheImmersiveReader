@@ -10,6 +10,11 @@
     <!-- Top bar: title + menu. Auto-hides while reading; a tap (mobile) or mouse
          move (desktop) brings it back, together with the bottom pager. -->
     <header id="topbar" class="topbar">
+      <button id="shelf-button" class="menu-toggle" type="button" aria-label="Back to library" title="Library">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+        </svg>
+      </button>
       <span class="brand">The Immersive Reader</span>
       <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Menu" aria-expanded="false">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -37,8 +42,48 @@
       <div class="menu__divider"></div>
 
       <label class="menu__field">
-        <span>Language</span>
+        <span>Reading mode</span>
+        <select id="reading-mode-select">
+          <option value="paged">Paged</option>
+          <option value="continuous">Continuous</option>
+        </select>
+      </label>
+
+      <label class="menu__field">
+        <span>Reading lang</span>
+        <select id="reading-lang-select"></select>
+      </label>
+
+      <label class="menu__field">
+        <span>My language</span>
         <select id="lang-select"></select>
+      </label>
+
+      <label class="menu__field">
+        <span>Ollama URL</span>
+        <input id="ollama-url" type="text" placeholder="auto (this host:11434)" autocomplete="off" />
+      </label>
+
+      <label class="menu__field">
+        <span>Ollama model</span>
+        <input id="ollama-model" type="text" placeholder="gemma3:4b" autocomplete="off" />
+      </label>
+
+      <div class="menu__divider"></div>
+
+      <button id="export-words" class="menu__item" type="button">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 4v12" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" />
+        </svg>
+        <span>Export words</span>
+      </button>
+
+      <label class="menu__item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 20V8" /><path d="m7 13 5-5 5 5" /><path d="M5 4h14" />
+        </svg>
+        <span>Import words</span>
+        <input id="import-words" type="file" accept=".json,application/json" hidden />
       </label>
 
       <div class="menu__divider"></div>
@@ -49,13 +94,34 @@
       </div>
     </nav>
 
-    <main class="reader-wrap" aria-live="polite">
-      <div id="reader" class="reader">
-        <p class="reader__placeholder">Tap the <strong>☰</strong> menu to open a <code>.txt</code>, <code>.md</code>, or <code>.pdf</code> file.</p>
-      </div>
+    <!-- Bookshelf: the home screen. Lists saved books; open one to read. -->
+    <section id="shelf" class="shelf" hidden>
+      <header class="shelf__bar">
+        <span class="shelf__heading">My Library</span>
+        <div class="shelf__actions">
+          <select id="sort-select" class="shelf__sort" title="Sort by"></select>
+          <label class="file-button" title="Add book">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14" /><path d="M5 12h14" />
+            </svg>
+            <input id="add-book" type="file" accept=".txt,.md,.pdf" hidden />
+          </label>
+          <button id="view-toggle" class="menu-toggle" type="button" title="List / grid" aria-label="Toggle view">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+            </svg>
+          </button>
+        </div>
+      </header>
+      <div id="shelf-grid" class="shelf__grid" data-view="grid"></div>
+    </section>
+
+    <main class="reader-wrap" aria-live="polite" hidden>
+      <div id="reader" class="reader"></div>
     </main>
 
-    <footer id="pager" class="pager">
+    <footer id="pager" class="pager" hidden>
       <button id="prev-page" type="button" disabled>&#9664;</button>
       <span id="page-indicator" class="pager__indicator">—</span>
       <button id="next-page" type="button" disabled>&#9654;</button>

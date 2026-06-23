@@ -5,6 +5,7 @@
 // look up their learning state.
 
 import { normalize } from './vocabulary.js';
+import { getReadingLang } from './settings.js';
 
 /**
  * @typedef {Object} Token
@@ -14,13 +15,12 @@ import { normalize } from './vocabulary.js';
  * @property {number} start      character offset of this token in the source text
  */
 
-const segmenter = new Intl.Segmenter('en', { granularity: 'word' });
-
 /**
  * @param {string} text clean text string
  * @returns {Token[]}
  */
 export function tokenize(text) {
+  const segmenter = new Intl.Segmenter(getReadingLang(), { granularity: 'word' });
   const tokens = [];
   for (const seg of segmenter.segment(text)) {
     const isWord = seg.isWordLike === true;

@@ -74,3 +74,35 @@ export function save() {
     console.warn('Could not save vocabulary to localStorage:', err);
   }
 }
+
+/** A portable backup of the vocabulary (word -> state). */
+export function exportVocabulary() {
+  return {
+    type: 'immersive-reader-vocabulary',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    words: Object.fromEntries(states),
+  };
+}
+
+/**
+ * Merge an exported vocabulary into the store. Returns how many entries were
+ * applied. By default it merges (keeps existing words not present in the import).
+ * @param {*} data the parsed backup object (or a plain word->state map)
+ * @param {{ replace?: boolean }} [opts]
+ */
+export function importVocabulary(data, { replace = false } = {}) {
+  const words = data && typeof data === 'object' ? data.words ?? data : null;
+  if (!words || typeof words !== 'object') throw new Error('Invalid vocabulary file');
+  if (replace) states.clear();
+  let applied = 0;
+  for (const [word, state] of Object.entries(words)) {
+    const key = normalize(word);
+    if (key && STATES.includes(state) && state !== DEFAULT_STATE) {
+      states.set(key, state);
+      applied += 1;
+    }
+  }
+  save();
+  return applied;
+}

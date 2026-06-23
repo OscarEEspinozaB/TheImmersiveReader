@@ -4,14 +4,16 @@
 // that is what the Ollama provider is for — but it works offline-of-AI and from
 // any device with internet access.
 
-const ENDPOINT = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
+import { getReadingLang } from '../settings.js';
+
+const ENDPOINT = 'https://api.dictionaryapi.dev/api/v2/entries/';
 
 /**
  * @param {string} word normalized word
  * @returns {Promise<import('./index.js').Definition | null>}
  */
 export async function lookupDictionaryApi(word) {
-  const res = await fetch(ENDPOINT + encodeURIComponent(word));
+  const res = await fetch(`${ENDPOINT}${getReadingLang()}/${encodeURIComponent(word)}`);
   if (!res.ok) return null; // 404 = word not found
   const data = await res.json();
   const definition = data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition;
