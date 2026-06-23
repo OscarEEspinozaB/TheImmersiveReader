@@ -10,8 +10,8 @@ making your vocabulary growth literally visible.
 
 ## Features
 
-- **Ingest** `.txt`, `.md`, and `.pdf` (PDF text is reconstructed into clean
-  paragraphs; embedded illustrations are shown).
+- **Ingest** `.txt`, `.md`, `.pdf`, and `.epub` (PDF/EPUB text is reconstructed into
+  clean paragraphs; embedded illustrations are shown).
 - **Word states**: Unknown (red) → Learning (gold) → Known (blends in). The default
   is Unknown — you grow your vocabulary by marking words; state is never changed
   automatically.

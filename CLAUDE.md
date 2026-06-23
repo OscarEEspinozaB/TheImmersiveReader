@@ -53,7 +53,7 @@ Design intent for the UI: spartan, minimal cognitive load, flat 2D low-poly vect
 
 ### Input formats
 
-The app ingests `.txt`, `.md`, and `.pdf`. PDF text is extracted client-side (e.g. **pdf.js**) and is the messiest source — expect broken line wraps, hyphenation, and column artifacts to normalize. Markdown is treated as plain reading text (strip/flatten formatting), not rendered as rich HTML. The output of ingestion is always a single clean text string fed to the tokenizer.
+The app ingests `.txt`, `.md`, `.pdf`, and `.epub`. PDF text is extracted client-side (**pdf.js**) and is the messiest source — broken line wraps, hyphenation, and running headers/footers are normalized; paragraphs are reconstructed from geometry. EPUB (a ZIP of XHTML) is unzipped with **fflate**, read in spine order, with block elements → paragraphs. Both also extract embedded images, anchored by position. Markdown is flattened to plain reading text. Ingestion returns `{ text, images }`.
 
 ### eReader view
 

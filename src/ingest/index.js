@@ -4,6 +4,7 @@
 import { readTxt } from './txt.js';
 import { readMd } from './md.js';
 import { readPdf } from './pdf.js';
+import { readEpub } from './epub.js';
 
 /**
  * @param {File} file
@@ -14,6 +15,8 @@ export async function ingest(file) {
   switch (ext) {
     case 'pdf':
       return readPdf(file);
+    case 'epub':
+      return readEpub(file);
     case 'md':
     case 'markdown':
       return readMd(file);
