@@ -1,6 +1,11 @@
 # The Immersive Reader — Vocabulary Dashboard & Dictionary (Design)
 
-> Status: Draft (design only, not implemented). Last updated 2026-06-23.
+> Status: **Implemented.** Vocabulary entries now carry timestamps (`{state, at}`);
+> Stats tab has summary cards, a known-vs-learning donut, a growth line chart, and a
+> per-book breakdown; Dictionary tab has search/filter/sort, dictionary + AI meanings,
+> on-demand look-up for missing/new words, and a **windowed** list for large
+> vocabularies. Built in `src/dashboard.js`, `src/stats.js`, `src/charts.js`. Last
+> updated 2026-06-24.
 
 ## 1. Context
 

@@ -11,7 +11,7 @@ import { attachMarking } from './marking.js';
 import { buildSentenceLookup } from './sentences.js';
 import { renderShelf } from './shelf.js';
 import { renderDashboard } from './dashboard.js';
-import { buildDeck } from './deck.js';
+import { buildDeck, uniqueWords } from './deck.js';
 import { renderSwiper } from './swiper.js';
 import { alertDialog } from './dialog.js';
 import {
@@ -103,13 +103,13 @@ async function openSwiper(id) {
   setMenuOpen(false);
   const content = await getBookContent(id);
   if (!content) return;
-  const deck = buildDeck(content.text, { limit: 50 });
-  if (!deck.length) {
-    alertDialog('No new words to practice in this book — everything is already marked. 🎉');
+  const { cards, stats } = buildDeck(content.text, { limit: 50 });
+  if (!cards.length) {
+    alertDialog('No words to practice in this book yet.');
     return;
   }
   setView('swiper');
-  renderSwiper(swiperEl, { deck, onExit: showShelf });
+  renderSwiper(swiperEl, { deck: cards, stats, onExit: showShelf });
 }
 
 function showDashboard() {
@@ -152,7 +152,7 @@ async function addBookFromFile(file) {
     const { text, images } = await ingest(file);
     const cover = images[0]?.blob || null;
     const title = file.name.replace(/\.[^.]+$/, '');
-    const id = await addBook({ title, text, images, cover });
+    const id = await addBook({ title, text, images, cover, words: uniqueWords(text) });
     await openBook(id);
   } catch (err) {
     console.error(err);
@@ -341,7 +341,7 @@ sampleButton.addEventListener('click', async () => {
   setMenuOpen(false);
   const res = await fetch(`${import.meta.env.BASE_URL}sample/sample.txt`);
   const text = await res.text();
-  const id = await addBook({ title: 'Sample — Alice in Wonderland', text, images: [], cover: null });
+  const id = await addBook({ title: 'Sample — Alice in Wonderland', text, images: [], cover: null, words: uniqueWords(text) });
   await openBook(id);
 });
 

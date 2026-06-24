@@ -1,18 +1,30 @@
-// Word Swiper: a Tinder-style card game to triage vocabulary fast.
-//   swipe up 👍 known · down 👎 unknown · right 🤔 learning · left ⏭ skip
-// Cards follow the finger/pointer and fly out on release; keyboard arrows and
-// on-screen buttons mirror the gestures. State changes use the global store.
+// Word Swiper: a Tinder-style card game to triage + reinforce vocabulary.
+//        ↑ known 👍
+//   ← learning 🤔   skip ⏭ →
+//        ↓ unknown 👎
+// Cards follow the pointer and fly out on release; arrow keys and the on-screen
+// compass mirror the gestures. State changes use the global vocabulary store.
 
 import { setState } from './vocabulary.js';
 import { getQuickDefinition, getAiDefinition } from './definitions/index.js';
 
-const THRESHOLD = 90; // px to count as a decisive swipe
+const THRESHOLD = 90; // px for a decisive swipe
+const FLY = 600; // px to fling a card off-screen
+
+const KEY_DIR = { ArrowUp: 'known', ArrowDown: 'unknown', ArrowLeft: 'learning', ArrowRight: 'skip' };
+const LABEL = { known: '👍 Known', unknown: '👎 Unknown', learning: '🤔 Learning', skip: '⏭ Skip' };
+const OFFSET = {
+  known: { x: 0, y: -FLY },
+  unknown: { x: 0, y: FLY },
+  learning: { x: -FLY, y: 0 },
+  skip: { x: FLY, y: 0 },
+};
 
 /**
  * @param {HTMLElement} root
- * @param {{ deck: { word:string, count:number, sentence:string }[], onExit: () => void }} opts
+ * @param {{ deck: {word,count,sentence,state}[], stats: object, onExit: () => void }} opts
  */
-export function renderSwiper(root, { deck, onExit }) {
+export function renderSwiper(root, { deck, stats, onExit }) {
   root.replaceChildren();
   let index = 0;
   const session = { known: 0, learning: 0, unknown: 0, skip: 0 };
@@ -24,23 +36,39 @@ export function renderSwiper(root, { deck, onExit }) {
   progress.className = 'swiper__progress';
   bar.append(exit, progress);
 
+  const bookStats = document.createElement('div');
+  bookStats.className = 'swiper__stats';
+  const live = stats ? { ...stats } : null; // updated live as the user swipes
+  function updateStats() {
+    if (live) {
+      bookStats.textContent = `${live.unknown} new · ${live.learning} learning · ${live.known} known · ${live.total} unique words in this book`;
+    }
+  }
+  updateStats();
+
   const stage = document.createElement('div');
   stage.className = 'swiper__stage';
 
-  const hint = document.createElement('div');
-  hint.className = 'swiper__hint';
-  hint.textContent = '↑ known · ↓ unknown · → learning · ← skip';
-
-  const buttons = document.createElement('div');
-  buttons.className = 'swiper__buttons';
-  buttons.append(
-    button('👎', 'sw-btn', () => decide('unknown')),
-    button('⏭', 'sw-btn', () => decide('skip')),
-    button('👍', 'sw-btn sw-btn--up', () => decide('known')),
-    button('🤔', 'sw-btn', () => decide('learning')),
+  // Compass control (mirrors the swipe directions).
+  const compass = document.createElement('div');
+  compass.className = 'swiper__compass';
+  compass.append(
+    compassBtn('known', 'up'),
+    compassBtn('learning', 'left'),
+    compassBtn('skip', 'right'),
+    compassBtn('unknown', 'down'),
   );
 
-  root.append(bar, stage, hint, buttons);
+  root.append(bar, bookStats, stage, compass);
+
+  function compassBtn(action, pos) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `sw-compass sw-compass--${pos}`;
+    b.innerHTML = `<span class="sw-compass__arrow">${arrow(pos)}</span><span>${LABEL[action]}</span>`;
+    b.addEventListener('click', () => decide(action));
+    return b;
+  }
 
   function updateProgress() {
     progress.textContent = `${Math.min(index + 1, deck.length)} / ${deck.length}`;
@@ -53,87 +81,80 @@ export function renderSwiper(root, { deck, onExit }) {
       return;
     }
     updateProgress();
-    stage.appendChild(buildCard(deck[index], decide));
+    stage.appendChild(buildCard(deck[index]));
   }
 
-  function decide(action, fromButton = true) {
+  function decide(action, animated = true) {
     if (index >= deck.length) return;
-    const { word } = deck[index];
-    if (action === 'known') {
-      setState(word, 'known');
-      session.known += 1;
-    } else if (action === 'learning') {
-      setState(word, 'learning');
-      session.learning += 1;
-    } else if (action === 'unknown') {
-      setState(word, 'unknown');
-      session.unknown += 1;
-    } else {
-      session.skip += 1;
+    const card = deck[index];
+    const newState = action === 'skip' ? card.state : action;
+    if (newState !== card.state) {
+      setState(card.word, newState);
+      if (live) {
+        live[card.state] = Math.max(0, (live[card.state] || 0) - 1);
+        live[newState] = (live[newState] || 0) + 1;
+        updateStats();
+      }
+      card.state = newState;
     }
+    session[action] += 1;
     index += 1;
-    if (fromButton) flyOutCurrent(action);
-    else showCard();
-  }
 
-  // Animate the on-screen card out, then show the next.
-  function flyOutCurrent(action) {
-    const card = stage.querySelector('.swipe-card');
-    if (!card) {
-      showCard();
-      return;
+    if (animated) {
+      const card = stage.querySelector('.swipe-card');
+      if (card) {
+        const off = OFFSET[action];
+        card.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
+        card.style.transform = `translate(${off.x}px, ${off.y}px) rotate(${off.x * 0.06}deg)`;
+        card.style.opacity = '0';
+        setTimeout(showCard, 220);
+        return;
+      }
     }
-    const off = offsetFor(action);
-    card.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
-    card.style.transform = `translate(${off.x}px, ${off.y}px) rotate(${off.x * 0.06}deg)`;
-    card.style.opacity = '0';
-    setTimeout(showCard, 220);
+    showCard();
   }
 
   function showSummary() {
     updateProgress();
     const done = document.createElement('div');
     done.className = 'swiper__summary';
-    done.innerHTML = `
-      <h2>Done! 🎉</h2>
+    done.innerHTML = `<h2>Done! 🎉</h2>
       <p><b>${session.known}</b> known · <b>${session.learning}</b> learning ·
          <b>${session.unknown}</b> unknown · <b>${session.skip}</b> skipped</p>`;
-    const back = button('Back to library', 'sw-summary-btn', onExit);
-    done.appendChild(back);
+    done.appendChild(button('Back to library', 'sw-summary-btn', onExit));
     stage.replaceChildren(done);
   }
 
-  // Keyboard
   const onKey = (e) => {
-    const map = { ArrowUp: 'known', ArrowDown: 'unknown', ArrowRight: 'learning', ArrowLeft: 'skip' };
-    if (map[e.key]) {
+    if (KEY_DIR[e.key]) {
       e.preventDefault();
-      decide(map[e.key]);
+      decide(KEY_DIR[e.key]);
     }
   };
   document.addEventListener('keydown', onKey);
-  // Clean up the key listener when the view is torn down.
   root._cleanup = () => document.removeEventListener('keydown', onKey);
 
   showCard();
 
-  // --- card drag (Tinder-style) ---
-  function buildCard(cardData, onDecide) {
+  function buildCard(cardData) {
     const card = document.createElement('div');
     card.className = 'swipe-card';
     card.innerHTML = `
       <div class="swipe-card__badge"></div>
-      <div class="swipe-card__word"></div>
+      <div class="swipe-card__word word"></div>
       <div class="swipe-card__count"></div>
       <p class="swipe-card__sentence"></p>
       <button type="button" class="swipe-card__reveal">Reveal meaning</button>
       <div class="swipe-card__meaning" hidden></div>`;
-    card.querySelector('.swipe-card__word').textContent = cardData.word;
+
+    const wordEl = card.querySelector('.swipe-card__word');
+    wordEl.textContent = cardData.word;
+    wordEl.dataset.state = cardData.state;
+
+    const tag = cardData.state === 'unknown' ? 'new' : `${cardData.state} · review`;
     card.querySelector('.swipe-card__count').textContent =
-      `appears ${cardData.count.toLocaleString()}× in this book`;
-    card.querySelector('.swipe-card__sentence').textContent = cardData.sentence
-      ? `“${cardData.sentence}”`
-      : '';
+      `${tag} · appears ${cardData.count.toLocaleString()}× in this book`;
+    card.querySelector('.swipe-card__sentence').textContent = cardData.sentence ? `“${cardData.sentence}”` : '';
 
     const badge = card.querySelector('.swipe-card__badge');
     card.querySelector('.swipe-card__reveal').addEventListener('click', (e) => {
@@ -158,7 +179,7 @@ export function renderSwiper(root, { deck, onExit }) {
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
       card.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx * 0.06}deg)`;
-      badge.textContent = labelFor(directionOf(dx, dy));
+      badge.textContent = LABEL[directionOf(dx, dy)] || '';
     });
     card.addEventListener('pointerup', (e) => {
       if (!dragging) return;
@@ -167,12 +188,7 @@ export function renderSwiper(root, { deck, onExit }) {
       const dy = e.clientY - startY;
       const dir = directionOf(dx, dy);
       if (dir && (Math.abs(dx) > THRESHOLD || Math.abs(dy) > THRESHOLD)) {
-        // fly out in the swipe direction, then decide
-        const off = offsetFor(dir);
-        card.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
-        card.style.transform = `translate(${off.x}px, ${off.y}px) rotate(${off.x * 0.06}deg)`;
-        card.style.opacity = '0';
-        setTimeout(() => onDecide(dir, false), 220);
+        decide(dir);
       } else {
         card.style.transition = 'transform 0.2s ease';
         card.style.transform = '';
@@ -188,7 +204,6 @@ function revealMeaning(card, cardData) {
   const box = card.querySelector('.swipe-card__meaning');
   const btn = card.querySelector('.swipe-card__reveal');
   btn.disabled = true;
-  btn.textContent = 'Looking up…';
   box.hidden = false;
   box.textContent = 'Looking up…';
 
@@ -220,21 +235,11 @@ function line(text, source) {
 function directionOf(dx, dy) {
   if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return '';
   if (Math.abs(dy) >= Math.abs(dx)) return dy < 0 ? 'known' : 'unknown';
-  return dx > 0 ? 'learning' : 'skip';
+  return dx < 0 ? 'learning' : 'skip';
 }
 
-function labelFor(dir) {
-  return { known: '👍 known', unknown: '👎 unknown', learning: '🤔 learning', skip: '⏭ skip' }[dir] || '';
-}
-
-function offsetFor(dir) {
-  const D = 600;
-  return {
-    known: { x: 0, y: -D },
-    unknown: { x: 0, y: D },
-    learning: { x: D, y: 0 },
-    skip: { x: -D, y: 0 },
-  }[dir] || { x: 0, y: 0 };
+function arrow(pos) {
+  return { up: '↑', down: '↓', left: '←', right: '→' }[pos] || '';
 }
 
 function button(label, className, onClick) {

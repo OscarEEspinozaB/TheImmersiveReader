@@ -1,12 +1,17 @@
 // Vocabulary dashboard: a Stats tab (counts + growth chart) and a Dictionary tab
 // (browse marked words with their cached dictionary + AI explanations).
 
-import { listEntries, setState, STATES, normalize } from './vocabulary.js';
+import { listEntries, setState, STATES, normalize, getState } from './vocabulary.js';
 import { summary, growthSeries, recent } from './stats.js';
 import { growthChart, splitDonut } from './charts.js';
 import { getCached, cacheDictionary } from './definitionsCache.js';
 import { getQuickDefinition } from './definitions/index.js';
 import { buildExternalLinks } from './externalLookup.js';
+import { listBooks, getBookWords, setBookWords, getBookContent } from './library.js';
+import { uniqueWords } from './deck.js';
+
+const DICT_CHUNK = 25; // dictionary rows rendered per windowed chunk
+const ROW_PX = 64; // height estimate per row (before measuring)
 
 function truncate(text, max) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -60,9 +65,13 @@ export function renderDashboard(root, { onBack }) {
   }
 
   function renderBody() {
+    if (state._io) {
+      state._io.disconnect();
+      state._io = null;
+    }
     body.replaceChildren();
     if (state.tab === 'stats') renderStats(body);
-    else renderDictionary(body, state);
+    else renderDictionary(body, state, root);
   }
 
   updateTabs();
@@ -102,7 +111,49 @@ function renderStats(body) {
     chartWrap.append(empty);
   }
 
-  body.append(cards, split, chartWrap);
+  const perBook = document.createElement('div');
+  perBook.className = 'stat-perbook';
+  perBook.innerHTML = '<div class="stat-chart__title">Per book</div>';
+  body.append(cards, split, chartWrap, perBook);
+  renderPerBook(perBook);
+}
+
+// Per-book breakdown: how many of each book's unique words are known/learning/new.
+async function renderPerBook(container) {
+  const books = await listBooks();
+  if (!books.length) return;
+  for (const book of books) {
+    let words = await getBookWords(book.id);
+    if (!words) {
+      // Backfill for books added before per-book words were stored.
+      const content = await getBookContent(book.id);
+      if (content?.text) {
+        words = uniqueWords(content.text);
+        setBookWords(book.id, words);
+      }
+    }
+    const c = { known: 0, learning: 0, unknown: 0 };
+    for (const w of words || []) c[getState(w)] += 1;
+    const total = (words || []).length || 1;
+
+    const row = document.createElement('div');
+    row.className = 'perbook-row';
+    row.innerHTML = `
+      <div class="perbook-row__title">${escapeHtml(book.title)}</div>
+      <div class="perbook-bar">
+        <span style="flex:${c.known}" class="seg seg--known"></span>
+        <span style="flex:${c.learning}" class="seg seg--learning"></span>
+        <span style="flex:${c.unknown}" class="seg seg--unknown"></span>
+      </div>
+      <div class="perbook-row__nums">${c.known} known · ${c.learning} learning · ${c.unknown} new · ${total} total</div>`;
+    container.appendChild(row);
+  }
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
 }
 
 function statCard(label, value) {
@@ -121,7 +172,7 @@ function legend() {
   return el;
 }
 
-function renderDictionary(body, state) {
+function renderDictionary(body, state, scrollRoot) {
   const controls = document.createElement('div');
   controls.className = 'dict-controls';
 
@@ -140,14 +191,16 @@ function renderDictionary(body, state) {
   list.className = 'dict-list';
 
   const renderList = () => {
+    if (state._io) state._io.disconnect();
     list.replaceChildren();
+
     let items = listEntries();
     if (state.filter !== 'all') items = items.filter((e) => e.state === state.filter);
     const q = state.search.trim().toLowerCase();
     if (q) items = items.filter((e) => e.word.includes(q));
     items.sort(state.sort === 'a-z' ? (a, b) => a.word.localeCompare(b.word) : (a, b) => b.at - a.at);
 
-    // If searching a word that isn't in the list yet, offer to look it up.
+    // Search a word not in the list yet → offer to look it up.
     const key = normalize(q);
     if (key && !listEntries().some((e) => e.word === key)) {
       list.appendChild(lookupCard(key, renderList));
@@ -160,8 +213,46 @@ function renderDictionary(body, state) {
       list.appendChild(empty);
       return;
     }
-    for (const entry of items) list.appendChild(dictRow(entry, renderList));
+
+    // Windowed: chunk rows; render only those near the viewport, collapse the rest
+    // to a measured-height spacer so memory stays bounded for huge dictionaries.
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const chunk = e.target;
+          if (e.isIntersecting) renderChunk(chunk, renderList);
+          else unloadChunk(chunk);
+        }
+      },
+      { root: scrollRoot, rootMargin: '600px 0px' },
+    );
+    state._io = io;
+
+    for (let i = 0; i < items.length; i += DICT_CHUNK) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'dict-chunk';
+      wrapper._slice = items.slice(i, i + DICT_CHUNK);
+      wrapper.style.height = `${wrapper._slice.length * ROW_PX}px`;
+      list.appendChild(wrapper);
+      io.observe(wrapper);
+    }
   };
+
+  function renderChunk(wrapper, reRender) {
+    if (wrapper._rendered) return;
+    const frag = document.createDocumentFragment();
+    for (const entry of wrapper._slice) frag.appendChild(dictRow(entry, reRender));
+    wrapper.replaceChildren(frag);
+    wrapper.style.height = '';
+    wrapper._rendered = true;
+  }
+
+  function unloadChunk(wrapper) {
+    if (!wrapper._rendered) return;
+    wrapper.style.height = `${wrapper.offsetHeight}px`;
+    wrapper.replaceChildren();
+    wrapper._rendered = false;
+  }
 
   search.addEventListener('input', () => {
     state.search = search.value;

@@ -1,6 +1,11 @@
 # The Immersive Reader — Library & Book Format (Design)
 
-> Status: Draft (design only, not implemented). Last updated 2026-06-22.
+> Status: **Implemented** (library/bookshelf, per-book progress, sorting). The `.tir`
+> export/import file format is **still pending**. Last updated 2026-06-24.
+>
+> Built in `src/library.js` (IndexedDB books/content/bookwords stores), `src/shelf.js`
+> (grid/list shelf with cover, rename, delete, practice), and the view switching in
+> `src/main.js`. Per-book vocabulary stats live in the dashboard.
 
 ## 1. Context
 

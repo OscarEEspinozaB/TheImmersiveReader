@@ -1,6 +1,14 @@
 # The Immersive Reader — MVP Design
 
-> Status: Draft · Phase 1 (local monolith) · Last updated 2026-06-21
+> Status: Phase 1 largely built · Last updated 2026-06-24
+>
+> Done: M1 core loop (txt/md/pdf + epub), M2 definitions (dictionary + Ollama, with
+> part-of-speech & verb forms), plus features beyond the original plan — multi-book
+> **library**, **continuous** reading mode, **vocabulary dashboard** (stats +
+> dictionary), **word swiper**, themes, configurable Ollama/language, vocabulary
+> export/import. Pending: **M3 voice** (Web Speech — continuous mode currently enables
+> external read-aloud instead), **M4 PWA**, swiper images, and the `.tir` book format.
+> See the per-feature docs in this folder.
 
 ## 1. Purpose & vision
 
@@ -101,19 +109,19 @@ are not clickable.
 
 ## 8. Milestones
 
-1. **M1 — Core loop (txt/md/pdf):** ingest all three formats — including PDF via
-   pdf.js with text normalization (de-hyphenation, line-wrap repair) — → tokenize →
-   paginated eReader render → red sea → click-popup / shortcut marking → recolor all
-   occurrences → persist to localStorage. **PDF ingest is part of M1.**
-2. **M2 — Definitions** ✅: `DefinitionProvider` chain (local dict → free dictionary
-   API → Ollama). Explanations in **simple/basic English**. Sentence context via
-   `Intl.Segmenter` sentence granularity; result shown in the word popup.
-3. **M3 — Voice:** Web Speech read-aloud (word, sentence, and full text).
-4. **M4 — PWA:** manifest + service worker for installability and offline use.
+1. **M1 — Core loop** ✅: ingest (txt/md/pdf, later +epub) → tokenize → eReader render
+   → red sea → click-popup / shortcut marking → recolor all occurrences → persist.
+2. **M2 — Definitions** ✅: provider chain (local cache → free dictionary API → Ollama).
+   Context-aware, simple-English explanations with part of speech and verb forms;
+   per-context AI history; web-dictionary fallback links.
+3. **M3 — Voice** ⏳ pending: Web Speech read-aloud. (For now, the **continuous**
+   reading mode puts the whole text in the DOM so the browser's own read-aloud works.)
+4. **M4 — PWA** ⏳ pending: manifest + service worker for install/offline.
 
-Also done outside the original milestone list: **session persistence** — the last
-opened document and reading position (anchored by word index) are saved to
-localStorage and restored on startup.
+Delivered beyond the original list (each has its own doc in `docs/`): session
+persistence, multi-book **library**, **continuous** reading mode, **vocabulary
+dashboard** (stats + dictionary), **word swiper**, selectable themes, configurable
+Ollama URL/model and reading/native language, vocabulary export/import.
 
 ## 9. Definition layer detail
 

@@ -1,6 +1,10 @@
 # The Immersive Reader — Word Swiper (Tinder-style) (Design)
 
-> Status: Draft (design only, not implemented). Last updated 2026-06-23.
+> Status: **Implemented** (core game). Built in `src/deck.js` (per-book deck: new words
+> by frequency + a mix of learning/known for review, shuffled) and `src/swiper.js`
+> (drag/keys/compass, live per-book stats header, lazy meaning reveal, session
+> summary). Directions: ↑ known · ↓ unknown · ← learning · → skip. **Images on the
+> card are still pending** (see §4b). Last updated 2026-06-24.
 
 ## 1. Context
 

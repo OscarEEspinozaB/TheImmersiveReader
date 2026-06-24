@@ -5,8 +5,8 @@
 // Blobs are stored directly (no base64), so images and big books fit comfortably.
 
 const DB_NAME = 'immersive-reader';
-const DB_VERSION = 2;
-const STORES = ['kv', 'books', 'content'];
+const DB_VERSION = 3;
+const STORES = ['kv', 'books', 'content', 'bookwords'];
 
 let dbPromise = null;
 

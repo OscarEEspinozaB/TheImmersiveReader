@@ -783,27 +783,31 @@ body.chrome-hidden .pager {
 /* Themed scrollbars for the scrollable areas, matching the active palette. */
 .reader--scroll,
 .shelf,
-.menu {
+.menu,
+.dashboard {
   scrollbar-width: thin; /* Firefox */
   scrollbar-color: color-mix(in srgb, var(--text) 28%, transparent) transparent;
 }
 
 .reader--scroll::-webkit-scrollbar,
 .shelf::-webkit-scrollbar,
-.menu::-webkit-scrollbar {
+.menu::-webkit-scrollbar,
+.dashboard::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
 .reader--scroll::-webkit-scrollbar-track,
 .shelf::-webkit-scrollbar-track,
-.menu::-webkit-scrollbar-track {
+.menu::-webkit-scrollbar-track,
+.dashboard::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .reader--scroll::-webkit-scrollbar-thumb,
 .shelf::-webkit-scrollbar-thumb,
-.menu::-webkit-scrollbar-thumb {
+.menu::-webkit-scrollbar-thumb,
+.dashboard::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--text) 25%, transparent);
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -812,7 +816,8 @@ body.chrome-hidden .pager {
 
 .reader--scroll::-webkit-scrollbar-thumb:hover,
 .shelf::-webkit-scrollbar-thumb:hover,
-.menu::-webkit-scrollbar-thumb:hover {
+.menu::-webkit-scrollbar-thumb:hover,
+.dashboard::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--text) 45%, transparent);
   background-clip: padding-box;
 }
@@ -1197,31 +1202,73 @@ body.chrome-hidden .pager {
   opacity: 0.5;
 }
 
-.swiper__hint {
+.swiper__stats {
   text-align: center;
   font-size: 0.8rem;
-  opacity: 0.6;
-  margin: 0.5rem 0;
+  opacity: 0.65;
+  margin-bottom: 0.5rem;
 }
 
-.swiper__buttons {
-  display: flex;
+/* Compass control: arrows around a cross, matching the swipe directions. */
+.swiper__compass {
+  display: grid;
+  grid-template-areas:
+    '. up .'
+    'left . right'
+    '. down .';
+  gap: 0.5rem;
   justify-content: center;
-  gap: 0.8rem;
+  margin: 0.6rem auto 0;
 }
 
-.sw-btn {
-  font-size: 1.4rem;
-  width: 3rem;
-  height: 3rem;
+.sw-compass {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 50%;
+  border-radius: 10px;
+  padding: 0.45rem 0.7rem;
   cursor: pointer;
 }
 
-.sw-btn:hover {
+.sw-compass:hover {
   border-color: var(--text);
+}
+
+.sw-compass__arrow {
+  font-size: 1.1rem;
+}
+
+.sw-compass--up {
+  grid-area: up;
+}
+.sw-compass--down {
+  grid-area: down;
+}
+.sw-compass--left {
+  grid-area: left;
+}
+.sw-compass--right {
+  grid-area: right;
+}
+
+/* Word colored by its current state (review cues). */
+.swipe-card__word[data-state='known'] {
+  color: var(--word-known);
+}
+.swipe-card__word[data-state='learning'] {
+  color: var(--word-learning);
+}
+.swipe-card__word[data-state='unknown'] {
+  color: var(--word-unknown);
+}
+.swipe-card__word:hover {
+  background: none; /* override .word hover on the card */
 }
 
 .swiper__summary {
@@ -1241,4 +1288,59 @@ body.chrome-hidden .pager {
   border-radius: 8px;
   padding: 0.5rem 1rem;
   cursor: pointer;
+}
+
+/* Per-book stats */
+.stat-perbook {
+  margin-top: 1.5rem;
+}
+
+.perbook-row {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.perbook-row__title {
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.perbook-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.perbook-bar .seg {
+  display: block;
+  min-width: 0;
+}
+
+.seg--known {
+  background: var(--text);
+}
+.seg--learning {
+  background: var(--word-learning);
+}
+.seg--unknown {
+  background: var(--word-unknown);
+}
+
+.perbook-row__nums {
+  font-size: 0.78rem;
+  opacity: 0.65;
+  margin-top: 0.3rem;
+}
+
+.dict-chunk {
+  display: flow-root;
+}
+
+/* Preserve line breaks in AI explanations (e.g. labeled verb forms). */
+.ai-item__text,
+.dict-row__def,
+.swipe-card__def {
+  white-space: pre-wrap;
 }

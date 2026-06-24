@@ -18,14 +18,24 @@ function uuid() {
  * @param {{ title: string, text: string, images?: any[], cover?: Blob | null }} book
  * @returns {Promise<string>} the new book id
  */
-export async function addBook({ title, text, images = [], cover = null }) {
+export async function addBook({ title, text, images = [], cover = null, words = null }) {
   const id = uuid();
   const now = Date.now();
   /** @type {BookMeta} */
   const meta = { id, title, addedAt: now, lastOpenedAt: now, progressWordIndex: 0, cover };
   await idbSet('books', id, meta);
   await idbSet('content', id, { text, images });
+  if (words) await idbSet('bookwords', id, words);
   return id;
+}
+
+/** Unique normalized words in a book (for per-book stats). @returns {Promise<string[]|undefined>} */
+export function getBookWords(id) {
+  return idbGet('bookwords', id);
+}
+
+export function setBookWords(id, words) {
+  return idbSet('bookwords', id, words);
 }
 
 /** @returns {Promise<BookMeta[]>} books, most recently opened first */
@@ -55,6 +65,7 @@ export async function renameBook(id, title) {
 export async function deleteBook(id) {
   await idbDelete('books', id);
   await idbDelete('content', id);
+  await idbDelete('bookwords', id);
 }
 
 export async function setProgress(id, wordIndex) {
