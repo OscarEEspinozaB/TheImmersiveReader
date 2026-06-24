@@ -9,6 +9,7 @@ import { Scroller } from './reader/scroller.js';
 import { initTheme, setTheme, getTheme, THEMES } from './reader/theme.js';
 import { attachMarking } from './marking.js';
 import { buildSentenceLookup } from './sentences.js';
+import { migrateVocabularyEntries } from './contractions.js';
 import { renderShelf } from './shelf.js';
 import { renderDashboard } from './dashboard.js';
 import { buildDeck, uniqueWords } from './deck.js';
@@ -75,6 +76,9 @@ let currentView = 'grid';
 
 initTheme();
 loadVocabulary();
+// Re-map any vocabulary entries saved as whole contractions (e.g. "didn't") into
+// their component lemmas, so the stats count separated words, not contractions.
+migrateVocabularyEntries();
 
 // --- View switching: shelf / reader / vocabulary ---
 function setView(view) {

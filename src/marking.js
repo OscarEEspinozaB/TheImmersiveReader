@@ -5,15 +5,22 @@
 // In every case we persist the new state and recolor ALL occurrences of that
 // word (keyed by its normalized form), not just the one clicked.
 
-import { setState } from './vocabulary.js';
+import { setState, getState, normalizeSurface } from './vocabulary.js';
 import { recolorWord } from './reader/render.js';
 import { WordPopup } from './popup.js';
 import {
   getQuickDefinition,
   getAiDefinition,
   getAiDefinitionInLanguage,
+  decomposeContraction,
   isAiAvailable,
 } from './definitions/index.js';
+import {
+  getContraction,
+  isUnknownContraction,
+  learnContraction,
+  aggregateStates as aggregateContraction,
+} from './contractions.js';
 import { getLanguage } from './settings.js';
 import {
   getCached,
@@ -34,28 +41,31 @@ const KEY_TO_STATE = { 1: 'known', 2: 'learning', 3: 'unknown' };
 export function attachMarking(flow, { getSentence = () => '' } = {}) {
   const popup = new WordPopup();
 
-  const apply = (word, state) => {
-    setState(word, state);
-    recolorWord(flow, word, state);
+  // Apply a state to a word span. For a contraction the state is applied to ALL
+  // of its component lemmas at once (one gesture, both parts); for an ordinary
+  // word, to its single key.
+  const apply = (span, state) => {
+    const lemmas = span.dataset.parts ? span.dataset.parts.split(' ') : [span.dataset.word];
+    for (const lemma of lemmas) {
+      if (!lemma) continue;
+      setState(lemma, state);
+      recolorWord(flow, lemma, state);
+    }
   };
 
   let requestId = 0;
 
-  // Ask the AI for a context. The refresh button is offered ONLY on a cache hit
-  // (a previously-seen context the user may want to update); after a fresh
-  // generation it is redundant, so it stays hidden.
-  const askAi = (word, sentence, active) => {
-    // Current context already answered (cached): just show it. No regenerate
-    // button — the answer for this specific context already exists.
+  // Ask the AI for a context. `word` is the normalized vocabulary key (used for
+  // caching); `surface` is the original surface form sent to the AI so it sees
+  // "Dursley's" or "didn't" rather than the stripped/lowercased key.
+  const askAi = (word, surface, sentence, active) => {
+    // Current context already answered (cached): just show it.
     if (getAiForSentence(word, sentence)) {
       popup.setAiList(getAiList(word), sentence);
       return;
     }
-    // Current context not answered yet: show what's already stored immediately,
-    // with a loading row at the top for the current context; replace it (first)
-    // when it arrives.
     popup.setAiList(getAiList(word), sentence, true);
-    getAiDefinition(word, sentence)
+    getAiDefinition(surface, sentence)
       .then((def) => {
         if (!active()) return;
         if (def) pushAi(word, sentence, def);
@@ -65,10 +75,10 @@ export function attachMarking(flow, { getSentence = () => '' } = {}) {
   };
 
   // Load dictionary + AI for a word, cache-first.
-  const loadDefinitions = (word, sentence, active) => {
+  const loadDefinitions = (word, surface, sentence, active) => {
     const cached = getCached(word);
 
-    // Dictionary (source of truth): cached, else query; if none, offer web links.
+    // Dictionary: use normalized key (dictionaries index by base form).
     if (cached?.dictionary) {
       popup.setQuick(cached.dictionary);
     } else {
@@ -86,17 +96,48 @@ export function attachMarking(flow, { getSentence = () => '' } = {}) {
         .catch(() => active() && popup.setQuickLinks(word));
     }
 
-    askAi(word, sentence, active);
+    askAi(word, surface, sentence, active);
+  };
+
+  // Show the contraction breakdown ("didn't = did + not") with each part's
+  // current state. Called when opening a contraction and after the AI learns one.
+  const showBreakdown = (span) => {
+    const c = getContraction(span.textContent);
+    if (!c) return;
+    popup.setBreakdown(
+      span.textContent,
+      c.parts.map((lemma) => ({ lemma, state: getState(lemma) })),
+      c.note,
+    );
+  };
+
+  // Turn ordinary word spans into contraction spans once the AI has decomposed
+  // them (every occurrence of the same surface on the current page).
+  const convertSpansToContraction = (surface, lemmas) => {
+    const target = surface.toLowerCase();
+    for (const el of flow.querySelectorAll('.word')) {
+      if (el.dataset.parts) continue;
+      if (el.textContent.toLowerCase() !== target) continue;
+      delete el.dataset.word;
+      el.dataset.parts = lemmas.join(' ');
+      el.dataset.state = aggregateContraction(lemmas);
+    }
   };
 
   const openPopup = (span) => {
-    const word = span.dataset.word;
+    const surface = span.textContent;      // original surface form for AI prompts
     const state = span.dataset.state;
     const sentence = getSentence(Number(span.dataset.i));
-    popup.show(span, state, (newState) => apply(word, newState));
+    const isContraction = !!span.dataset.parts;
+    // Cache key: ordinary words use their lemma; contractions use their surface
+    // (they have no lemma of their own), so cache/AI history is per contraction.
+    const word = isContraction ? normalizeSurface(surface) : span.dataset.word;
+    popup.show(span, state, (newState) => apply(span, newState));
 
     const myRequest = ++requestId;
     const active = () => myRequest === requestId && popup.visible;
+
+    if (isContraction) showBreakdown(span);
 
     // On-demand native-language rescue — only offered when the AI is reachable
     // (it relies on Ollama) or we already have a cached answer for this context.
@@ -109,7 +150,7 @@ export function attachMarking(flow, { getSentence = () => '' } = {}) {
           return;
         }
         popup.langLoading(`Explaining in ${language}…`);
-        getAiDefinitionInLanguage(word, sentence, language)
+        getAiDefinitionInLanguage(surface, sentence, language)
           .then((def) => {
             if (!active()) return;
             if (def) cacheLang(word, language, sentence, def);
@@ -126,18 +167,30 @@ export function attachMarking(flow, { getSentence = () => '' } = {}) {
       });
     }
 
+    // Unknown contraction (looks like one but isn't in the registry yet): ask the
+    // AI to decompose it in context, then add it to the registry, recolor it, and
+    // reveal the breakdown — this is how the registry grows as words are consulted.
+    if (!isContraction && isUnknownContraction(surface)) {
+      decomposeContraction(surface, sentence).then((res) => {
+        if (!res || !active()) return;
+        learnContraction(surface, res.parts, res.note);
+        convertSpansToContraction(surface, res.parts);
+        if (active()) showBreakdown(span);
+      });
+    }
+
     if (state === 'known') {
       // Known: never auto-fetch. Offer a button to look it up if the user wants
       // (shows from cache instantly if available). State is NOT changed.
       popup.showLookupButton(() => {
         popup.hideLookupButton();
-        loadDefinitions(word, sentence, active);
+        loadDefinitions(word, surface, sentence, active);
       });
       return;
     }
 
     // Learning / Unknown: show definitions automatically (cache-first).
-    loadDefinitions(word, sentence, active);
+    loadDefinitions(word, surface, sentence, active);
   };
 
   flow.addEventListener('click', (e) => {
@@ -152,7 +205,7 @@ export function attachMarking(flow, { getSentence = () => '' } = {}) {
     const state = KEY_TO_STATE[e.key];
     if (state) {
       e.preventDefault();
-      apply(span.dataset.word, state);
+      apply(span, state);
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       openPopup(span);

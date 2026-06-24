@@ -8,7 +8,7 @@
 //   - listen on the network:  OLLAMA_HOST=0.0.0.0 ollama serve
 //   - allow the browser origin: OLLAMA_ORIGINS=* (or the specific origin)
 
-import { explainPrompt, explainInLanguagePrompt } from './prompts.js';
+import { explainPrompt, explainInLanguagePrompt, decomposeContractionPrompt } from './prompts.js';
 import { getOllamaUrl, getOllamaModel } from '../settings.js';
 
 const PORT = 11434;
@@ -105,4 +105,48 @@ export async function explainInLanguage(word, sentence, language) {
   const data = await res.json();
   const explanation = data?.response?.trim();
   return explanation ? { explanation, source: `ollama · ${language}` } : null;
+}
+
+/**
+ * Decompose a contraction into its component words for the contraction registry.
+ * Context-aware (resolves "'d" → would/had, "'s" → is/has).
+ * @param {string} word the contraction surface form, e.g. "you'd"
+ * @param {string} sentence
+ * @returns {Promise<{ parts: string[], note?: string } | null>}
+ */
+export async function decompose(word, sentence) {
+  if (!(await isReachable())) return null;
+
+  const prompt = decomposeContractionPrompt(word, sentence);
+  const res = await fetchWithTimeout(
+    `${ollamaBaseUrl()}/api/generate`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: getOllamaModel(), prompt, stream: false }),
+    },
+    GENERATE_TIMEOUT,
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  return parseDecomposition(data?.response);
+}
+
+// Pull the JSON object out of the model's reply (it may wrap it in prose) and
+// validate it has at least two component words.
+function parseDecomposition(text) {
+  if (!text) return null;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const obj = JSON.parse(match[0]);
+    const parts = Array.isArray(obj.parts)
+      ? obj.parts.map((p) => String(p).trim().toLowerCase()).filter(Boolean)
+      : [];
+    if (parts.length < 2) return null;
+    const note = typeof obj.note === 'string' && obj.note.trim() ? obj.note.trim() : undefined;
+    return { parts, ...(note ? { note } : {}) };
+  } catch {
+    return null;
+  }
 }

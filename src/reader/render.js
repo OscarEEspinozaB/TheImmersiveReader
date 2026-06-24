@@ -4,6 +4,7 @@
 // and current learning state; whitespace/punctuation become plain text nodes.
 
 import { getState } from '../vocabulary.js';
+import { parts, displayState, aggregateStates } from '../contractions.js';
 
 /**
  * Create a DOM node for a stream item (word, whitespace, or image).
@@ -23,11 +24,22 @@ export function makeNode(item) {
   if (item.isWord) {
     const span = document.createElement('span');
     span.className = 'word';
-    span.dataset.word = item.normalized;
-    span.dataset.state = getState(item.normalized);
     span.dataset.i = String(item.wordIndex);
     span.tabIndex = 0;
     span.textContent = item.text;
+
+    // A contraction has no vocabulary key of its own: its color is derived from
+    // its component lemmas (the most urgent state wins) and it is recolored
+    // whenever any of those lemmas changes (see recolorWord). data-parts is a
+    // space-separated lemma list, matched by the [data-parts~="lemma"] selector.
+    const lemmas = parts(item.text);
+    if (lemmas) {
+      span.dataset.parts = lemmas.join(' ');
+      span.dataset.state = displayState(item.text);
+    } else {
+      span.dataset.word = item.normalized;
+      span.dataset.state = getState(item.normalized);
+    }
     return span;
   }
   return document.createTextNode(item.text);
@@ -35,15 +47,21 @@ export function makeNode(item) {
 
 /**
  * Apply a state to every word span sharing the same normalized key (on the
- * currently rendered page). Other pages pick up the state when they render.
+ * currently rendered page), AND re-derive the state of any contraction span that
+ * contains this lemma (its color depends on its components). Other pages pick up
+ * the state when they render.
  * @param {HTMLElement} root
- * @param {string} normalizedWord
+ * @param {string} normalizedWord a single lemma
  * @param {import('../vocabulary.js').WordState} state
  */
 export function recolorWord(root, normalizedWord, state) {
-  const selector = `.word[data-word="${cssEscape(normalizedWord)}"]`;
-  for (const el of root.querySelectorAll(selector)) {
+  const key = cssEscape(normalizedWord);
+  for (const el of root.querySelectorAll(`.word[data-word="${key}"]`)) {
     el.dataset.state = state;
+  }
+  // Contractions whose component list includes this lemma: recompute aggregate.
+  for (const el of root.querySelectorAll(`.word[data-parts~="${key}"]`)) {
+    el.dataset.state = aggregateStates(el.dataset.parts.split(' '));
   }
 }
 

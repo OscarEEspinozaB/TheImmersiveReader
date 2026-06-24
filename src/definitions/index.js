@@ -5,7 +5,7 @@
 
 import { lookupLocal } from './localDict.js';
 import { lookupDictionaryApi } from './dictionaryApi.js';
-import { lookupOllama, explainInLanguage, isReachable } from './ollama.js';
+import { lookupOllama, explainInLanguage, decompose, isReachable } from './ollama.js';
 
 /** Whether the AI (Ollama) is currently reachable. Cached probe. */
 export function isAiAvailable() {
@@ -67,6 +67,22 @@ export async function getAiDefinitionInLanguage(word, sentence, language) {
     return await explainInLanguage(word, sentence, language);
   } catch (err) {
     console.warn('AI native-language explanation failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Decompose a contraction into its component words (context-aware), to grow the
+ * contraction registry. Resolves to null if the AI is unavailable or unsure.
+ * @param {string} word the contraction surface form
+ * @param {string} sentence
+ * @returns {Promise<{ parts: string[], note?: string } | null>}
+ */
+export async function decomposeContraction(word, sentence) {
+  try {
+    return await decompose(word, sentence);
+  } catch (err) {
+    console.warn('AI contraction decomposition failed:', err);
     return null;
   }
 }

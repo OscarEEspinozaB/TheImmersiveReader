@@ -398,6 +398,37 @@ body.chrome-hidden .pager {
   font-family: var(--font-reading);
 }
 
+/* Contraction breakdown: "didn't = did + not", each part colored by its state. */
+.popup__breakdown {
+  margin: -0.2rem 0 0.55rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.popup__breakdown-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-family: var(--font-reading);
+}
+
+.popup__breakdown-eq,
+.popup__breakdown-plus {
+  opacity: 0.5;
+}
+
+.popup__breakdown-chip {
+  font-weight: 600;
+  cursor: default;
+}
+
+.popup__breakdown-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.82em;
+  opacity: 0.75;
+}
+
 .popup__buttons {
   display: flex;
   flex-direction: column;

@@ -24,6 +24,13 @@ export class WordPopup {
     this.title.className = 'popup__word';
     this.el.appendChild(this.title);
 
+    // Contraction breakdown: shows "didn't = did + not" with each component's
+    // current state as a colored chip. Hidden for ordinary words.
+    this.breakdown = document.createElement('div');
+    this.breakdown.className = 'popup__breakdown';
+    this.breakdown.hidden = true;
+    this.el.appendChild(this.breakdown);
+
     const buttons = document.createElement('div');
     buttons.className = 'popup__buttons';
     this._buttons = {};
@@ -102,6 +109,8 @@ export class WordPopup {
     this._anchor = anchor;
     this._onChoose = onChoose;
     this.title.textContent = anchor.textContent;
+    this.breakdown.hidden = true;
+    this.breakdown.textContent = '';
     for (const [state, btn] of Object.entries(this._buttons)) {
       btn.setAttribute('aria-current', String(state === currentState));
     }
@@ -148,6 +157,47 @@ export class WordPopup {
       this.el.style.top = 'auto';
       this.el.style.bottom = `${vh - rect.top + gap}px`;
       this.el.style.maxHeight = `${spaceAbove - gap}px`;
+    }
+  }
+
+  /**
+   * Show a contraction's decomposition: "didn't = did + not", each part a chip
+   * colored by its current state. Marking the word (the buttons above) applies to
+   * ALL parts at once. An optional note explains nuance (would/had, irregulars).
+   * @param {string} surface e.g. "didn't"
+   * @param {{ lemma: string, state: string }[]} components
+   * @param {string} [note]
+   */
+  setBreakdown(surface, components, note) {
+    this.breakdown.textContent = '';
+    this.breakdown.hidden = false;
+
+    const eq = document.createElement('div');
+    eq.className = 'popup__breakdown-row';
+    const head = document.createElement('span');
+    head.className = 'popup__breakdown-eq';
+    head.textContent = '=';
+    eq.appendChild(head);
+    components.forEach((c, i) => {
+      if (i) {
+        const plus = document.createElement('span');
+        plus.className = 'popup__breakdown-plus';
+        plus.textContent = '+';
+        eq.appendChild(plus);
+      }
+      const chip = document.createElement('span');
+      chip.className = 'popup__breakdown-chip word';
+      chip.dataset.state = c.state;
+      chip.textContent = c.lemma;
+      eq.appendChild(chip);
+    });
+    this.breakdown.appendChild(eq);
+
+    if (note) {
+      const n = document.createElement('p');
+      n.className = 'popup__breakdown-note';
+      n.textContent = note;
+      this.breakdown.appendChild(n);
     }
   }
 

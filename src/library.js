@@ -18,6 +18,11 @@ function uuid() {
  * @param {{ title: string, text: string, images?: any[], cover?: Blob | null }} book
  * @returns {Promise<string>} the new book id
  */
+// Version of the per-book word list. Bumped when the meaning of the list changes
+// so stale lists are recomputed. v2: contractions are expanded into their
+// component lemmas (so "didn't" counts as "did" + "not"), not stored whole.
+const WORDS_VERSION = 2;
+
 export async function addBook({ title, text, images = [], cover = null, words = null }) {
   const id = uuid();
   const now = Date.now();
@@ -25,17 +30,24 @@ export async function addBook({ title, text, images = [], cover = null, words = 
   const meta = { id, title, addedAt: now, lastOpenedAt: now, progressWordIndex: 0, cover };
   await idbSet('books', id, meta);
   await idbSet('content', id, { text, images });
-  if (words) await idbSet('bookwords', id, words);
+  if (words) await setBookWords(id, words);
   return id;
 }
 
-/** Unique normalized words in a book (for per-book stats). @returns {Promise<string[]|undefined>} */
-export function getBookWords(id) {
-  return idbGet('bookwords', id);
+/**
+ * Unique vocabulary lemmas in a book (for per-book stats). Returns undefined when
+ * the stored list is missing OR was saved in an older format (a bare array, or an
+ * older version), which signals the caller to recompute it from the book's text.
+ * @returns {Promise<string[]|undefined>}
+ */
+export async function getBookWords(id) {
+  const rec = await idbGet('bookwords', id);
+  if (!rec || Array.isArray(rec) || rec.v !== WORDS_VERSION) return undefined;
+  return rec.words;
 }
 
 export function setBookWords(id, words) {
-  return idbSet('bookwords', id, words);
+  return idbSet('bookwords', id, { v: WORDS_VERSION, words });
 }
 
 /** @returns {Promise<BookMeta[]>} books, most recently opened first */

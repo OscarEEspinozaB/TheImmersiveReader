@@ -6,15 +6,26 @@
 import { tokenize } from './tokenizer.js';
 import { buildSentenceLookup } from './sentences.js';
 import { getState } from './vocabulary.js';
+import { parts as contractionParts } from './contractions.js';
 
 // Target share of the deck per state (filled from other pools when one is short).
 const MIX = { unknown: 0.7, learning: 0.2, known: 0.1 };
 
-/** Unique normalized words in a text (for per-book stats). @returns {string[]} */
+// The vocabulary lemmas a token contributes. A contraction expands into its
+// component words (so "didn't" counts as "did" + "not", never as a word of its
+// own); an ordinary word is its single normalized key; numbers are ignored.
+function lemmasOf(token) {
+  if (!token.isWord) return [];
+  const p = contractionParts(token.text);
+  if (p) return p.filter((l) => l && !/^\d+$/.test(l));
+  return token.normalized && !/^\d+$/.test(token.normalized) ? [token.normalized] : [];
+}
+
+/** Unique vocabulary lemmas in a text (for per-book stats). @returns {string[]} */
 export function uniqueWords(text) {
   const set = new Set();
   for (const t of tokenize(text)) {
-    if (t.isWord && t.normalized && !/^\d+$/.test(t.normalized)) set.add(t.normalized);
+    for (const lemma of lemmasOf(t)) set.add(lemma);
   }
   return [...set];
 }
@@ -29,19 +40,19 @@ export function buildDeck(text, { limit = 50 } = {}) {
   const tokens = tokenize(text);
   const getSentence = buildSentenceLookup(text, tokens);
 
-  const info = new Map(); // word -> { count, firstWordIndex, state }
+  const info = new Map(); // lemma -> { count, firstWordIndex, state }
   let wordIndex = -1;
   for (const t of tokens) {
     if (!t.isWord) continue;
-    wordIndex += 1;
-    const w = t.normalized;
-    if (!w || /^\d+$/.test(w)) continue;
-    let e = info.get(w);
-    if (!e) {
-      e = { count: 0, firstWordIndex: wordIndex, state: getState(w) };
-      info.set(w, e);
+    wordIndex += 1; // one index per word token (contractions included) for sentences
+    for (const w of lemmasOf(t)) {
+      let e = info.get(w);
+      if (!e) {
+        e = { count: 0, firstWordIndex: wordIndex, state: getState(w) };
+        info.set(w, e);
+      }
+      e.count += 1;
     }
-    e.count += 1;
   }
 
   const stats = { total: info.size, known: 0, learning: 0, unknown: 0 };
