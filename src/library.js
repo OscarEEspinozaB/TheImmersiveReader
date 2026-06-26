@@ -10,12 +10,15 @@ function uuid() {
 
 /**
  * @typedef {{ id: string, title: string, addedAt: number, lastOpenedAt: number,
- *   progressWordIndex: number, cover: Blob | null }} BookMeta
+ *   progressWordIndex: number, cover: Blob | null, lang?: string }} BookMeta
+ *   `lang` is the book's reading-language code (e.g. "en"); absent on books
+ *   added before per-book languages existed (the user is prompted on open).
  */
 
 /**
  * Add a book to the library.
- * @param {{ title: string, text: string, images?: any[], cover?: Blob | null }} book
+ * @param {{ title: string, text: string, images?: any[], cover?: Blob | null,
+ *   words?: string[] | null, lang?: string }} book
  * @returns {Promise<string>} the new book id
  */
 // Version of the per-book word list. Bumped when the meaning of the list changes
@@ -23,11 +26,11 @@ function uuid() {
 // component lemmas (so "didn't" counts as "did" + "not"), not stored whole.
 const WORDS_VERSION = 2;
 
-export async function addBook({ title, text, images = [], cover = null, words = null }) {
+export async function addBook({ title, text, images = [], cover = null, words = null, lang }) {
   const id = uuid();
   const now = Date.now();
   /** @type {BookMeta} */
-  const meta = { id, title, addedAt: now, lastOpenedAt: now, progressWordIndex: 0, cover };
+  const meta = { id, title, addedAt: now, lastOpenedAt: now, progressWordIndex: 0, cover, lang };
   await idbSet('books', id, meta);
   await idbSet('content', id, { text, images });
   if (words) await setBookWords(id, words);
@@ -64,6 +67,21 @@ export function getBook(id) {
 /** @returns {Promise<{ text: string, images: any[] } | undefined>} */
 export function getBookContent(id) {
   return idbGet('content', id);
+}
+
+/**
+ * Set a book's reading language. Clears the cached word list so it is recomputed
+ * under the new language (tokenization is language-dependent).
+ * @param {string} id
+ * @param {string} code a READING_LANGUAGES code, e.g. "es"
+ */
+export async function setBookLang(id, code) {
+  const book = await idbGet('books', id);
+  if (book && book.lang !== code) {
+    book.lang = code;
+    await idbSet('books', id, book);
+    await idbDelete('bookwords', id);
+  }
 }
 
 export async function renameBook(id, title) {

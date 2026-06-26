@@ -11,10 +11,18 @@
 
 /** @typedef {"known" | "learning" | "unknown"} WordState */
 
+import { getReadingLang } from './settings.js';
+
 export const STATES = /** @type {const} */ (['unknown', 'learning', 'known']);
 export const DEFAULT_STATE = 'unknown';
 
-const STORAGE_KEY = 'immersive-reader.vocabulary.v1';
+// v2 keys entries by language ("<lang>:<normalized>", e.g. "en:harry") so the
+// same spelling in two languages ("no", "son", "casa") never collide. The old
+// v1 store was language-agnostic and is abandoned on upgrade (start fresh).
+const STORAGE_KEY = 'immersive-reader.vocabulary.v2';
+const LEGACY_STORAGE_KEY = 'immersive-reader.vocabulary.v1';
+// A stored key already carrying a "<lang>:" prefix (en, es, pt-BR, …).
+const LANG_PREFIX = /^[a-z]{2}(?:-[A-Z]{2})?:/;
 
 const TRIM_EDGES = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
 // Curly/typographic apostrophes that EPUB and PDF sources often use instead of
@@ -56,15 +64,28 @@ export function normalize(word) {
   return normalizeSurface(word).replace(POSSESSIVE_S, '');
 }
 
-/** In-memory store of non-default entries: normalizedWord -> { state, at }. */
+/**
+ * In-memory store of non-default entries, keyed by the language-scoped key
+ * "<lang>:<normalized>" -> { state, at }.
+ */
 const entries = new Map();
+
+/**
+ * Build the language-scoped storage key for a word, using the ACTIVE reading
+ * language (the open book's). Returns "" when the word normalizes to nothing.
+ * @param {string} word raw or normalized word
+ */
+function scopedKey(word) {
+  const n = normalize(word);
+  return n ? `${getReadingLang()}:${n}` : '';
+}
 
 /**
  * @param {string} word raw or normalized word
  * @returns {WordState}
  */
 export function getState(word) {
-  return entries.get(normalize(word))?.state ?? DEFAULT_STATE;
+  return entries.get(scopedKey(word))?.state ?? DEFAULT_STATE;
 }
 
 /**
@@ -72,7 +93,7 @@ export function getState(word) {
  * @param {WordState} state
  */
 export function setState(word, state) {
-  const key = normalize(word);
+  const key = scopedKey(word);
   if (!key) return;
   if (state === DEFAULT_STATE) {
     entries.delete(key); // only persist non-default states
@@ -82,9 +103,19 @@ export function setState(word, state) {
   save();
 }
 
-/** All non-default entries. @returns {{ word: string, state: WordState, at: number }[]} */
+/**
+ * All non-default entries. The stored key is "<lang>:<word>"; it is split back
+ * into a bare `word` (lemma) plus its `lang`, so existing readers that only use
+ * `word`/`state`/`at` keep working.
+ * @returns {{ word: string, lang: string, state: WordState, at: number }[]}
+ */
 export function listEntries() {
-  return [...entries].map(([word, e]) => ({ word, state: e.state, at: e.at }));
+  return [...entries].map(([key, e]) => {
+    const sep = key.indexOf(':');
+    const lang = sep > 0 ? key.slice(0, sep) : '';
+    const word = sep > 0 ? key.slice(sep + 1) : key;
+    return { word, lang, state: e.state, at: e.at };
+  });
 }
 
 /** @returns {{ known: number, learning: number, total: number }} */
@@ -154,8 +185,10 @@ export function importVocabulary(data, { replace = false } = {}) {
   if (replace) entries.clear();
   const now = Date.now();
   let applied = 0;
-  for (const [word, value] of Object.entries(words)) {
-    const key = normalize(word);
+  for (const [rawKey, value] of Object.entries(words)) {
+    // New backups carry "<lang>:<word>" keys (kept verbatim); legacy backups are
+    // bare words, scoped to the active reading language on import.
+    const key = LANG_PREFIX.test(rawKey) ? rawKey : scopedKey(rawKey);
     const entry = toEntry(value, now);
     if (key && entry) {
       entries.set(key, entry);
@@ -164,4 +197,18 @@ export function importVocabulary(data, { replace = false } = {}) {
   }
   save();
   return applied;
+}
+
+/**
+ * Wipe the entire vocabulary (both the v2 store and the abandoned v1 store).
+ * Used by the "reset" action when the language model changes.
+ */
+export function resetAll() {
+  entries.clear();
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }

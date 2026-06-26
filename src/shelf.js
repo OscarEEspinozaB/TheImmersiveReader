@@ -1,8 +1,9 @@
 // Bookshelf view: renders the library as a grid or list of books (cover + title),
 // with open / rename / delete actions. Opening is delegated to the caller.
 
-import { listBooks, renameBook, deleteBook } from './library.js';
-import { confirmDialog, promptDialog } from './dialog.js';
+import { listBooks, renameBook, deleteBook, setBookLang } from './library.js';
+import { confirmDialog, promptDialog, selectDialog } from './dialog.js';
+import { READING_LANGUAGES, readingLangName } from './settings.js';
 
 let coverUrls = []; // object URLs for the current render, revoked on re-render
 
@@ -81,6 +82,23 @@ function bookCard(book, container, opts) {
   const practice = iconButton('Practice words', 'M5 3l14 9-14 9z');
   practice.addEventListener('click', () => onPractice?.(book.id));
 
+  const langLabel = book.lang ? readingLangName(book.lang) : 'not set';
+  const lang = iconButton(
+    `Language: ${langLabel}`,
+    'M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20 M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20',
+  );
+  lang.addEventListener('click', async () => {
+    const code = await selectDialog(
+      'Book language:',
+      READING_LANGUAGES.map((l) => ({ value: l.code, label: l.name })),
+      book.lang || READING_LANGUAGES[0].code,
+    );
+    if (code) {
+      await setBookLang(book.id, code);
+      reRender();
+    }
+  });
+
   const rename = iconButton('Rename', 'M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z');
   rename.addEventListener('click', async () => {
     const name = await promptDialog('Book title:', book.title);
@@ -102,7 +120,7 @@ function bookCard(book, container, opts) {
     }
   });
 
-  actions.append(practice, rename, del);
+  actions.append(practice, lang, rename, del);
   meta.appendChild(actions);
   card.appendChild(meta);
   return card;

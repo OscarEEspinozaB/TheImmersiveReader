@@ -18,7 +18,7 @@ export const READING_LANGUAGES = [
   { code: 'pt-BR', name: 'Portuguese' },
 ];
 
-const DEFAULT_MODEL = 'gemma3:4b';
+const DEFAULT_MODEL = 'gemma4:e2b';
 export const SORT_OPTIONS = [
   { value: 'lastRead', label: 'Last read' },
   { value: 'title', label: 'Title' },
@@ -26,12 +26,18 @@ export const SORT_OPTIONS = [
 ];
 const settings = {
   language: 'Spanish',
-  readingLang: 'en',
+  defaultReadingLang: 'en', // default for NEW books; each book stores its own lang
   ollamaUrl: '',
   ollamaModel: DEFAULT_MODEL,
   sortBy: 'lastRead',
   readingMode: 'paged', // 'paged' | 'continuous'
 };
+
+// The language currently in effect = the open book's language. NOT persisted:
+// it is set per book on open (see main.js). The tokenizer, sentence splitter and
+// definition layer read it through getReadingLang()/getReadingLangName(), so they
+// always reflect the book being read. Falls back to the default when no book is open.
+let activeReadingLang = settings.defaultReadingLang;
 
 function load() {
   try {
@@ -39,7 +45,10 @@ function load() {
     if (!raw) return;
     const obj = JSON.parse(raw);
     if (LANGUAGES.includes(obj.language)) settings.language = obj.language;
-    if (READING_LANGUAGES.some((l) => l.code === obj.readingLang)) settings.readingLang = obj.readingLang;
+    // `readingLang` is the legacy (pre per-book) key; fall back to it on upgrade.
+    const legacyLang = obj.defaultReadingLang ?? obj.readingLang;
+    if (READING_LANGUAGES.some((l) => l.code === legacyLang)) settings.defaultReadingLang = legacyLang;
+    activeReadingLang = settings.defaultReadingLang;
     if (typeof obj.ollamaUrl === 'string') settings.ollamaUrl = obj.ollamaUrl;
     if (typeof obj.ollamaModel === 'string' && obj.ollamaModel) settings.ollamaModel = obj.ollamaModel;
     if (SORT_OPTIONS.some((o) => o.value === obj.sortBy)) settings.sortBy = obj.sortBy;
@@ -68,21 +77,38 @@ export function setLanguage(name) {
   }
 }
 
-/** Reading language code (book language), e.g. "en". */
+/** Active reading language code (the open book's language), e.g. "en". */
 export function getReadingLang() {
-  return settings.readingLang;
+  return activeReadingLang;
 }
 
-/** Reading language display name, e.g. "English". */
+/** Active reading language display name, e.g. "English". */
 export function getReadingLangName() {
-  return READING_LANGUAGES.find((l) => l.code === settings.readingLang)?.name || 'English';
+  return READING_LANGUAGES.find((l) => l.code === activeReadingLang)?.name || 'English';
 }
 
-export function setReadingLang(code) {
+/** Set the language in effect (the open book's). Runtime only — not persisted. */
+export function setActiveReadingLang(code) {
   if (READING_LANGUAGES.some((l) => l.code === code)) {
-    settings.readingLang = code;
+    activeReadingLang = code;
+  }
+}
+
+/** Default reading language for NEW books (persisted), e.g. "en". */
+export function getDefaultReadingLang() {
+  return settings.defaultReadingLang;
+}
+
+export function setDefaultReadingLang(code) {
+  if (READING_LANGUAGES.some((l) => l.code === code)) {
+    settings.defaultReadingLang = code;
     save();
   }
+}
+
+/** Map a reading-language code to its display name (e.g. "es" → "Spanish"). */
+export function readingLangName(code) {
+  return READING_LANGUAGES.find((l) => l.code === code)?.name || code;
 }
 
 /** Configured Ollama base URL, e.g. "http://192.168.1.50:11434" (empty = auto). */

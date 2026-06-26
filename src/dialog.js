@@ -15,7 +15,7 @@ function ensureOverlay() {
 /**
  * @returns {Promise<{ confirmed: boolean, value: string }>}
  */
-function openDialog({ message, withInput = false, defaultValue = '', confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false, hideCancel = false }) {
+function openDialog({ message, withInput = false, selectOptions = null, defaultValue = '', confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false, hideCancel = false }) {
   const root = ensureOverlay();
   return new Promise((resolve) => {
     const card = document.createElement('div');
@@ -27,7 +27,18 @@ function openDialog({ message, withInput = false, defaultValue = '', confirmLabe
     card.appendChild(msg);
 
     let input = null;
-    if (withInput) {
+    if (selectOptions) {
+      input = document.createElement('select');
+      input.className = 'dialog__select';
+      for (const { value, label } of selectOptions) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        input.appendChild(opt);
+      }
+      input.value = defaultValue;
+      card.appendChild(input);
+    } else if (withInput) {
       input = document.createElement('input');
       input.className = 'dialog__input';
       input.type = 'text';
@@ -76,7 +87,7 @@ function openDialog({ message, withInput = false, defaultValue = '', confirmLabe
     };
 
     (input || ok).focus();
-    if (input) input.select();
+    if (input && typeof input.select === 'function') input.select();
   });
 }
 
@@ -89,6 +100,20 @@ export function confirmDialog(message, { confirmLabel = 'OK', danger = false } =
 export function promptDialog(message, defaultValue = '', { confirmLabel = 'Save' } = {}) {
   return openDialog({ message, withInput: true, defaultValue, confirmLabel }).then((r) =>
     r.confirmed ? r.value.trim() : null,
+  );
+}
+
+/**
+ * Pick one value from a list.
+ * @param {string} message
+ * @param {{ value: string, label: string }[]} options
+ * @param {string} defaultValue
+ * @param {{ confirmLabel?: string }} [opts]
+ * @returns {Promise<string | null>} the chosen value, or null if cancelled
+ */
+export function selectDialog(message, options, defaultValue = '', { confirmLabel = 'Save' } = {}) {
+  return openDialog({ message, selectOptions: options, defaultValue, confirmLabel }).then((r) =>
+    r.confirmed ? r.value : null,
   );
 }
 

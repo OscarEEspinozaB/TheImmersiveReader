@@ -25,8 +25,9 @@ known text — making vocabulary growth literally visible.
 - Render it as a distraction-free eReader (dark / sepia themes).
 - Color every word by learning state: **Known**, **Learning**, **Unknown**.
 - Let the user change a word's state with one click (and keyboard shortcuts).
-- State is keyed by the **normalized word**, so marking one occurrence updates all
-  occurrences across every text.
+- State is keyed by the **normalized word per language** (`<lang>:<word>`), so marking
+  one occurrence updates every occurrence across texts **in that language** (without
+  colliding with the same spelling in another language).
 - Persist vocabulary locally so progress survives reloads and carries across texts.
 - Read text aloud with the browser's built-in voices (Web Speech API).
 
@@ -44,7 +45,8 @@ known text — making vocabulary growth literally visible.
 | Decision | Choice | Rationale |
 | --- | --- | --- |
 | Default word state | **Unknown ("red sea")** | The user wants to watch the red fade as knowledge grows. A frequency-list "mark common words as Known" feature is **opt-in, future** — never the default. |
-| State key | Normalized word (lowercased, punctuation stripped, possessive `'s` removed) | One global vocabulary; marking a word recolors every occurrence everywhere. `Dursley's` → `dursley`. Decouples progress from any single document. |
+| State key | `<lang>:<normalized word>` (lowercased, punctuation stripped, possessive `'s` removed) | One vocabulary **per language**; marking a word recolors every occurrence in that language. `Dursley's` → `en:dursley`. Decouples progress from any single document while keeping `no`/`son`/`casa` distinct across languages. |
+| Reading language | **Per book** (asked on add, editable later); a persisted *default* seeds new books | The tokenizer, sentence splitter and dictionary follow the open book. When the book's language equals the user's native language the red sea is suppressed (they already know it). |
 | Stack | Vanilla JS + HTML + CSS, built with **Vite** | Matches the project vision, zero framework weight, good for learning. |
 | Tokenizer | `Intl.Segmenter` (native) | Correct word segmentation including apostrophes ("don't", "Harry's"), no library. Curly apostrophes are normalized to straight. |
 | Contractions | Decomposed into component lemmas; never a vocabulary entry of their own | `didn't` = `did` + `not`. Color is derived from the parts (most-urgent wins), marking applies to all parts, stats expand them — so a contraction never counts as a new word. Registry is seeded + grown by Ollama. See `contractions.js`. |
@@ -82,9 +84,10 @@ DefinitionProvider → explanation shown in popup
 ```text
 WordState = "known" | "learning" | "unknown"
 
-// Persisted vocabulary: only non-default states are stored.
+// Persisted vocabulary: only non-default states are stored. Keys are scoped by
+// the book's language ("<lang>:<normalizedWord>", e.g. "en:harry").
 // Any word absent from the map is treated as "unknown" (the red-sea default).
-Vocabulary: Map<normalizedWord, WordState>
+Vocabulary: Map<"<lang>:<normalizedWord>", WordState>
 
 Token = {
   text: string          // original surface form, e.g. "Harry's"
@@ -142,9 +145,11 @@ are versioned so stale lists are recomputed.
 4. **M4 — PWA** ⏳ pending: manifest + service worker for install/offline.
 
 Delivered beyond the original list (each has its own doc in `docs/`): session
-persistence, multi-book **library**, **continuous** reading mode, **vocabulary
-dashboard** (stats + dictionary), **word swiper**, selectable themes, configurable
-Ollama URL/model and reading/native language, vocabulary export/import.
+persistence, multi-book **library**, **per-book reading language** (with red-sea
+suppression when it matches the native language), **continuous** reading mode,
+**vocabulary dashboard** (stats + dictionary), **word swiper**, selectable themes,
+configurable Ollama URL/model and native/default reading language, vocabulary
+export/import, and a vocabulary **reset**.
 
 ## 9. Definition layer detail
 

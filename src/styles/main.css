@@ -189,6 +189,13 @@ body {
   background: color-mix(in srgb, var(--text) 10%, transparent);
 }
 
+.menu__item--danger {
+  color: var(--word-unknown);
+}
+.menu__item--danger:hover {
+  background: color-mix(in srgb, var(--word-unknown) 16%, transparent);
+}
+
 .menu__field {
   display: flex;
   align-items: center;
@@ -322,6 +329,12 @@ body {
 }
 .word[data-state='unknown'] {
   color: var(--word-unknown);
+}
+
+/* Red-sea suppression: when the book is in the reader's native language, unknown
+   words are not painted red (they already know the language). Marking still works. */
+.reader--no-red-sea .word[data-state='unknown'] {
+  color: var(--word-known);
 }
 
 .word:hover,
@@ -763,7 +776,8 @@ body.chrome-hidden .pager {
   line-height: 1.45;
 }
 
-.dialog__input {
+.dialog__input,
+.dialog__select {
   width: 100%;
   font: inherit;
   color: var(--text);

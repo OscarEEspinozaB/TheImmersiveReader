@@ -3,22 +3,23 @@
 
 import { ingest } from './ingest/index.js';
 import { tokenize } from './tokenizer.js';
-import { load as loadVocabulary, exportVocabulary, importVocabulary } from './vocabulary.js';
+import { load as loadVocabulary, exportVocabulary, importVocabulary, resetAll } from './vocabulary.js';
 import { Paginator } from './reader/paginator.js';
 import { Scroller } from './reader/scroller.js';
 import { initTheme, setTheme, getTheme, THEMES } from './reader/theme.js';
 import { attachMarking } from './marking.js';
 import { buildSentenceLookup } from './sentences.js';
-import { migrateVocabularyEntries } from './contractions.js';
+import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
 import { renderDashboard } from './dashboard.js';
 import { buildDeck, uniqueWords } from './deck.js';
 import { renderSwiper } from './swiper.js';
-import { alertDialog } from './dialog.js';
+import { alertDialog, confirmDialog, selectDialog } from './dialog.js';
 import {
   addBook,
   getBook,
   getBookContent,
+  setBookLang,
   setProgress,
   touchOpened,
   migrateOldDocument,
@@ -28,8 +29,11 @@ import {
   getLanguage,
   setLanguage,
   READING_LANGUAGES,
+  readingLangName,
   getReadingLang,
-  setReadingLang,
+  setActiveReadingLang,
+  getDefaultReadingLang,
+  setDefaultReadingLang,
   getOllamaUrl,
   setOllamaUrl,
   getOllamaModel,
@@ -67,6 +71,7 @@ const ollamaUrlInput = document.getElementById('ollama-url');
 const ollamaModelInput = document.getElementById('ollama-model');
 const exportButton = document.getElementById('export-words');
 const importInput = document.getElementById('import-words');
+const resetButton = document.getElementById('reset-data');
 const themeSwatches = document.getElementById('theme-swatches');
 
 let paginator = null;
@@ -105,8 +110,10 @@ function setView(view) {
 
 async function openSwiper(id) {
   setMenuOpen(false);
-  const content = await getBookContent(id);
+  const [book, content] = await Promise.all([getBook(id), getBookContent(id)]);
   if (!content) return;
+  // Tokenization + word states are language-scoped: evaluate in the book's language.
+  setActiveReadingLang(book?.lang || getDefaultReadingLang());
   const { cards, stats } = buildDeck(content.text, { limit: 50 });
   if (!cards.length) {
     alertDialog('No words to practice in this book yet.');
@@ -134,13 +141,31 @@ function renderLibrary() {
 async function showShelf() {
   setMenuOpen(false);
   currentBookId = null;
+  readingLangSelect.value = getDefaultReadingLang(); // no book open → edits the default
   setView('shelf');
   await renderLibrary();
+}
+
+/** Ask the user to pick a reading language. @returns {Promise<string|null>} */
+function pickReadingLang(message, defaultCode) {
+  return selectDialog(
+    message,
+    READING_LANGUAGES.map((l) => ({ value: l.code, label: l.name })),
+    defaultCode,
+  );
 }
 
 async function openBook(id) {
   const [book, content] = await Promise.all([getBook(id), getBookContent(id)]);
   if (!content) return;
+  // Older books have no language; ask once and persist it before rendering.
+  let lang = book?.lang;
+  if (!lang) {
+    lang = (await pickReadingLang('What language is this book in?', getDefaultReadingLang())) || getDefaultReadingLang();
+    await setBookLang(id, lang);
+  }
+  setActiveReadingLang(lang);
+  readingLangSelect.value = lang;
   currentBookId = id;
   setView('reader');
   showDocument(content, { restoreIndex: book?.progressWordIndex || 0 });
@@ -150,13 +175,15 @@ async function openBook(id) {
 async function addBookFromFile(file) {
   if (!file) return;
   setMenuOpen(false);
+  const lang = (await pickReadingLang('What language is this book in?', getDefaultReadingLang())) || getDefaultReadingLang();
+  setActiveReadingLang(lang);
   setView('reader');
   reader.innerHTML = '<p class="reader__placeholder">Loading…</p>';
   try {
     const { text, images } = await ingest(file);
     const cover = images[0]?.blob || null;
     const title = file.name.replace(/\.[^.]+$/, '');
-    const id = await addBook({ title, text, images, cover, words: uniqueWords(text) });
+    const id = await addBook({ title, text, images, cover, words: uniqueWords(text), lang });
     await openBook(id);
   } catch (err) {
     console.error(err);
@@ -205,17 +232,34 @@ for (const name of LANGUAGES) {
   langSelect.appendChild(opt);
 }
 langSelect.value = getLanguage();
-langSelect.addEventListener('change', () => setLanguage(langSelect.value));
+langSelect.addEventListener('change', () => {
+  setLanguage(langSelect.value);
+  applyRedSeaSuppression(); // native language drives red-sea suppression
+});
 
 // --- Reading (book) language selector ---
+// While a book is open it edits THAT book's language (and re-renders it); on the
+// shelf it edits the default language used for newly added books.
 for (const { code, name } of READING_LANGUAGES) {
   const opt = document.createElement('option');
   opt.value = code;
   opt.textContent = name;
   readingLangSelect.appendChild(opt);
 }
-readingLangSelect.value = getReadingLang();
-readingLangSelect.addEventListener('change', () => setReadingLang(readingLangSelect.value));
+readingLangSelect.value = getDefaultReadingLang();
+readingLangSelect.addEventListener('change', async () => {
+  const code = readingLangSelect.value;
+  if (currentBookId && !readerWrap.hidden) {
+    await setBookLang(currentBookId, code);
+    setActiveReadingLang(code);
+    if (currentContent) {
+      const at = paginator ? paginator.currentFirstWordIndex() : 0;
+      showDocument(currentContent, { restoreIndex: at });
+    }
+  } else {
+    setDefaultReadingLang(code);
+  }
+});
 
 // --- Ollama server config ---
 ollamaUrlInput.value = getOllamaUrl();
@@ -252,6 +296,21 @@ importInput.addEventListener('change', async (e) => {
   }
 });
 
+// --- Reset all vocabulary + learned dictionary (books are kept) ---
+resetButton.addEventListener('click', async () => {
+  setMenuOpen(false);
+  const ok = await confirmDialog('Reset all vocabulary and the learned dictionary? Your books are kept.', {
+    confirmLabel: 'Reset',
+    danger: true,
+  });
+  if (!ok) return;
+  resetAll();
+  resetLearned();
+  paginator?.refresh();
+  if (!shelf.hidden) await renderLibrary();
+  alertDialog('Vocabulary and dictionary reset.');
+});
+
 // --- Theme palette swatches ---
 function renderSwatches() {
   themeSwatches.replaceChildren();
@@ -283,9 +342,18 @@ renderSwatches();
  * @param {{ text: string, images?: any[] }} doc
  * @param {{ restoreIndex?: number }} [opts]
  */
+// The "red sea" is suppressed when the open book is written in the user's native
+// language (they already know it): unknown words are no longer painted red. Marking
+// still works — only the coloring is hidden (see .reader--no-red-sea in the CSS).
+function applyRedSeaSuppression() {
+  const suppress = readingLangName(getReadingLang()) === getLanguage();
+  reader.classList.toggle('reader--no-red-sea', suppress);
+}
+
 function showDocument({ text, images = [] }, { restoreIndex = 0 } = {}) {
   if (paginator) paginator.destroy();
   currentContent = { text, images };
+  applyRedSeaSuppression();
 
   const continuous = getReadingMode() === 'continuous';
   reader.classList.toggle('reader--scroll', continuous);
@@ -345,7 +413,15 @@ sampleButton.addEventListener('click', async () => {
   setMenuOpen(false);
   const res = await fetch(`${import.meta.env.BASE_URL}sample/sample.txt`);
   const text = await res.text();
-  const id = await addBook({ title: 'Sample — Alice in Wonderland', text, images: [], cover: null, words: uniqueWords(text) });
+  setActiveReadingLang('en'); // the sample (Alice in Wonderland) is English
+  const id = await addBook({
+    title: 'Sample — Alice in Wonderland',
+    text,
+    images: [],
+    cover: null,
+    words: uniqueWords(text),
+    lang: 'en',
+  });
   await openBook(id);
 });
 

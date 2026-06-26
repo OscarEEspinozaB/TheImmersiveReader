@@ -50,6 +50,7 @@ IndexedDB "immersive-reader"
       cover?: Blob               // thumbnail for the shelf (first image or generated)
       progressWordIndex: number  // per-book reading position
       lastOpenedAt?: number
+      lang?: string              // reading-language code (e.g. "en"); asked on add
     }
   store "meta"  (small values: e.g. lastOpenedBookId)
 ```

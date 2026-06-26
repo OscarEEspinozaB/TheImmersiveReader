@@ -9,6 +9,7 @@ import { getQuickDefinition } from './definitions/index.js';
 import { buildExternalLinks } from './externalLookup.js';
 import { listBooks, getBookWords, setBookWords, getBookContent } from './library.js';
 import { uniqueWords } from './deck.js';
+import { getReadingLang, setActiveReadingLang, getDefaultReadingLang } from './settings.js';
 
 const DICT_CHUNK = 25; // dictionary rows rendered per windowed chunk
 const ROW_PX = 64; // height estimate per row (before measuring)
@@ -122,7 +123,11 @@ function renderStats(body) {
 async function renderPerBook(container) {
   const books = await listBooks();
   if (!books.length) return;
+  const prevLang = getReadingLang();
   for (const book of books) {
+    // Word states (and tokenization) are language-scoped, so evaluate each book
+    // in its OWN language, not whichever book was last opened.
+    setActiveReadingLang(book.lang || getDefaultReadingLang());
     let words = await getBookWords(book.id);
     if (!words) {
       // Backfill for books added before per-book words were stored.
@@ -148,6 +153,7 @@ async function renderPerBook(container) {
       <div class="perbook-row__nums">${c.known} known · ${c.learning} learning · ${c.unknown} new · ${total} total</div>`;
     container.appendChild(row);
   }
+  setActiveReadingLang(prevLang); // restore the language in effect
 }
 
 function escapeHtml(s) {

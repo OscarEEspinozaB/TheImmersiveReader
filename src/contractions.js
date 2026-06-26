@@ -17,6 +17,7 @@
 // let's, that's…) live here so they are not mistaken for possessives.
 
 import { normalizeSurface, getState, listEntries, setState } from './vocabulary.js';
+import { getReadingLang } from './settings.js';
 
 const STORAGE_KEY = 'immersive-reader.contractions.v1';
 
@@ -139,6 +140,16 @@ function save() {
   }
 }
 
+/** Drop all AI-learned contractions, keeping only the built-in seed. */
+export function resetLearned() {
+  registry = { ...SEED };
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** @param {string} word raw or surface-normalized @returns {Contraction | null} */
 export function getContraction(word) {
   return registry[normalizeSurface(word)] || null;
@@ -225,7 +236,11 @@ const RANK = { unknown: 0, learning: 1, known: 2 };
  */
 export function migrateVocabularyEntries() {
   let migrated = 0;
-  for (const { word, state } of listEntries()) {
+  const activeLang = getReadingLang();
+  for (const { word, lang, state } of listEntries()) {
+    // setState() writes in the active reading language, so only migrate entries
+    // that belong to it (the contraction seed is English anyway).
+    if (lang && lang !== activeLang) continue;
     const c = registry[word];
     if (!c) continue;
     for (const lemma of c.parts) {

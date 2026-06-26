@@ -29,8 +29,13 @@ button (a public-domain text in `public/sample/`).
   hyphenation and hard line wraps.
 - `src/tokenizer.js` — text → `Token[]` via `Intl.Segmenter`, preserving whitespace
   for exact re-render.
-- `src/vocabulary.js` — `normalize()` (the vocabulary key) + the word→state store;
-  default state is `unknown`, only non-default states are persisted to localStorage.
+- `src/vocabulary.js` — `normalize()` + the word→state store, keyed by
+  `<lang>:<normalized>` (the active book's language) so spellings don't collide
+  across languages; default state is `unknown`, only non-default states persist to
+  localStorage. `resetAll()` clears it.
+- `src/settings.js` — persisted settings incl. the **default** reading language for
+  new books, plus the runtime **active** reading language (the open book's), read by
+  the tokenizer/sentences/definitions via `getReadingLang()`.
 - `src/reader/` — `render.js` (word spans + bulk recolor), `paginator.js` (CSS
   multi-column paging), `theme.js` (dark/sepia).
 - `src/marking.js` + `src/popup.js` — click/keyboard interaction to change a word's
@@ -45,7 +50,7 @@ button (a public-domain text in `public/sample/`).
 - **Learning** — metallic orange / gold (subtly draws attention)
 - **Unknown** — vibrant red (stands out as an alert)
 
-**Default state is "Unknown" (the "red sea").** Every previously-unseen word starts red on purpose — the user wants to watch their knowledge grow as the red fades over time. Vocabulary state is keyed by **normalized word** (lowercased, punctuation stripped), not by position, so marking one occurrence recolors every occurrence across all texts. An optional, opt-in "mark the N most frequent English words as Known" feature may be added later, but it must never be the default behavior.
+**Default state is "Unknown" (the "red sea").** Every previously-unseen word starts red on purpose — the user wants to watch their knowledge grow as the red fades over time. Vocabulary state is keyed by **normalized word, scoped to the book's language** (`<lang>:<word>`, lowercased, punctuation stripped), not by position, so marking one occurrence recolors every occurrence across all texts **in that language** — while the same spelling in another language stays independent. Each book carries its own reading language (asked on add, editable later); when a book's language matches the user's native language the red sea is suppressed. An optional, opt-in "mark the N most frequent words as Known" feature may be added later, but it must never be the default behavior.
 
 Clicking an unknown word sends the word **plus its full sentence** to a local LLM for a context-aware definition. The user can then promote the word to "Learning," which recolors it and persists the new state for future chapters.
 
