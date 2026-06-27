@@ -1228,6 +1228,44 @@ body.nav-hidden .primary-nav {
   line-height: 1.45;
 }
 
+/* "Built" rows: the whole head is a toggle that reveals the KB detail. */
+.dict-row__head--toggle {
+  width: 100%;
+  font: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dict-row__pos {
+  font-size: 0.78rem;
+  font-style: italic;
+  opacity: 0.55;
+}
+
+.dict-row__head--toggle .dict-row__word {
+  cursor: pointer;
+}
+
+.dict-row__head--toggle::after {
+  content: '▸';
+  margin-left: auto;
+  opacity: 0.4;
+  font-size: 0.8rem;
+}
+
+.dict-row__head--toggle[aria-expanded='true']::after {
+  content: '▾';
+}
+
+.dict-row__detail {
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 1px dashed var(--border);
+}
+
 .dict-row__ai {
   border-top: 1px dashed var(--border);
   margin-top: 0.4rem;

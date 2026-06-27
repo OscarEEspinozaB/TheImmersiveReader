@@ -5,7 +5,7 @@ import { listEntries, setState, STATES, normalize, getState, usedLanguages } fro
 import { summary, growthSeries, recent } from './stats.js';
 import { growthChart, splitDonut } from './charts.js';
 import { getCached, cacheDictionary } from './definitionsCache.js';
-import { getQuickDefinition } from './definitions/index.js';
+import { getQuickDefinition, listKbWords } from './definitions/index.js';
 import { renderKbDetails } from './kbDetails.js';
 import { buildExternalLinks } from './externalLookup.js';
 import { listBooks, getBookWords, setBookWords, getBookContent } from './library.js';
@@ -259,7 +259,7 @@ export function renderDictionary(root, { filter } = {}) {
   const chips = document.createElement('div');
   chips.className = 'dict-chips';
   const chipButtons = {};
-  for (const f of ['all', 'known', 'learning']) {
+  for (const f of ['all', 'known', 'learning', 'built']) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'chip';
@@ -285,9 +285,72 @@ export function renderDictionary(root, { filter } = {}) {
   const list = document.createElement('div');
   list.className = 'dict-list';
 
+  // Windowed list: chunk rows; render only those near the viewport, collapse the
+  // rest to a measured-height spacer so memory stays bounded for huge dictionaries.
+  // `rowFn(item, reRender)` builds one row, so the same machinery serves both the
+  // marked-vocabulary rows and the KB "Built" rows.
+  const windowInto = (items, rowFn) => {
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const chunk = e.target;
+          if (e.isIntersecting) renderChunk(chunk, renderList);
+          else unloadChunk(chunk);
+        }
+      },
+      { root: scrollRoot, rootMargin: '600px 0px' },
+    );
+    state._io = io;
+
+    for (let i = 0; i < items.length; i += DICT_CHUNK) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'dict-chunk';
+      wrapper._slice = items.slice(i, i + DICT_CHUNK);
+      wrapper._rowFn = rowFn;
+      wrapper.style.height = `${wrapper._slice.length * ROW_PX}px`;
+      list.appendChild(wrapper);
+      io.observe(wrapper);
+    }
+  };
+
+  // "Built" filter: browse the words refined in the KB (the dictionary content),
+  // not the user's marked vocabulary. Fetched from the KB service; the list grows
+  // as words are built by reading or the batch builder.
+  const renderBuilt = async () => {
+    const loading = document.createElement('p');
+    loading.className = 'dash__empty';
+    loading.textContent = 'Loading dictionary…';
+    list.appendChild(loading);
+
+    const words = await listKbWords({ lang, q: state.search.trim(), sort: state.sort });
+    if (state.filter !== 'built') return; // user switched away while loading
+    list.replaceChildren();
+
+    if (words === null) {
+      const msg = document.createElement('p');
+      msg.className = 'dash__empty';
+      msg.textContent = 'Dictionary service not reachable. Start it (npm run server) to browse built words.';
+      list.appendChild(msg);
+      return;
+    }
+    if (!words.length) {
+      const empty = document.createElement('p');
+      empty.className = 'dash__empty';
+      empty.textContent = 'No built words yet. Read or run the batch builder to grow the dictionary.';
+      list.appendChild(empty);
+      return;
+    }
+    windowInto(words, kbRow);
+  };
+
   const renderList = () => {
     if (state._io) state._io.disconnect();
     list.replaceChildren();
+
+    if (state.filter === 'built') {
+      renderBuilt();
+      return;
+    }
 
     let items = listEntries(lang);
     if (state.filter !== 'all') items = items.filter((e) => e.state === state.filter);
@@ -309,34 +372,14 @@ export function renderDictionary(root, { filter } = {}) {
       return;
     }
 
-    // Windowed: chunk rows; render only those near the viewport, collapse the rest
-    // to a measured-height spacer so memory stays bounded for huge dictionaries.
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          const chunk = e.target;
-          if (e.isIntersecting) renderChunk(chunk, renderList);
-          else unloadChunk(chunk);
-        }
-      },
-      { root: scrollRoot, rootMargin: '600px 0px' },
-    );
-    state._io = io;
-
-    for (let i = 0; i < items.length; i += DICT_CHUNK) {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'dict-chunk';
-      wrapper._slice = items.slice(i, i + DICT_CHUNK);
-      wrapper.style.height = `${wrapper._slice.length * ROW_PX}px`;
-      list.appendChild(wrapper);
-      io.observe(wrapper);
-    }
+    windowInto(items, dictRow);
   };
 
   function renderChunk(wrapper, reRender) {
     if (wrapper._rendered) return;
+    const rowFn = wrapper._rowFn || dictRow;
     const frag = document.createDocumentFragment();
-    for (const entry of wrapper._slice) frag.appendChild(dictRow(entry, reRender));
+    for (const entry of wrapper._slice) frag.appendChild(rowFn(entry, reRender));
     wrapper.replaceChildren(frag);
     wrapper.style.height = '';
     wrapper._rendered = true;
@@ -422,6 +465,55 @@ function dictRow(entry, reRender) {
     none.textContent = 'No saved AI explanation yet — open it while reading for that.';
     row.appendChild(none);
   }
+
+  return row;
+}
+
+// A "Built" row: a word refined in the KB (the dictionary content, not the user's
+// marked vocabulary). Collapsed it shows basic info — word, part of speech, the
+// short definition; clicking the head toggles the full KB detail (verb tenses,
+// synonyms, antonyms), fetched lazily via the provider chain (which hits the KB).
+function kbRow(item) {
+  const row = document.createElement('div');
+  row.className = 'dict-row';
+
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'dict-row__head dict-row__head--toggle';
+  head.setAttribute('aria-expanded', 'false');
+
+  const word = document.createElement('span');
+  word.className = 'dict-row__word word';
+  word.dataset.state = getState(item.word); // color by the user's learning state
+  word.textContent = item.word;
+
+  const pos = document.createElement('span');
+  pos.className = 'dict-row__pos';
+  pos.textContent = (item.pos || []).join(' · ');
+
+  head.append(word, pos);
+  row.appendChild(head);
+
+  const def = document.createElement('p');
+  def.className = 'dict-row__def';
+  def.textContent = item.definition;
+  row.appendChild(def);
+
+  const detail = document.createElement('div');
+  detail.className = 'dict-row__detail';
+  detail.hidden = true;
+  row.appendChild(detail);
+
+  let loaded = false;
+  head.addEventListener('click', async () => {
+    detail.hidden = !detail.hidden;
+    head.setAttribute('aria-expanded', String(!detail.hidden));
+    if (loaded || detail.hidden) return;
+    loaded = true;
+    const full = await getQuickDefinition(item.word, '');
+    const d = renderKbDetails(full?.kb);
+    if (d) detail.appendChild(d);
+  });
 
   return row;
 }

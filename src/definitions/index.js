@@ -4,11 +4,11 @@
 // can change without touching the UI.
 
 import { lookupLocal } from './localDict.js';
-import { lookupKB, requestKbBuild } from './kbApi.js';
+import { lookupKB, requestKbBuild, listKbWords } from './kbApi.js';
 import { lookupDictionaryApi } from './dictionaryApi.js';
 import { lookupOllama, explainInLanguage, decompose, isReachable } from './ollama.js';
 
-export { requestKbBuild };
+export { requestKbBuild, listKbWords };
 
 /** Whether the AI (Ollama) is currently reachable. Cached probe. */
 export function isAiAvailable() {

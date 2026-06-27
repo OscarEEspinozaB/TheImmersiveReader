@@ -11,6 +11,7 @@ import cors from 'cors';
 import { getDb } from './db.js';
 import { defineRouter } from './routes/define.js';
 import { buildRouter } from './routes/build.js';
+import { wordsRouter } from './routes/words.js';
 
 const PORT = Number(process.env.KB_PORT || 4321);
 
@@ -23,6 +24,7 @@ app.use(express.json());
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use(defineRouter);
 app.use(buildRouter);
+app.use(wordsRouter);
 
 getDb(); // open the connection + ensure schema before accepting requests
 app.listen(PORT, () => {

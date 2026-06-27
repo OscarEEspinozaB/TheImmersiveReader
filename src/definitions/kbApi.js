@@ -13,6 +13,7 @@
 import { getKbUrl, getReadingLang } from '../settings.js';
 
 const TIMEOUT = 1500; // ms — the KB is local; if it's slow it's effectively absent
+const LIST_TIMEOUT = 4000; // ms — listing many built words is a bit heavier than one
 
 async function fetchWithTimeout(url, timeout) {
   const controller = new AbortController();
@@ -100,6 +101,29 @@ export async function lookupKB(word) {
       antonyms: relatedList(senses.flatMap((s) => s.antonyms || []), word),
     },
   };
+}
+
+/**
+ * List the words already BUILT (AI-refined) in the KB, with basic info for a
+ * browse row (word, definition, pos). Used by the Dictionary tab's "Built" filter
+ * so the dictionary visibly grows as words are refined. Returns null if the KB is
+ * off / unreachable (so the UI can tell "empty" from "not connected").
+ * @param {{ lang?: string, q?: string, sort?: 'a-z'|'recent', limit?: number }} [opts]
+ * @returns {Promise<{ word: string, definition: string, pos: string[] }[] | null>}
+ */
+export async function listKbWords({ lang, q = '', sort = 'a-z', limit = 5000 } = {}) {
+  const base = getKbUrl();
+  if (!base) return null;
+  const params = new URLSearchParams({ lang: lang || getReadingLang(), q, sort, limit: String(limit) });
+  let res;
+  try {
+    res = await fetchWithTimeout(`${base}/words?${params}`, LIST_TIMEOUT);
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  const data = await res.json();
+  return Array.isArray(data?.words) ? data.words : [];
 }
 
 // Words for which a background build has already been requested this session, so
