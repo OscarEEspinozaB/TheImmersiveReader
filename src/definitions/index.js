@@ -16,7 +16,9 @@ export function isAiAvailable() {
 /**
  * @typedef {Object} Definition
  * @property {string} explanation
- * @property {string} source  e.g. "dictionary" | "ollama" | "local"
+ * @property {string} source  e.g. "dictionary" | "ollama" | "local" | "kb"
+ * @property {import('../definitionsCache.js').KbDetails} [kb]  rich data from the
+ *   local KB (part of speech, verb tenses, synonyms, antonyms); only on `kb` source
  */
 
 // The two sources are queried independently so the UI can show the fast one

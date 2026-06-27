@@ -24,6 +24,23 @@ async function fetchWithTimeout(url, timeout) {
   }
 }
 
+const MAX_RELATED = 12; // cap synonyms/antonyms so the popup stays compact
+
+// Dedupe, drop the headword itself, and cap a related-words list.
+function relatedList(words, headword) {
+  const seen = new Set([headword]);
+  const out = [];
+  for (const w of words) {
+    if (typeof w !== 'string') continue;
+    const t = w.trim();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= MAX_RELATED) break;
+  }
+  return out;
+}
+
 /**
  * @param {string} word normalized word
  * @returns {Promise<import('./index.js').Definition | null>}
@@ -42,6 +59,20 @@ export async function lookupKB(word) {
   if (!res.ok) return null; // 404 miss / 400 — let the chain continue
 
   const data = await res.json();
-  const explanation = data?.entry?.senses?.[0]?.definition?.trim();
-  return explanation ? { explanation, source: 'kb' } : null;
+  const entry = data?.entry;
+  const senses = Array.isArray(entry?.senses) ? entry.senses : [];
+  const explanation = senses[0]?.definition?.trim();
+  if (!explanation) return null;
+
+  // Aggregate the richer linguistic data across all senses so the UI can show
+  // verb tenses, synonyms and antonyms — not just the first definition.
+  const synonyms = relatedList(senses.flatMap((s) => s.synonyms || []), word);
+  const antonyms = relatedList(senses.flatMap((s) => s.antonyms || []), word);
+  const kb = {
+    pos: Array.isArray(entry.pos) ? entry.pos : [],
+    inflections: Array.isArray(entry.inflections) ? entry.inflections : [], // [{ tag, form }]
+    synonyms,
+    antonyms,
+  };
+  return { explanation, source: 'kb', kb };
 }

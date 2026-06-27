@@ -3,6 +3,7 @@
 // callback.
 
 import { buildExternalLinks } from './externalLookup.js';
+import { renderKbDetails } from './kbDetails.js';
 import { getKbUrl } from './settings.js';
 
 const STATE_LABELS = [
@@ -233,7 +234,7 @@ export class WordPopup {
 
   /** @param {import('./definitions/index.js').Definition | null} def */
   setQuick(def) {
-    if (def) this._fillSlot(this.quickSlot, { state: 'ready', text: def.explanation, source: def.source });
+    if (def) this._fillSlot(this.quickSlot, { state: 'ready', text: def.explanation, source: def.source, kb: def.kb });
     else this._hideSlot(this.quickSlot);
   }
 
@@ -380,7 +381,7 @@ export class WordPopup {
     return slot;
   }
 
-  _fillSlot(slot, { state, text, source }) {
+  _fillSlot(slot, { state, text, source, kb }) {
     slot.hidden = false;
     slot.dataset.state = state;
     slot.textContent = '';
@@ -388,6 +389,8 @@ export class WordPopup {
     p.className = 'popup__slot-text';
     p.textContent = text;
     slot.appendChild(p);
+    const details = renderKbDetails(kb);
+    if (details) slot.appendChild(details);
     if (source) {
       const s = document.createElement('span');
       s.className = 'popup__slot-source';

@@ -565,6 +565,51 @@ body.nav-hidden .primary-nav {
   opacity: 0.5;
 }
 
+/* Rich KB detail (part of speech, verb tenses, synonyms, antonyms). Shared by the
+   reader popup's quick slot and the Dictionary tab rows. */
+.kb-details {
+  margin: 0.4rem 0 0.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85em;
+}
+
+.kb-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.4rem;
+}
+
+.kb-pos {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.kb-label {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  flex-basis: 100%;
+}
+
+.kb-tense {
+  white-space: nowrap;
+}
+
+.kb-tense b {
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+.kb-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+}
+
 .popup__links {
   margin: 0.2rem 0 0;
   font-size: 0.85rem;

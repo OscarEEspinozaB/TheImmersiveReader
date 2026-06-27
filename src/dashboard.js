@@ -6,6 +6,7 @@ import { summary, growthSeries, recent } from './stats.js';
 import { growthChart, splitDonut } from './charts.js';
 import { getCached, cacheDictionary } from './definitionsCache.js';
 import { getQuickDefinition } from './definitions/index.js';
+import { renderKbDetails } from './kbDetails.js';
 import { buildExternalLinks } from './externalLookup.js';
 import { listBooks, getBookWords, setBookWords, getBookContent } from './library.js';
 import { uniqueWords } from './deck.js';
@@ -396,6 +397,8 @@ function dictRow(entry, reRender) {
     p.className = 'dict-row__def';
     p.textContent = dict;
     row.appendChild(p);
+    const details = renderKbDetails(cached?.dictionary?.kb);
+    if (details) row.appendChild(details);
   }
   for (const ctx of ai) {
     const block = document.createElement('div');

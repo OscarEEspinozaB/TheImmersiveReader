@@ -29,7 +29,9 @@ function scopedKey(word) {
 }
 
 /**
- * @typedef {{ explanation: string, source: string }} Definition
+ * @typedef {{ tag: string, form: string }} Inflection
+ * @typedef {{ pos?: string[], inflections?: Inflection[], synonyms?: string[], antonyms?: string[] }} KbDetails
+ * @typedef {{ explanation: string, source: string, kb?: KbDetails }} Definition
  * @typedef {{ sentence: string, explanation: string, source: string }} AiContext
  * @typedef {{
  *   dictionary?: Definition,
