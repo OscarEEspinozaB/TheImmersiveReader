@@ -1228,6 +1228,38 @@ body.nav-hidden .primary-nav {
   line-height: 1.45;
 }
 
+/* Dictionary data stats card (top of the Dictionary hub). */
+.kb-stats {
+  margin: 0.4rem 0 0.8rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.kb-stats__title {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.kb-stats__meta {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.kb-stats__recent {
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
 /* "Built" rows: the whole head is a toggle that reveals the KB detail. */
 .dict-row__head--toggle {
   width: 100%;

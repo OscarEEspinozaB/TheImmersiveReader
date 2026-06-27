@@ -5,7 +5,7 @@ import { listEntries, setState, STATES, normalize, getState, usedLanguages } fro
 import { summary, growthSeries, recent } from './stats.js';
 import { growthChart, splitDonut } from './charts.js';
 import { getCached, cacheDictionary } from './definitionsCache.js';
-import { getQuickDefinition, listKbWords } from './definitions/index.js';
+import { getQuickDefinition, listKbWords, getKbStats } from './definitions/index.js';
 import { renderKbDetails } from './kbDetails.js';
 import { buildExternalLinks } from './externalLookup.js';
 import { listBooks, getBookWords, setBookWords, getBookContent } from './library.js';
@@ -183,6 +183,80 @@ function escapeHtml(s) {
 
 // A stat card. With an `onClick` it renders as a real <button> (focusable, keyboard
 // accessible) that deep-links elsewhere; otherwise it's a plain, inert <div>.
+// Compact "time ago" for the dictionary stats meta line.
+function timeAgo(ts) {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+// A stats card for the dictionary DATA (the KB): how many words have been built,
+// how many carry synonyms/antonyms, recent activity, base size. Async — fetched
+// from the KB /stats endpoint; degrades gracefully when the service is off.
+function kbStatsCard(lang) {
+  const card = document.createElement('section');
+  card.className = 'kb-stats';
+  const loading = document.createElement('p');
+  loading.className = 'dash__empty';
+  loading.textContent = 'Loading dictionary stats…';
+  card.appendChild(loading);
+
+  getKbStats(lang).then((s) => {
+    card.replaceChildren();
+    if (!s) {
+      const msg = document.createElement('p');
+      msg.className = 'dash__empty';
+      msg.textContent = 'Dictionary service not reachable (start it with npm run server).';
+      card.appendChild(msg);
+      return;
+    }
+    const n = (x) => Number(x || 0).toLocaleString();
+
+    const title = document.createElement('h3');
+    title.className = 'kb-stats__title';
+    title.textContent = 'Dictionary data';
+    card.appendChild(title);
+
+    const grid = document.createElement('div');
+    grid.className = 'stat-cards';
+    grid.append(
+      statCard('Built words', n(s.refined)),
+      statCard('With synonyms', n(s.withSynonyms)),
+      statCard('With antonyms', n(s.withAntonyms)),
+      statCard('Built this week', n(s.builtWeek)),
+    );
+    card.appendChild(grid);
+
+    const models = (s.byModel || []).map((m) => `${m.model} (${n(m.count)})`).join(', ');
+    const last = s.lastBuiltAt ? timeAgo(s.lastBuiltAt) : '—';
+    const meta = document.createElement('p');
+    meta.className = 'kb-stats__meta';
+    meta.textContent = `Base: ${n(s.baseEntries)} KB entries · model: ${models || '—'} · last built ${last}`;
+    card.appendChild(meta);
+
+    if (s.recent?.length) {
+      const recent = document.createElement('p');
+      recent.className = 'kb-stats__recent';
+      recent.append('Recent: ');
+      s.recent.forEach((r, i) => {
+        if (i) recent.append(' · ');
+        const chip = document.createElement('span');
+        chip.className = 'kb-chip';
+        chip.textContent = r.word;
+        if (r.definition) chip.title = r.definition;
+        recent.appendChild(chip);
+      });
+      card.appendChild(recent);
+    }
+  });
+
+  return card;
+}
+
 function statCard(label, value, onClick) {
   const card = document.createElement(onClick ? 'button' : 'div');
   card.className = 'stat-card';
@@ -227,6 +301,7 @@ export function renderDictionary(root, { filter } = {}) {
       dashLang = code;
       renderDictionary(root, {});
     }),
+    kbStatsCard(lang),
   );
 
   const controls = document.createElement('div');

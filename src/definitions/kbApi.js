@@ -126,6 +126,27 @@ export async function listKbWords({ lang, q = '', sort = 'a-z', limit = 5000 } =
   return Array.isArray(data?.words) ? data.words : [];
 }
 
+/**
+ * Counts about the dictionary data for the Dictionary stats card (built words,
+ * with synonyms/antonyms, recent activity, base KB size). Returns null if the KB
+ * is off / unreachable.
+ * @param {string} [lang]
+ * @returns {Promise<object | null>}
+ */
+export async function getKbStats(lang) {
+  const base = getKbUrl();
+  if (!base) return null;
+  const params = new URLSearchParams({ lang: lang || getReadingLang() });
+  let res;
+  try {
+    res = await fetchWithTimeout(`${base}/stats?${params}`, LIST_TIMEOUT);
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  return res.json();
+}
+
 // Words for which a background build has already been requested this session, so
 // we never fire the same slow LLM job twice.
 const buildRequested = new Set();
