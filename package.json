@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node server/index.js",
-    "ingest:en": "node server/ingest/run.js en"
+    "ingest:en": "node server/ingest/run.js en",
+    "build:book": "node server/generate/book.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",

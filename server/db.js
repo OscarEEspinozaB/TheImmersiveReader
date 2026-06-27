@@ -106,6 +106,9 @@ export function getDb() {
   mkdirSync(DATA_DIR, { recursive: true });
   db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
+  // Let the batch builder and the server share the file: wait (don't error) up to
+  // 5s if the other process holds the write lock for a moment.
+  db.pragma('busy_timeout = 5000');
   db.exec(SCHEMA);
   return db;
 }
