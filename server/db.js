@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS senses (
   ord        INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_senses_entry ON senses(entry_id);
+-- A Wiktextract dump repeats the same gloss across split etymology/line entries,
+-- so dedupe a definition per word: INSERT OR IGNORE skips the repeats at ingest.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_senses_unique ON senses(entry_id, definition);
 
 CREATE TABLE IF NOT EXISTS relations (
   from_sense INTEGER NOT NULL REFERENCES senses(id),

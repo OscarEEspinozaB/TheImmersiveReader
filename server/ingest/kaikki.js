@@ -8,7 +8,7 @@
 //   entries      one row per `${lang}:${normalize(word)}` (POS merged across lines)
 //   senses       one row per gloss
 //   inflections  verb-tense forms from forms[] (past / past participle / …)
-//   relations    synonyms (top-level + per-sense), as a synonym graph
+//   relations    synonyms + antonyms (top-level + per-sense), as a relation graph
 //
 // Provenance for everything here is "offline-dataset" — stamped in a later pass /
 // milestone; this milestone just seeds the linguistic data.
@@ -52,7 +52,8 @@ export async function ingestKaikki({ lang, file, db, onProgress }) {
     )
   `);
   const senseOrd = db.prepare('SELECT COALESCE(MAX(ord), -1) + 1 AS next FROM senses WHERE entry_id = ?');
-  const insertSense = db.prepare('INSERT INTO senses (entry_id, definition, example, ord) VALUES (?, ?, ?, ?)');
+  const insertSense = db.prepare('INSERT OR IGNORE INTO senses (entry_id, definition, example, ord) VALUES (?, ?, ?, ?)');
+  const getSenseId = db.prepare('SELECT id FROM senses WHERE entry_id = ? AND definition = ?');
   const insertInflection = db.prepare('INSERT OR IGNORE INTO inflections (entry_id, tag, form) VALUES (?, ?, ?)');
   const insertRelation = db.prepare('INSERT OR IGNORE INTO relations (from_sense, to_word, type) VALUES (?, ?, ?)');
 
@@ -84,32 +85,44 @@ export async function ingestKaikki({ lang, file, db, onProgress }) {
       if (r.changes) stats.inflections += 1;
     }
 
-    // Senses → rows; collect a synonym graph (per-sense + top-level on first sense).
+    // Attach a word↔word relation list ([{word}], synonyms or antonyms) to a sense,
+    // normalizing each target and skipping multi-word phrases.
+    const addRelations = (senseId, list, type) => {
+      for (const rel of list || []) {
+        const to = rel?.word && normalize(rel.word);
+        if (to && !/\s/.test(to)) {
+          const r = insertRelation.run(senseId, to, type);
+          if (r.changes) stats.relations += 1;
+        }
+      }
+    };
+
+    // Senses → rows; collect synonym/antonym graphs (per-sense + top-level on the
+    // first sense). Identical glosses repeated across the dump's split entries are
+    // deduped by the unique index — INSERT OR IGNORE leaves the existing row, whose
+    // id we look up so a repeat's relations still attach to it.
     let firstSenseId = null;
     let ord = senseOrd.get(id).next;
     for (const s of obj.senses || []) {
       const gloss = Array.isArray(s.glosses) ? s.glosses[0] : null;
       if (!gloss) continue;
-      const senseId = insertSense.run(id, gloss, null, ord++).lastInsertRowid;
-      stats.senses += 1;
+      const info = insertSense.run(id, gloss, null, ord);
+      let senseId;
+      if (info.changes) {
+        senseId = info.lastInsertRowid;
+        ord += 1;
+        stats.senses += 1;
+      } else {
+        senseId = getSenseId.get(id, gloss).id; // duplicate gloss — reuse existing
+      }
       if (firstSenseId === null) firstSenseId = senseId;
-      for (const syn of s.synonyms || []) {
-        const to = syn?.word && normalize(syn.word);
-        if (to && !/\s/.test(to)) {
-          const r = insertRelation.run(senseId, to, 'synonym');
-          if (r.changes) stats.relations += 1;
-        }
-      }
+      addRelations(senseId, s.synonyms, 'synonym');
+      addRelations(senseId, s.antonyms, 'antonym');
     }
-    // Top-level synonyms attach to the entry's first sense, if any.
+    // Top-level synonyms/antonyms attach to the entry's first sense, if any.
     if (firstSenseId !== null) {
-      for (const syn of obj.synonyms || []) {
-        const to = syn?.word && normalize(syn.word);
-        if (to && !/\s/.test(to)) {
-          const r = insertRelation.run(firstSenseId, to, 'synonym');
-          if (r.changes) stats.relations += 1;
-        }
-      }
+      addRelations(firstSenseId, obj.synonyms, 'synonym');
+      addRelations(firstSenseId, obj.antonyms, 'antonym');
     }
   };
 
