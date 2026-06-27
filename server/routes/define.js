@@ -8,6 +8,7 @@
 import { Router } from 'express';
 import { normalize } from '../../src/normalize.js';
 import { getDb } from '../db.js';
+import { kbLog, KB_COLORS as C } from '../log.js';
 
 export const defineRouter = Router();
 
@@ -19,7 +20,10 @@ defineRouter.get('/define', (req, res) => {
   const db = getDb();
   const id = `${lang}:${word}`;
   const entry = db.prepare('SELECT id, lang, word, pos FROM entries WHERE id = ?').get(id);
-  if (!entry) return res.status(404).json({ error: 'not found' });
+  if (!entry) {
+    kbLog(C.red, 'MISS', word);
+    return res.status(404).json({ error: 'not found' });
+  }
 
   const senses = db
     .prepare('SELECT id, definition, example, ord FROM senses WHERE entry_id = ? ORDER BY ord')
@@ -40,6 +44,9 @@ defineRouter.get('/define', (req, res) => {
         model: refinedRow.model || undefined,
       }
     : undefined;
+
+  if (refined) kbLog(C.green, 'HAVE·ai', word, refined.definition);
+  else kbLog(C.yellow, 'HAVE·raw', word, 'not refined yet');
 
   res.json({
     entry: {

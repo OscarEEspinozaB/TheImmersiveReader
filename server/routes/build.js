@@ -8,8 +8,18 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
 import { refineWords } from '../generate/build.js';
+import { kbLog, KB_COLORS as C } from '../log.js';
 
 export const buildRouter = Router();
+
+// Map a per-word build result to a colored screen log so the read-through process
+// is visible: BUILT (just stored), SKIPPED (already refined), ABSENT/FAILED.
+const RESULT_LOG = {
+  refined: (r) => kbLog(C.green, 'BUILT', r.word, r.definition),
+  skipped: (r) => kbLog(C.dim, 'SKIPPED', r.word, 'already refined'),
+  absent: (r) => kbLog(C.dim, 'ABSENT', r.word, 'not in KB'),
+  failed: (r) => kbLog(C.red, 'FAILED', r.word, 'Ollama unreachable?'),
+};
 
 buildRouter.post('/build', async (req, res) => {
   const lang = String(req.body?.lang || 'en');
@@ -20,7 +30,14 @@ buildRouter.post('/build', async (req, res) => {
   if (!words.length) return res.status(400).json({ error: 'text or words required' });
 
   try {
-    const results = await refineWords({ db: getDb(), lang, words, force });
+    const results = await refineWords({
+      db: getDb(),
+      lang,
+      words,
+      force,
+      onStart: (word) => kbLog(C.blue, 'BUILDING', word, 'refining with Ollama…'),
+      onResult: (r) => RESULT_LOG[r.status]?.(r),
+    });
     const counts = results.reduce((a, r) => ((a[r.status] = (a[r.status] || 0) + 1), a), {});
     res.json({ counts, results });
   } catch (err) {

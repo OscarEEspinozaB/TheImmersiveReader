@@ -42,10 +42,11 @@ function readRaw(db, id) {
  * @param {string} opts.lang
  * @param {string[]} opts.words surface or normalized words (deduped internally)
  * @param {boolean} [opts.force] re-refine even if a refined row already exists
+ * @param {(word: string) => void} [opts.onStart] called just before a word's slow LLM build
  * @param {(r: { word: string, status: string, definition?: string }) => void} [opts.onResult]
  * @returns {Promise<{ word: string, status: string, definition?: string }[]>}
  */
-export async function refineWords({ db, lang, words, force = false, onResult }) {
+export async function refineWords({ db, lang, words, force = false, onStart, onResult }) {
   const hasRefined = db.prepare('SELECT 1 FROM refined WHERE entry_id = ?');
   const upsertRefined = db.prepare(`
     INSERT INTO refined (entry_id, definition, synonyms, antonyms, model, generated_at)
@@ -81,6 +82,7 @@ export async function refineWords({ db, lang, words, force = false, onResult }) 
       results.push(r); onResult?.(r);
       continue;
     }
+    onStart?.(word);
     const refined = await refineEntry({ word, ...raw });
     if (!refined) {
       const r = { word, status: 'failed' };
