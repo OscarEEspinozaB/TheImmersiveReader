@@ -1,181 +1,124 @@
-# The Immersive Reader — Dictionary & Stats UI Redesign (Implementation Plan)
+# The Immersive Reader — Dictionary / Progress UI restructuring
 
-> Status: **Proposed (implementation plan).** Last updated 2026-06-25.
+> Status: **Implemented (2026-06-26).** Supersedes the earlier tabs-based draft
+> (clickable cards + chips *inside* the Vocabulary dashboard). The restructuring is
+> deeper: **Dictionary and Progress are now sibling first-level destinations** under a
+> persistent primary nav, not parent/child tabs.
 >
-> Scope: make the vocabulary view (reached via the **stats icon**) more minimal and
-> intuitive, and make the **Known** and **Learning** stat cards act as buttons that
-> jump straight into the Dictionary tab with that filter already applied. Implemented
-> in [src/dashboard.js](../src/dashboard.js); CSS in
-> [src/styles/main.css](../src/styles/main.css). This is the front-of-house companion
-> to [dictionary-knowledge-base-implementation.md](dictionary-knowledge-base-implementation.md).
+> Code: [src/dashboard.js](../src/dashboard.js), [src/main.js](../src/main.js),
+> [index.html](../index.html), [src/styles/main.css](../src/styles/main.css). This is the
+> front-of-house companion to
+> [dictionary-knowledge-base-implementation.md](dictionary-knowledge-base-implementation.md).
 
-## 1. Context
+## 1. Why
 
-The dictionary lives under the **stats icon**: the top-level "Vocabulary" view
-([src/dashboard.js](../src/dashboard.js)) opened from the library, with two tabs —
-**Stats** and **Dictionary**. Today the two tabs feel disconnected: Stats shows
-counts (`Known`, `Learning`, `Total`, `This week`) as inert cards, and Dictionary has
-its own `All / Known / Learning` `<select>` filter. The user has to mentally connect
-"I have 312 known words" with "now switch tab, open the filter dropdown, pick Known."
+Everything about "words" used to hang off **one chart icon** that opened a single
+`#dashboard` with **two internal tabs — Stats and Dictionary**. That conflated two
+different things:
 
-The fix is to make the counts the entry point: **the Known and Learning cards become
-buttons** that open the Dictionary tab pre-filtered. Same data, one click instead of
-three, and the numbers stop being decorative.
+- **Progress** = the user's own learning (counts, growth over time, per-book breakdown).
+- **Dictionary** = the reference content (word → definition / cached AI / future KB).
 
-## 2. Goals
+Nesting the Dictionary *inside* the stats view made it feel like an annex of the numbers,
+and reaching a filtered word list meant: open dashboard → switch tab → open a dropdown →
+pick a state. The fix is a real separation with a dedicated navigation, so the Dictionary
+is a first-class place and the counts become the entry point into it.
 
-- Known / Learning stat cards are **clickable** → open Dictionary tab filtered to that
-  state, scrolled to top.
-- The Dictionary tab reflects the incoming filter (the existing `state.filter` already
-  drives the list — we just set it before switching tabs).
-- A **minimal, more intuitive** dictionary surface: replace the row of `<select>`
-  dropdowns with inline filter **chips** (matching the existing pill-style
-  `.dash__tab`), keep search, and make the active state obvious.
-- No new dependency, no new view. Pure `dashboard.js` + CSS. State invariants and the
-  KB design are untouched.
+## 2. What shipped
 
-## 3. Non-goals
+### 2a. Primary navigation (persistent bottom bar)
 
-- No change to vocabulary state logic, counts, or storage.
-- Not the Dictionary KB itself (that's the companion implementation doc). This redesign
-  is compatible with it: when the KB lands, its richer fields render inside the same
-  rows.
-
-## 4. What exists today (grounding)
-
-- **Shared tab state** already lives in one object:
-  `state = { tab, search, filter, sort }` ([src/dashboard.js](../src/dashboard.js#L26)).
-  `renderBody()` reads `state.tab`; the dictionary list reads `state.filter`. So a
-  deep-link is just: set `state.tab='dictionary'`, `state.filter='known'`, re-render.
-- **Stat cards** are built by `statCard(label, value)`
-  ([src/dashboard.js](../src/dashboard.js#L159)) — currently a plain `<div>`.
-- **Dictionary filter** is a `<select>` from `select([...])`
-  ([src/dashboard.js](../src/dashboard.js#L185)); `renderList()` filters
-  `listEntries()` by `state.filter`.
-- **Tab buttons** are pill-styled `.dash__tab` ([main.css](../src/styles/main.css#L877)).
-  Stat cards are `.stat-card` ([main.css](../src/styles/main.css#L911)).
-
-Everything needed for the deep-link is already wired; this is a small, well-contained
-change.
-
-## 5. Design
-
-### 5a. Clickable stat cards
-
-`statCard` gains an optional `onClick`. When present, render a `<button>` instead of a
-`<div>` (keyboard-accessible, focusable, correct semantics), keep the `.stat-card`
-look, add a subtle affordance (hover lift / `cursor: pointer` / a faint `›`).
+A fixed bottom `#primary-nav` ([index.html](../index.html)) with three first-level
+destinations — **Library · Dictionary · Progress** — each an icon-over-label
+`button.nav-item`. It is shown only on the hub views and **hidden while reading and in the
+swiper** (immersive), via a `body.nav-hidden` class toggled in `setView`
+([src/main.js](../src/main.js)), mirroring the existing `chrome-hidden` pattern. The active
+destination is highlighted. The old per-shelf "Vocabulary" chart icon is gone.
 
 ```text
-┌──────────┐ ┌──────────┐ ┌────────┐ ┌──────────┐
-│   312  › │ │   87   › │ │  399   │ │   +24    │
-│  Known   │ │ Learning │ │ Total  │ │ This week│
-└──────────┘ └──────────┘ └────────┘ └──────────┘
-   button       button      (plain)     (plain)
+┌──────────────────────────────────────┐
+│            (active view)             │
+├──────────────────────────────────────┤
+│   📚         📖          📈           │
+│ Library   Dictionary  Progress       │
+└──────────────────────────────────────┘
 ```
 
-`renderStats` wires the two interactive cards to a new `goToDictionary(filter)`:
+*Practice* (the swiper) stays a per-book action launched from the shelf; a clean 4th nav
+slot is left for it once a global deck exists.
 
-```js
-cards.append(
-  statCard('Known', s.known, () => goToDictionary('known')),
-  statCard('Learning', s.learning, () => goToDictionary('learning')),
-  statCard('Total', s.total),
-  statCard('This week', `+${r.known + r.learning}`),
-);
-```
+### 2b. View model
 
-`goToDictionary` needs access to the shared `state` + the tab switcher. The cleanest
-wiring: `renderStats(body)` is already called from inside `renderDashboard` where
-`state`, `updateTabs`, and `renderBody` are in scope. Pass a small callback down:
+`setView(view)` now handles `shelf | dictionary | progress | reader | swiper`. The single
+`#dashboard` section is reused as the shared container for both hub views (same `.dashboard`
+scroll/padding; its direct children share a centered `max-width` column). `main.js` exposes
+`showProgress()` and `showDictionary(filter?)`; the nav buttons call `showShelf`,
+`showDictionary()`, `showProgress`.
 
-```js
-// in renderDashboard:
-if (state.tab === 'stats')
-  renderStats(body, (filter) => { state.tab = 'dictionary'; state.filter = filter;
-                                   updateTabs(); renderBody(); });
-else renderDictionary(body, state, root);
-```
+### 2c. Progress hub — counts as the entry point
 
-So `renderStats(body, goToDictionary)` and the two cards call `goToDictionary('known'|'learning')`.
+`renderProgress(root, { onOpenDictionary })` ([src/dashboard.js](../src/dashboard.js))
+renders the stat cards, donut split, growth chart and per-book breakdown. The **Known and
+Learning cards are real `<button>`s** (`statCard(label, value, onClick?)` →
+`button.stat-card--btn`) that **deep-link into the Dictionary pre-filtered** via
+`onOpenDictionary('known'|'learning')`. Decorative cards (Total, This week) stay inert
+`<div>`s.
 
-### 5b. Minimal dictionary controls (chips instead of dropdowns)
+### 2d. Dictionary hub — minimal controls
 
-Replace the two `<select>`s with **inline filter chips** reusing the pill aesthetic,
-and keep search as the one text input. Sort (`Recent / A–Z`) becomes a single small
-toggle on the right rather than a dropdown.
+`renderDictionary(root, { filter })` replaces the two `<select>` dropdowns with:
+
+- **filter chips** `All / Known / Learning` (`button.chip` with `aria-pressed`), seeded from
+  the incoming `filter` so arriving from a stat card lands already filtered with the right
+  chip active — the two surfaces agree by construction;
+- a small **sort toggle** (`Recent ⇆ A–Z`) on the right of the search box.
 
 ```text
 ┌─────────────────────────────────────────────┐
-│  🔍  Search words…                    A–Z ⇅  │
-│  ( All )  ( Known )  ( Learning )            │   ← chips; active one filled
+│  🔍 Search words…                  [ Recent ]│
+│  ( All )  ( Known )  ( Learning )            │  ← active chip filled
 │  ───────────────────────────────────────────│
-│  wand            ● learning                   │
+│  wand        learning                         │
 │    a thin stick used for magic…               │
-│  owl             ● known                      │
+│  owl         known                            │
 └─────────────────────────────────────────────┘
 ```
 
-- Chips are buttons; clicking one sets `state.filter` and calls `renderList()` (the
-  list logic is unchanged — it already filters on `state.filter`).
-- When the user **arrives via a stat card**, the matching chip is already active
-  because `state.filter` was set before the tab switched — the two surfaces now agree
-  by construction.
-- Sort toggle flips `state.sort` between `recent` and `a-z` (same values the existing
-  `select` used), so `renderList`'s sort comparator is untouched.
+The windowed list logic (`renderList`, `IntersectionObserver`, `renderChunk`/`unloadChunk`,
+`dictRow`, `lookupCard`) is unchanged — it already reads `state.filter / search / sort`. A
+module-level `dictState` persists search/sort/filter across hub switches. The per-row state
+`<select>` is styled down to a borderless chip (border on hover/focus) for lighter rows.
 
-### 5c. Lighter rows
+### 2e. Per-language scoping (each language is its own dictionary)
 
-Minor polish, all CSS-only or trivial markup:
+Vocabulary and definitions are keyed per reading language (`<lang>:<word>`), so **each
+language is a separate dictionary and separate progress — never mixed**. Both hubs are scoped
+to a single language and carry a **language switcher** (`langSwitcher` in
+[src/dashboard.js](../src/dashboard.js)) at the top: a `select` listing every language that has
+marked words (plus the one in view). Because the reading language is now a per-book property,
+this switch lives **in the UI, not in settings**. Switching it sets `dashLang`, re-aligns the
+whole stack via `setActiveReadingLang` (so state writes, lookups and caching target that
+language), and re-renders. Concretely:
 
-- The per-row state `<select>` ([dashboard.js](../src/dashboard.js#L299)) is visually
-  heavy. Keep it (it's the quickest way to re-state a word) but style it down to a
-  borderless chip that only shows its border on hover/focus.
-- Tighten row padding and rely on the colored state dot + the `data-state` word color
-  (already present) to carry the state, reducing redundant chrome.
+- `listEntries(lang)` / `counts(lang)` (and so `summary` / `growthSeries` / `recent`) take an
+  optional language filter; `usedLanguages()` lists the languages that have words.
+- The **Per book** breakdown is filtered to books written in the selected language.
+- The **definitions cache** ([src/definitionsCache.js](../src/definitionsCache.js)) is keyed by
+  `<lang>:<word>` too, so identical spellings across languages (`important`, `table`, `son`)
+  keep independent definitions. (Earlier language-agnostic entries are orphaned and re-fetched.)
 
-## 6. CSS (`src/styles/main.css`)
+## 3. Accessibility & details
 
-- `.stat-card` → add a `button.stat-card` variant: `cursor: pointer`, `text-align`
-  left, reset button defaults, `:hover` subtle `border-color: var(--text)` + tiny
-  `translateY(-1px)`, visible `:focus-visible` ring. Non-interactive cards stay
-  `<div>` and keep the current look.
-- New `.dict-chips` row reusing `.dash__tab` / `.dash__tab.is-active` styling (or a
-  shared `.chip` class extracted from it, so tabs and filter chips stay consistent).
-- `.dict-controls` becomes `search` + a right-aligned sort toggle; the chip row sits
-  below it. Drop `.dict-select`'s usage here (the per-row state select can keep a
-  slimmed variant).
+- Interactive cards and nav items are real `<button>`s (Enter/Space, focus ring); decorative
+  cards stay `<div>`.
+- Chips expose `aria-pressed`; the active filter is visually filled.
+- The hover lift on stat cards is guarded by `prefers-reduced-motion`.
+- The nav respects `env(safe-area-inset-bottom)` for PWA / notched devices.
 
-## 7. Implementation steps
+## 4. Relationship to the KB redesign
 
-1. **`statCard` → optional `onClick`** renders a `<button>`; add the `button.stat-card`
-   CSS. (Self-contained; no behavior change when `onClick` is absent.)
-2. **Deep-link:** thread `goToDictionary(filter)` from `renderDashboard` into
-   `renderStats`; wire the Known/Learning cards.
-3. **Filter chips:** replace the filter `<select>` in `renderDictionary` with a chip
-   row driven by `state.filter`; keep `renderList` as-is.
-4. **Sort toggle + lighter rows:** swap the sort `<select>` for a small toggle; CSS
-   polish on rows and the per-row state select.
-5. Manual verify (`npm run dev`): mark some words, open stats, click Known → lands in
-   Dictionary filtered to Known with the Known chip active; click Learning likewise;
-   search still works; sort toggles.
-
-Steps 1–2 deliver the headline behavior (clickable counts) and can ship alone; 3–4 are
-the minimalist polish and can follow.
-
-## 8. Accessibility & details
-
-- Interactive cards are real `<button>`s (Enter/Space, focus ring, screen-reader
-  "button"); decorative cards stay `<div>`.
-- Chips are buttons with `aria-pressed` reflecting the active filter.
-- Respect `prefers-reduced-motion` for the hover lift.
-- Returning to Stats and back preserves `state.filter` (it already persists on the
-  shared `state` object for the dashboard's lifetime).
-
-## 9. Relationship to the KB redesign
-
-This redesign only touches presentation and navigation. When
+This only restructures navigation and presentation. When
 [dictionary-knowledge-base-implementation.md](dictionary-knowledge-base-implementation.md)
-lands, the same dictionary rows gain KB-sourced synonyms/antonyms/per-sense
-translations and a pin icon on locked fields, and a language selector joins the chip
-row — no rework of the navigation built here.
+lands, its richer fields (synonyms/antonyms/per-sense translations, pinned/locked fields)
+render inside the same `dictRow`s, and a language selector joins the chip row — no rework of
+the navigation built here.

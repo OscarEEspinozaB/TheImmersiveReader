@@ -1,12 +1,113 @@
 # The Immersive Reader — Base de Conocimiento de Diccionario Personal (Diseño)
 
-> Estado: **Propuesto.** Última actualización 2026-06-24.
+> Estado: **Propuesto.** Última actualización 2026-06-26.
 >
 > Se construye sobre la capa de definiciones existente (`definitionsCache.js`, la
 > cadena de `DefinitionProvider`) y el patrón de formato de libro `.tir`
 > (`library-design.md`). **No** reemplaza ninguno de los dos — agrega una nueva base
 > de conocimiento indexada por idioma, generada una vez por palabra en lote, y leída
 > en tiempo de ejecución sin ninguna llamada de red.
+
+## 0. Revisión 2026-06-26 — Arquitectura de servicio LAN (reemplaza partes de §3, §6, §7)
+
+Tras una revisión de hardware y requisitos con el dueño, tres decisiones de
+arquitectura **reemplazan** partes del diseño original de abajo. Los objetivos (§2),
+el modelo de procedencia/bloqueo por campo (§5.2), el registro de idiomas (§5.3) y el
+chequeo de realidad por idioma (§9) **no cambian**. Lo que cambia es *dónde* vive la
+KB, *cómo* se almacena y *qué fuente lidera* la cascada.
+
+### 0.1 Realidad del hardware (manda en todas las decisiones)
+
+La máquina generadora es `rakzo@zymbol`: **AMD Ryzen 7 4800H** (16 hilos), GPU
+discreta **AMD Radeon RX 5500M** (**4 GB de VRAM**, Navi 14 / gfx1012), 15 GB RAM,
+Debian 13.
+
+- **Ollama corre en CPU aquí, no en GPU.** ROCm no soporta oficialmente gfx1012, y 4 GB
+  de VRAM no pueden cargar un modelo de 7–9 GB de todos modos. La inferencia queda
+  limitada por la CPU Ryzen: de forma realista **~10–25 s por entrada de diccionario**.
+  Generar *cada* palabra con el LLM tomaría muchas noches — esta es la restricción que
+  rediseña §7.
+- **Guarda de temperatura/procesos:** el monitoreo usa **`lm-sensors`** (`k10temp` para
+  la CPU, `amdgpu` para la GPU), no `nvidia-smi`. El job nocturno corre bajo
+  `nice`/`ionice`, duerme entre palabras, y se pausa si se cruza un umbral de
+  temperatura (ej. 80 °C).
+
+### 0.2 Revisión 1 — Un servicio local en la LAN, no IndexedDB + Worker en el navegador
+
+La KB pasa de un store IndexedDB en el navegador + Web Worker a un **pequeño servicio
+local en la LAN** (la máquina generadora en `192.168.100.6`). Razón:
+
+- **Compartir entre dispositivos gratis.** IndexedDB vive *dentro de un navegador* y no
+  se sincroniza; el diseño original necesitaba exportar/importar `.tirdict` a mano para
+  llegar a un teléfono o laptop. Un endpoint LAN permite que la máquina potente genere
+  una vez y todos los dispositivos de la red lean la misma KB. Este es el requisito
+  principal del usuario.
+- **Una sola fuente de verdad para la normalización.** La KB se indexa `<lang>:<word>`
+  usando exactamente el mismo `normalize()` que [vocabulary.js](../src/vocabulary.js).
+  El servicio se escribe en **Node** justamente para poder importar esa única
+  implementación; otro lenguaje (Python/Rust) reimplementaría la normalización y
+  arriesgaría desajustes de clave que romperían en silencio cada acierto de caché.
+- **Read-through, perezoso-luego-lote.** La primera solicitud de una palabra
+  desconocida dispara la generación, la guarda y la devuelve; las siguientes la
+  devuelven desde el store con cero cómputo. Un lote nocturno rellena la cola larga.
+  (Ambos comportamientos ya estaban en §7; ahora corren del lado del servidor.)
+
+Este es el backend "Fase 2" documentado del diseño llegando temprano, pero en su forma
+mínima: un caché read-through de un solo usuario, no un servidor multiusuario.
+
+### 0.3 Revisión 2 — SQLite (`better-sqlite3`), no IndexedDB / NDJSON
+
+El no-objetivo "sin BD relacional" de **§3 se retira para la capa de servicio.** Se
+escribió bajo el supuesto de IndexedDB en el navegador. Ahora que la KB es un servicio
+LAN *y* los requisitos crecieron para incluir **conexiones palabra↔palabra**
+(sinónimos/relacionadas) y **traducciones por-sentido entre idiomas**, los datos *son*
+un pequeño grafo relacional. SQLite (`better-sqlite3`, síncrono, un solo archivo,
+trivial de respaldar) encaja mucho mejor que JSON plano — y alinea con el CLAUDE.md,
+que ya nombra SQLite como la tecnología de almacenamiento (solo que ahora nativo del
+lado servidor en vez de WASM en el navegador). La exportación portable `.tirdict`
+(§6.2) sobrevive como un dump de SQLite / exportación NDJSON.
+
+### 0.4 Revisión 3 — El dataset offline (Kaikki/Wiktextract) lidera; el LLM solo rellena huecos
+
+La cascada de §7 se mantiene (dataset offline → API gratuita → Ollama) pero su
+**énfasis se invierte**: como la inferencia en CPU es el recurso escaso, el grueso
+**no debe** venir del LLM.
+
+- **Definiciones + categoría gramatical + flexiones de tiempo verbal** vienen de un
+  dump JSON inglés de **Kaikki.org / Wiktextract** (Wiktionary, legible por máquina).
+  Sus `forms[]` traen etiquetas de tiempo (`past`, `past participle`,
+  `present participle`, `third-person singular`), cumpliendo el nuevo requisito de
+  "indicaciones de tiempos verbales" *de forma determinista y precisa* — mejor de lo
+  que podría un LLM.
+- **El LLM (Ollama) se reserva para** palabras ausentes del dump (jerga, neologismos del
+  universo como *Quidditch*/*Muggle*), la capa de **conexiones** (sinónimos/relacionadas
+  al nivel del usuario) y las **traducciones EN→ES**.
+- Esto recorta el lote del LLM de decenas de miles de palabras a cientos/pocos miles —
+  la diferencia entre una noche y varias semanas en esta CPU.
+
+### 0.5 Nuevos requisitos capturados
+
+- **Diccionario genérico** (significado estándar tipo Oxford/Cambridge), *no* la
+  explicación del contexto del libro — la explicación según contexto sigue siendo el
+  camino a demanda en [ollama.js](../src/definitions/ollama.js). El significado estándar
+  es 100% cacheable y se deduplica entre libros.
+- **Indicaciones de tiempos verbales** → `inflections` (de los `forms[]` de Kaikki).
+- **"Diccionario mejorado con conexiones"** → un grafo de relaciones (sinónimos/relacionadas).
+- **Traducciones**, EN→ES primero, **esquema abierto a N idiomas** → una tabla
+  `translations` indexada por `target_lang`.
+
+### 0.6 Asignación de modelos (del `ollama list` del dueño)
+
+| Modelo | Rol |
+| --- | --- |
+| `gemma4:e2b` | Grueso del LLM: rellenar huecos + conexiones (suficientemente rápido en CPU) |
+| `gemma4:e4b` | Pase posterior de "re-refinar" sobre entradas difíciles/vacías (diseño §8) |
+| `translategemma:12b` | Traducciones EN→ES (hecho para esto); un pase nocturno aparte |
+| `codegemma:7b` | No usado por la KB |
+
+La disposición concreta del servicio, el esquema SQL, el parser de Kaikki, la API y el
+orden de hitos viven en el [plan de implementación](dictionary-knowledge-base-implementation-ES.md)
+acompañante, que se actualizó para coincidir con esta revisión.
 
 ## 1. Contexto
 
@@ -53,10 +154,11 @@ y si está protegido.
 
 - Un servicio de traducción automática *en vivo*. La traducción para palabras fuera
   de la base pre-generada sigue pasando por Ollama a demanda, como ya está diseñado.
-- Una base de datos relacional / un servidor SQL. `palabra → registro estructurado`
-  no tiene joins que justifiquen el costo de un servidor; IndexedDB (más un archivo
-  de exportación plano) alcanza a esta escala (decenas de miles de entradas × un
-  puñado de idiomas son unos pocos MB).
+- ~~Una base de datos relacional / un servidor SQL.~~ **Retirado por §0.3.** Esto valía
+  bajo el supuesto de IndexedDB en el navegador; una vez que la KB pasó a ser un
+  servicio LAN con conexiones palabra↔palabra y traducciones por-sentido, SQLite
+  (`better-sqlite3`) resultó ser lo correcto. (Sigue sin haber servidor SQL
+  *multiusuario* — se mantiene de un solo usuario, local.)
 - Prometer completitud para cada idioma. Algunos (klingon, ver §9) hoy no tienen
   ningún dataset abierto utilizable — la brecha se reconoce, no se esconde detrás de
   un genérico "la IA lo va a resolver".

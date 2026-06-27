@@ -1,12 +1,175 @@
 # The Immersive Reader — Dictionary Knowledge Base (Implementation Plan)
 
-> Status: **Proposed (implementation plan).** Last updated 2026-06-25.
+> Status: **Proposed (implementation plan).** Last updated 2026-06-26.
 >
 > This is the *how* for [dictionary-knowledge-base-design.md](dictionary-knowledge-base-design.md)
 > (the *what/why*). It maps every part of that design onto concrete modules, function
-> signatures, IndexedDB changes, and a milestone order that keeps the app shippable at
+> signatures, storage changes, and a milestone order that keeps the app shippable at
 > every step. Nothing here changes word state; the KB is purely *information about*
 > words (see the design's invariant).
+
+## 0. Revision 2026-06-26 — LAN service implementation (supersedes §2, §4, §6 below)
+
+Per the design's **§0 revision**, the KB is no longer an in-browser IndexedDB store
+driven by a Web Worker. It is a **small Node service on the LAN** backed by **SQLite**,
+seeded primarily from a **Kaikki/Wiktextract dump** with Ollama only filling gaps,
+connections, and translations. The sections below this one (IndexedDB v4 in §2, the
+`generateWorker.js` Web Worker in §4, the `.tirdict` IndexedDB export in §6) are
+**superseded** by this section; §1 (book language), §3's `normalize()` reuse, §5
+(provenance/locking — now SQL columns), and the §7 read-path *concept* still hold.
+
+### 0.1 Repo layout (new top-level `server/`)
+
+```text
+server/                      Node service (runs on rakzo@zymbol, 192.168.100.6)
+  index.js                   Express app: routes + lifecycle
+  db.js                      better-sqlite3 connection + migrations (schema below)
+  routes/define.js           GET /define  (read-through: SQLite → generate → store)
+  routes/admin.js            POST /generate, /refine, /translate, GET /status
+  ingest/kaikki.js           stream-parse the Wiktextract JSONL → rows
+  generate/llm.js            Ollama client (definitions gap-fill, connections, translate)
+  generate/batch.js          nightly pipeline: sequential, resumable, temp-guarded
+  generate/thermal.js        lm-sensors poll + pause/resume guard
+  shared/                    symlink/import of src/ normalize() + lemma logic
+data/
+  kaikki-en.jsonl            user-dropped Wiktextract dump (gitignored, heavy)
+  dictionary.sqlite          the KB (gitignored)
+```
+
+`server/` reuses the frontend's `normalize()` and lemma rules by importing from `src/`
+directly (same language = single source of truth — the whole reason for choosing Node).
+Add `better-sqlite3` and `express` to `package.json`; add `data/` to `.gitignore`.
+
+### 0.2 SQLite schema (`server/db.js`)
+
+```sql
+CREATE TABLE entries (
+  id        TEXT PRIMARY KEY,      -- `${lang}:${word}`, e.g. "en:run"
+  lang      TEXT NOT NULL,
+  word      TEXT NOT NULL,         -- normalized lemma (normalize() from src/)
+  pos       TEXT,                  -- JSON array of parts of speech
+  schema_version INTEGER NOT NULL
+);
+CREATE INDEX idx_entries_lang ON entries(lang);
+
+CREATE TABLE inflections (         -- verb-tense indications (from Kaikki forms[])
+  entry_id TEXT NOT NULL REFERENCES entries(id),
+  tag      TEXT NOT NULL,          -- "past" | "past participle" | "present participle" | ...
+  form     TEXT NOT NULL,          -- "ran", "running", ...
+  PRIMARY KEY (entry_id, tag, form)
+);
+
+CREATE TABLE senses (
+  id        INTEGER PRIMARY KEY,
+  entry_id  TEXT NOT NULL REFERENCES entries(id),
+  definition TEXT NOT NULL,
+  example    TEXT,                 -- standard example (book example stays on-demand)
+  ord        INTEGER NOT NULL      -- sense order
+);
+
+CREATE TABLE relations (           -- the "connections" graph
+  from_sense INTEGER NOT NULL REFERENCES senses(id),
+  to_word    TEXT NOT NULL,        -- normalized target lemma (may not exist as entry yet)
+  type       TEXT NOT NULL,        -- "synonym" | "antonym" | "related"
+  PRIMARY KEY (from_sense, to_word, type)
+);
+
+CREATE TABLE translations (        -- EN→ES now; open to N languages
+  sense_id    INTEGER NOT NULL REFERENCES senses(id),
+  target_lang TEXT NOT NULL,       -- "es", later "ko", "fr", ...
+  text        TEXT NOT NULL,
+  PRIMARY KEY (sense_id, target_lang, text)
+);
+
+CREATE TABLE provenance (          -- design §5.2 / §8, now relational
+  entry_id   TEXT NOT NULL REFERENCES entries(id),
+  field_path TEXT NOT NULL,        -- "senses.0.definition", "inflections", ...
+  source     TEXT NOT NULL,        -- "offline-dataset" | "dictionary-api" | "ai" | "manual"
+  source_name TEXT,                -- "Wiktextract 2026-xx" | "gemma4:e2b" | ...
+  generated_at INTEGER NOT NULL,
+  locked     INTEGER NOT NULL DEFAULT 0,   -- manual edit → 1, never auto-overwritten
+  PRIMARY KEY (entry_id, field_path)
+);
+
+CREATE TABLE generation_progress ( -- resumability (design §7.4)
+  lang   TEXT PRIMARY KEY,
+  cursor INTEGER NOT NULL, total INTEGER NOT NULL,
+  status TEXT NOT NULL,            -- "running" | "paused" | "done" | "error"
+  started_at INTEGER
+);
+```
+
+### 0.3 HTTP API
+
+```text
+GET  /define?word=run&lang=en
+     → 200 { entry }  if present (zero compute)
+     → on miss: generate one entry (LLM or dump lookup), store, return it
+     → CORS: allow the reader origins (Vite dev + the LAN IP)
+POST /admin/generate { lang }    → start/resume the nightly batch (returns immediately)
+POST /admin/refine   { lang, model } → re-run only ai+unlocked fields (design §8)
+POST /admin/translate { lang, target } → translategemma pass for missing translations
+GET  /admin/status               → { lang, cursor, total, status, lastTempC }
+```
+
+### 0.4 Generation pipeline (`server/generate/batch.js`)
+
+Sequential, resumable, thermally guarded — the design's §7 with the §0.4 cascade:
+
+1. **Seed from Kaikki first** (`ingest/kaikki.js`): stream `data/kaikki-en.jsonl`
+   line-by-line (never load it whole — it is large), and for each lemma that appears in
+   the library's unique-word set, insert `entries` + `senses` (glosses) + `inflections`
+   (from `forms[]` with tense tags) + `relations` (Wiktextract synonyms). Provenance
+   `source = "offline-dataset"`. This is **not** LLM work and runs in minutes.
+2. **LLM gap-fill** (`generate/llm.js`, `gemma4:e2b`): only for library words *absent*
+   from the dump. Produce a standard (non-context) definition + POS. Provenance
+   `source = "ai"`.
+3. **Connections pass** (`gemma4:e2b`): for entries lacking synonyms, ask for
+   level-appropriate related words; insert `relations`.
+4. **Translation pass** (`translategemma:12b`): per sense lacking an `es` translation,
+   translate; insert into `translations(target_lang='es')`. Separate nightly pass.
+5. **Resumable + write-through:** commit each entry immediately; update
+   `generation_progress` every N words; on restart skip ids already present.
+6. **Thermal guard** (`generate/thermal.js`): poll `sensors` between words; if
+   `k10temp`/`amdgpu` > threshold, pause until it cools. Run the process under
+   `nice -n 19 ionice -c3`.
+
+### 0.5 Frontend integration (minimal)
+
+One new provider in the existing chain — the UI does not change:
+
+- `src/definitions/kbApi.js`: `lookupKB(word)` → `fetch(${KB_URL}/define?word=…&lang=…)`
+  using `getReadingLang()`; returns the same `Definition` shape, `source: 'kb'`.
+- Insert it **first** in `getQuickDefinition` ([definitions/index.js](../src/definitions/index.js)),
+  before `dictionaryapi.dev`. On a miss/unreachable host it returns `null` and the
+  existing chain takes over unchanged — so the reader still works away from the LAN.
+- `KB_URL` is a new setting (default `http://192.168.100.6:PORT`), alongside the Ollama
+  URL in [settings.js](../src/settings.js).
+
+### 0.6 Revised milestone order
+
+1. **`server/` skeleton**: Express + `better-sqlite3` + schema (§0.2) + `GET /define`
+   that only reads SQLite (404 on miss). Reuse `normalize()` from `src/`.
+2. **Kaikki ingestion** (§0.4 step 1): drop the dump, parse, populate English entries +
+   inflections + relations. Now `/define` returns real data for most words.
+3. **Frontend `kbApi.js` provider** (§0.5): the reader reads from the LAN, instant +
+   offline-of-AI.
+4. **LLM gap-fill + connections** (`gemma4:e2b`), read-through on `/define` miss + the
+   nightly `/admin/generate` batch, resumable + thermal guard.
+5. **Provenance + locking + `/admin/refine`** (`gemma4:e4b`).
+6. **Translations** (`translategemma:12b`, EN→ES) via `/admin/translate`.
+7. **More languages**: add a `lang` + its Kaikki/Wiktextract dump; schema already
+   multilingual.
+
+Steps 1–3 deliver a real, offline, LAN-shared English dictionary with verb tenses with
+**no LLM time at all**. 4–7 layer on the AI-only value (gaps, connections, translation).
+
+---
+
+> The remainder of this document (§0 "How this grounds…" through §10) is the **original
+> in-browser plan**, kept for reference. Where it says IndexedDB / Web Worker / `.tirdict`
+> export, read it through the revision above; the codebase-grounding table (§0) and the
+> book-language work (§1) remain valid as written.
 
 ## 0. How this grounds onto the current codebase
 

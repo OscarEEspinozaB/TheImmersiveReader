@@ -1,193 +1,127 @@
-# The Immersive Reader — Rediseño de UI de Diccionario y Stats (Plan de Implementación)
+# The Immersive Reader — Reestructuración de UI: Diccionario / Progreso
 
-> Estado: **Propuesto (plan de implementación).** Última actualización 2026-06-25.
+> Estado: **Implementado (2026-06-26).** Reemplaza el borrador anterior basado en pestañas
+> (tarjetas clicables + chips *dentro* del dashboard de Vocabulary). La reestructuración es
+> más profunda: **Diccionario y Progreso ahora son destinos hermanos de primer nivel** bajo
+> una navegación principal persistente, no pestañas padre/hijo.
 >
-> Alcance: hacer la vista de vocabulario (a la que se llega vía el **ícono de
-> estadísticas**) más mínima e intuitiva, y hacer que las tarjetas de stats **Known** y
-> **Learning** actúen como botones que saltan directo a la pestaña Dictionary con ese
-> filtro ya aplicado. Implementado en [src/dashboard.js](../src/dashboard.js); CSS en
-> [src/styles/main.css](../src/styles/main.css). Es el compañero de cara al usuario de
+> Código: [src/dashboard.js](../src/dashboard.js), [src/main.js](../src/main.js),
+> [index.html](../index.html), [src/styles/main.css](../src/styles/main.css). Es el
+> complemento de cara al usuario de
 > [dictionary-knowledge-base-implementation-ES.md](dictionary-knowledge-base-implementation-ES.md).
 
-## 1. Contexto
+## 1. Por qué
 
-El diccionario vive bajo el **ícono de estadísticas**: la vista de nivel superior
-"Vocabulary" ([src/dashboard.js](../src/dashboard.js)) abierta desde la biblioteca, con
-dos pestañas — **Stats** y **Dictionary**. Hoy las dos pestañas se sienten
-desconectadas: Stats muestra conteos (`Known`, `Learning`, `Total`, `This week`) como
-tarjetas inertes, y Dictionary tiene su propio `<select>` de filtro
-`All / Known / Learning`. El usuario tiene que conectar mentalmente "tengo 312 palabras
-conocidas" con "ahora cambio de pestaña, abro el dropdown del filtro, elijo Known".
+Todo lo relacionado con "palabras" colgaba de **un solo icono de gráfica** que abría un único
+`#dashboard` con **dos pestañas internas — Stats y Dictionary**. Eso mezclaba dos cosas
+distintas:
 
-El arreglo es hacer de los conteos el punto de entrada: **las tarjetas Known y Learning
-se vuelven botones** que abren la pestaña Dictionary pre-filtrada. Los mismos datos, un
-clic en vez de tres, y los números dejan de ser decorativos.
+- **Progreso** = el aprendizaje propio del usuario (conteos, crecimiento en el tiempo,
+  desglose por libro).
+- **Diccionario** = el contenido de referencia (palabra → definición / IA cacheada / futuro KB).
 
-## 2. Objetivos
+Anidar el Diccionario *dentro* de las estadísticas lo hacía sentir como un anexo de los
+números, y llegar a una lista filtrada implicaba: abrir dashboard → cambiar de pestaña → abrir
+un desplegable → elegir un estado. La solución es una separación real con navegación dedicada,
+para que el Diccionario sea un lugar de primer nivel y los conteos sean la puerta de entrada.
 
-- Las tarjetas de stats Known / Learning son **clicleables** → abren la pestaña
-  Dictionary filtrada a ese estado, scrolleada al tope.
-- La pestaña Dictionary refleja el filtro entrante (el `state.filter` existente ya
-  maneja la lista — solo lo seteamos antes de cambiar de pestaña).
-- Una superficie de diccionario **mínima y más intuitiva**: reemplazar la fila de
-  dropdowns `<select>` por **chips** de filtro inline (igualando el estilo de píldora
-  existente `.dash__tab`), mantener la búsqueda, y hacer obvio el estado activo.
-- Sin dependencias nuevas, sin vista nueva. Puro `dashboard.js` + CSS. Los invariantes
-  de estado y el diseño de la KB quedan intactos.
+## 2. Lo que se implementó
 
-## 3. No-objetivos
+### 2a. Navegación principal (barra inferior persistente)
 
-- Sin cambios a la lógica de estado de vocabulario, conteos o almacenamiento.
-- No es la KB de diccionario en sí (eso es el doc de implementación compañero). Este
-  rediseño es compatible con ella: cuando la KB aterrice, sus campos más ricos se
-  renderizan dentro de las mismas filas.
-
-## 4. Lo que existe hoy (aterrizaje)
-
-- **El estado de pestañas compartido** ya vive en un objeto:
-  `state = { tab, search, filter, sort }` ([src/dashboard.js](../src/dashboard.js#L26)).
-  `renderBody()` lee `state.tab`; la lista del diccionario lee `state.filter`. Así que
-  un deep-link es solo: setear `state.tab='dictionary'`, `state.filter='known'`,
-  re-renderizar.
-- Las **tarjetas de stats** las construye `statCard(label, value)`
-  ([src/dashboard.js](../src/dashboard.js#L159)) — actualmente un `<div>` plano.
-- El **filtro del diccionario** es un `<select>` de `select([...])`
-  ([src/dashboard.js](../src/dashboard.js#L185)); `renderList()` filtra `listEntries()`
-  por `state.filter`.
-- Los **botones de pestaña** tienen estilo píldora `.dash__tab`
-  ([main.css](../src/styles/main.css#L877)). Las tarjetas de stats son `.stat-card`
-  ([main.css](../src/styles/main.css#L911)).
-
-Todo lo necesario para el deep-link ya está cableado; este es un cambio chico y bien
-contenido.
-
-## 5. Diseño
-
-### 5a. Tarjetas de stats clicleables
-
-`statCard` gana un `onClick` opcional. Cuando está presente, renderizar un `<button>` en
-vez de un `<div>` (accesible por teclado, enfocable, semántica correcta), mantener el
-look `.stat-card`, agregar una señal sutil (elevación al hover / `cursor: pointer` / un
-tenue `›`).
+Un `#primary-nav` fijo abajo ([index.html](../index.html)) con tres destinos de primer nivel
+— **Library · Dictionary · Progress** — cada uno un `button.nav-item` con icono sobre
+etiqueta. Solo se muestra en las vistas "hub" y se **oculta al leer y en el swiper**
+(inmersivas), vía una clase `body.nav-hidden` que alterna `setView`
+([src/main.js](../src/main.js)), igual que el patrón existente `chrome-hidden`. El destino
+activo se resalta. El antiguo icono de gráfica "Vocabulary" de la biblioteca desaparece.
 
 ```text
-┌──────────┐ ┌──────────┐ ┌────────┐ ┌──────────┐
-│   312  › │ │   87   › │ │  399   │ │   +24    │
-│  Known   │ │ Learning │ │ Total  │ │ This week│
-└──────────┘ └──────────┘ └────────┘ └──────────┘
-   botón        botón       (plano)     (plano)
+┌──────────────────────────────────────┐
+│            (vista activa)            │
+├──────────────────────────────────────┤
+│   📚         📖          📈           │
+│ Library   Dictionary  Progress       │
+└──────────────────────────────────────┘
 ```
 
-`renderStats` cablea las dos tarjetas interactivas a un nuevo `goToDictionary(filter)`:
+*Practice* (el swiper) sigue siendo una acción por libro lanzada desde la biblioteca; queda un
+4.º hueco limpio en la nav para cuando exista un mazo global.
 
-```js
-cards.append(
-  statCard('Known', s.known, () => goToDictionary('known')),
-  statCard('Learning', s.learning, () => goToDictionary('learning')),
-  statCard('Total', s.total),
-  statCard('This week', `+${r.known + r.learning}`),
-);
-```
+### 2b. Modelo de vistas
 
-`goToDictionary` necesita acceso al `state` compartido + el cambiador de pestañas. El
-cableado más limpio: `renderStats(body)` ya se llama desde dentro de `renderDashboard`
-donde `state`, `updateTabs` y `renderBody` están en alcance. Pasar un pequeño callback
-hacia abajo:
+`setView(view)` ahora maneja `shelf | dictionary | progress | reader | swiper`. La única
+sección `#dashboard` se reutiliza como contenedor compartido de ambas vistas hub (mismo
+scroll/padding `.dashboard`; sus hijos directos comparten una columna centrada con
+`max-width`). `main.js` expone `showProgress()` y `showDictionary(filter?)`; los botones de la
+nav llaman a `showShelf`, `showDictionary()`, `showProgress`.
 
-```js
-// en renderDashboard:
-if (state.tab === 'stats')
-  renderStats(body, (filter) => { state.tab = 'dictionary'; state.filter = filter;
-                                   updateTabs(); renderBody(); });
-else renderDictionary(body, state, root);
-```
+### 2c. Hub de Progreso — los conteos como puerta de entrada
 
-Así `renderStats(body, goToDictionary)` y las dos tarjetas llaman
-`goToDictionary('known'|'learning')`.
+`renderProgress(root, { onOpenDictionary })` ([src/dashboard.js](../src/dashboard.js))
+dibuja las tarjetas de estadística, el donut, la gráfica de crecimiento y el desglose por
+libro. Las tarjetas **Known y Learning son `<button>` reales** (`statCard(label, value,
+onClick?)` → `button.stat-card--btn`) que **enlazan directo al Diccionario ya filtrado** vía
+`onOpenDictionary('known'|'learning')`. Las tarjetas decorativas (Total, This week) siguen
+siendo `<div>` inertes.
 
-### 5b. Controles de diccionario mínimos (chips en vez de dropdowns)
+### 2d. Hub de Diccionario — controles mínimos
 
-Reemplazar los dos `<select>` por **chips de filtro inline** reusando la estética de
-píldora, y mantener la búsqueda como el único input de texto. El orden
-(`Recent / A–Z`) se vuelve un pequeño toggle a la derecha en vez de un dropdown.
+`renderDictionary(root, { filter })` reemplaza los dos desplegables `<select>` por:
+
+- **chips de filtro** `All / Known / Learning` (`button.chip` con `aria-pressed`), sembrados
+  desde el `filter` entrante para que al llegar desde una tarjeta se aterrice ya filtrado con
+  el chip correcto activo — las dos superficies coinciden por construcción;
+- un pequeño **toggle de orden** (`Recent ⇆ A–Z`) a la derecha del buscador.
 
 ```text
 ┌─────────────────────────────────────────────┐
-│  🔍  Buscar palabras…                 A–Z ⇅  │
-│  ( Todas )  ( Known )  ( Learning )          │   ← chips; el activo relleno
+│  🔍 Search words…                  [ Recent ]│
+│  ( All )  ( Known )  ( Learning )            │  ← chip activo relleno
 │  ───────────────────────────────────────────│
-│  wand            ● learning                   │
+│  wand        learning                         │
 │    a thin stick used for magic…               │
-│  owl             ● known                      │
+│  owl         known                            │
 └─────────────────────────────────────────────┘
 ```
 
-- Los chips son botones; clicar uno setea `state.filter` y llama `renderList()` (la
-  lógica de la lista no cambia — ya filtra por `state.filter`).
-- Cuando el usuario **llega vía una tarjeta de stats**, el chip correspondiente ya está
-  activo porque `state.filter` se seteó antes de cambiar de pestaña — las dos
-  superficies ahora coinciden por construcción.
-- El toggle de orden alterna `state.sort` entre `recent` y `a-z` (los mismos valores que
-  usaba el `select` existente), así que el comparador de orden de `renderList` queda
-  intacto.
+La lógica de lista con ventana (`renderList`, `IntersectionObserver`,
+`renderChunk`/`unloadChunk`, `dictRow`, `lookupCard`) queda intacta — ya lee
+`state.filter / search / sort`. Un `dictState` a nivel de módulo conserva búsqueda/orden/filtro
+entre cambios de hub. El `<select>` de estado por fila se aligera a un chip sin borde (borde al
+hover/focus).
 
-### 5c. Filas más livianas
+### 2e. Alcance por idioma (cada idioma es su propio diccionario)
 
-Pulido menor, todo CSS-only o markup trivial:
+El vocabulario y las definiciones se indexan por idioma de lectura (`<lang>:<word>`), así que
+**cada idioma es un diccionario y un progreso separados — nunca mezclados**. Ambos hubs están
+acotados a un solo idioma y llevan un **selector de idioma** (`langSwitcher` en
+[src/dashboard.js](../src/dashboard.js)) arriba: un `select` que lista cada idioma con palabras
+marcadas (más el que se está viendo). Como el idioma de lectura ahora es una propiedad por
+libro, este cambio vive **en la UI, no en configuración**. Al cambiarlo se fija `dashLang`, se
+re-alinea todo el stack vía `setActiveReadingLang` (para que las escrituras de estado, las
+búsquedas y el caché apunten a ese idioma) y se re-renderiza. En concreto:
 
-- El `<select>` de estado por fila ([dashboard.js](../src/dashboard.js#L299)) es
-  visualmente pesado. Mantenerlo (es la forma más rápida de re-estatuar una palabra)
-  pero estilizarlo hacia abajo a un chip sin borde que solo muestra su borde al
-  hover/focus.
-- Ajustar el padding de la fila y apoyarse en el punto de estado de color + el color de
-  palabra `data-state` (ya presentes) para cargar el estado, reduciendo el cromado
-  redundante.
+- `listEntries(lang)` / `counts(lang)` (y por tanto `summary` / `growthSeries` / `recent`)
+  aceptan un filtro de idioma opcional; `usedLanguages()` lista los idiomas con palabras.
+- El desglose **Per book** se filtra a los libros escritos en el idioma seleccionado.
+- El **caché de definiciones** ([src/definitionsCache.js](../src/definitionsCache.js)) también
+  se indexa por `<lang>:<word>`, así grafías idénticas entre idiomas (`important`, `table`,
+  `son`) mantienen definiciones independientes. (Las entradas previas sin idioma quedan
+  huérfanas y se vuelven a pedir.)
 
-## 6. CSS (`src/styles/main.css`)
+## 3. Accesibilidad y detalles
 
-- `.stat-card` → agregar una variante `button.stat-card`: `cursor: pointer`,
-  `text-align` izquierda, resetear defaults del botón, `:hover` sutil
-  `border-color: var(--text)` + pequeño `translateY(-1px)`, anillo `:focus-visible`
-  visible. Las tarjetas no interactivas siguen siendo `<div>` y mantienen el look
-  actual.
-- Nueva fila `.dict-chips` reusando el estilo `.dash__tab` / `.dash__tab.is-active` (o
-  una clase compartida `.chip` extraída de él, para que pestañas y chips de filtro
-  queden consistentes).
-- `.dict-controls` se vuelve `search` + un toggle de orden alineado a la derecha; la
-  fila de chips se ubica debajo. Quitar el uso de `.dict-select` aquí (el select de
-  estado por fila puede mantener una variante adelgazada).
+- Tarjetas interactivas e ítems de nav son `<button>` reales (Enter/Space, anillo de foco);
+  las decorativas siguen `<div>`.
+- Los chips exponen `aria-pressed`; el filtro activo se ve relleno.
+- El leve realce al hover de las tarjetas respeta `prefers-reduced-motion`.
+- La nav respeta `env(safe-area-inset-bottom)` para PWA / dispositivos con notch.
 
-## 7. Pasos de implementación
+## 4. Relación con el rediseño del KB
 
-1. **`statCard` → `onClick` opcional** renderiza un `<button>`; agregar el CSS
-   `button.stat-card`. (Auto-contenido; sin cambio de comportamiento cuando falta
-   `onClick`.)
-2. **Deep-link:** enhebrar `goToDictionary(filter)` desde `renderDashboard` hacia
-   `renderStats`; cablear las tarjetas Known/Learning.
-3. **Chips de filtro:** reemplazar el `<select>` de filtro en `renderDictionary` por una
-   fila de chips manejada por `state.filter`; mantener `renderList` como está.
-4. **Toggle de orden + filas livianas:** cambiar el `<select>` de orden por un toggle
-   chico; pulido CSS en filas y en el select de estado por fila.
-5. Verificación manual (`npm run dev`): marcar algunas palabras, abrir stats, clicar
-   Known → aterriza en Dictionary filtrado a Known con el chip Known activo; clicar
-   Learning igual; la búsqueda sigue funcionando; el orden alterna.
-
-Los pasos 1–2 entregan el comportamiento estrella (conteos clicleables) y pueden
-entregarse solos; 3–4 son el pulido minimalista y pueden seguir.
-
-## 8. Accesibilidad y detalles
-
-- Las tarjetas interactivas son `<button>` reales (Enter/Espacio, anillo de foco, lector
-  de pantalla dice "botón"); las decorativas siguen siendo `<div>`.
-- Los chips son botones con `aria-pressed` reflejando el filtro activo.
-- Respetar `prefers-reduced-motion` para la elevación al hover.
-- Volver a Stats y regresar preserva `state.filter` (ya persiste en el objeto `state`
-  compartido durante la vida del dashboard).
-
-## 9. Relación con el rediseño de la KB
-
-Este rediseño solo toca presentación y navegación. Cuando aterrice
+Esto solo reestructura navegación y presentación. Cuando aterrice
 [dictionary-knowledge-base-implementation-ES.md](dictionary-knowledge-base-implementation-ES.md),
-las mismas filas del diccionario ganan sinónimos/antónimos/traducciones-por-acepción de
-la KB y un ícono de pin en los campos bloqueados, y un selector de idioma se suma a la
-fila de chips — sin retrabajo de la navegación construida aquí.
+sus campos más ricos (sinónimos/antónimos/traducciones por acepción, campos fijados/bloqueados)
+se renderizan dentro de los mismos `dictRow`, y un selector de idioma se une a la fila de chips
+— sin rehacer la navegación construida aquí.

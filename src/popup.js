@@ -3,12 +3,37 @@
 // callback.
 
 import { buildExternalLinks } from './externalLookup.js';
+import { getKbUrl } from './settings.js';
 
 const STATE_LABELS = [
   { state: 'known', label: 'Known', key: '1' },
   { state: 'learning', label: 'Learning', key: '2' },
   { state: 'unknown', label: 'Unknown', key: '3' },
 ];
+
+// Host[:port] of a URL, for a compact source label (e.g. "192.168.100.6:4321").
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+// Human-readable label for a definition's `source`, making it obvious whether the
+// answer came from the LOCAL dictionary (the LAN KB) or an ONLINE service.
+function sourceLabel(source) {
+  if (!source) return '';
+  if (source === 'kb') {
+    const host = hostOf(getKbUrl());
+    return host ? `Local dictionary · ${host}` : 'Local dictionary';
+  }
+  if (source === 'dictionary') return 'Online · dictionaryapi.dev';
+  if (source === 'contraction') return 'Contraction';
+  if (source === 'local') return 'Local dictionary';
+  if (source.startsWith('ollama')) return source.replace(/^ollama/, 'AI · Ollama');
+  return source;
+}
 
 function truncate(text, max) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -254,7 +279,7 @@ export class WordPopup {
     if (source) {
       const el = document.createElement('span');
       el.className = 'popup__slot-source';
-      el.textContent = source;
+      el.textContent = sourceLabel(source);
       slot.appendChild(el);
     }
     this.definition.hidden = false;
@@ -366,7 +391,7 @@ export class WordPopup {
     if (source) {
       const s = document.createElement('span');
       s.className = 'popup__slot-source';
-      s.textContent = source;
+      s.textContent = sourceLabel(source);
       slot.appendChild(s);
     }
     this.definition.hidden = false;

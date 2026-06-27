@@ -7,9 +7,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "ingest:en": "node server/ingest/run.js en"
   },
   "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
     "fflate": "^0.8.3",
     "pdfjs-dist": "^4.7.76"
   },

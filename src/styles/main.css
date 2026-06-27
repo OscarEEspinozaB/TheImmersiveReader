@@ -8,6 +8,7 @@
   --reader-max-width: 44rem;
   --topbar-h: 3rem;
   --pager-h: 3.2rem;
+  --nav-h: 3.6rem;
   --font-reading: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
   --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -369,6 +370,61 @@ body.chrome-hidden .pager {
   transform: translateY(100%);
 }
 
+/* Primary navigation: fixed bottom bar of first-level hub destinations. Hidden in
+   the immersive views (reader / swiper) via body.nav-hidden. */
+.primary-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  height: var(--nav-h);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+}
+
+body.nav-hidden .primary-nav {
+  display: none;
+}
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  font: inherit;
+  font-size: 0.7rem;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.nav-item .icon {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.nav-item:hover {
+  color: var(--text);
+}
+
+.nav-item.is-active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.nav-item:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -3px;
+  border-radius: 6px;
+}
+
 .pager button {
   font: inherit;
   color: var(--text);
@@ -583,7 +639,7 @@ body.chrome-hidden .pager {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: calc(var(--topbar-h) + 1rem) 1rem 1.5rem;
+  padding: calc(var(--topbar-h) + 1rem) 1rem calc(var(--nav-h) + 1.5rem);
 }
 
 .shelf__bar {
@@ -872,23 +928,17 @@ body.chrome-hidden .pager {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: calc(var(--topbar-h) + 0.5rem) 1rem 1.5rem;
+  padding: calc(var(--topbar-h) + 0.5rem) 1rem calc(var(--nav-h) + 1.5rem);
 }
 
-.dash__bar {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
+/* Dashboard content (Progress / Dictionary) shares one centered column. */
+.dashboard > * {
   max-width: 60rem;
-  margin: 0 auto 1rem;
+  margin-inline: auto;
 }
 
-.dash__tabs {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.dash__tab {
+/* Shared pill chip (dictionary filter chips, and any future pill toggle). */
+.chip {
   font: inherit;
   color: var(--text);
   background: transparent;
@@ -898,14 +948,39 @@ body.chrome-hidden .pager {
   cursor: pointer;
 }
 
-.dash__tab.is-active {
+.chip.is-active {
   border-color: var(--text);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
   font-weight: 600;
 }
 
-.dash__body {
-  max-width: 60rem;
-  margin: 0 auto;
+/* Language switcher: picks which language's dictionary / progress is shown. Each
+   language is its own dictionary and its own progress — switched here, in-UI. */
+.dash-lang {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.dash-lang__label {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.dash-lang__select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+}
+
+.dash-lang__select:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .dash__empty {
@@ -930,6 +1005,29 @@ body.chrome-hidden .pager {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
+}
+
+/* Clickable cards (Known / Learning) deep-link into the Dictionary. */
+.stat-card--btn {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.stat-card--btn:hover {
+  border-color: var(--text);
+}
+
+.stat-card--btn:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .stat-card--btn:hover {
+    transform: translateY(-1px);
+  }
 }
 
 .stat-card__value {
@@ -992,8 +1090,14 @@ body.chrome-hidden .pager {
 /* Dictionary */
 .dict-controls {
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.6rem;
   margin-bottom: 1rem;
+}
+
+.dict-controls__top {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .dict-search {
@@ -1007,13 +1111,25 @@ body.chrome-hidden .pager {
   padding: 0.4rem 0.7rem;
 }
 
-.dict-select {
+/* Sort toggle: a small pill that flips Recent ⇆ A–Z. */
+.dict-sort {
+  flex: none;
   font: inherit;
   color: var(--text);
-  background: var(--surface);
+  background: transparent;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0 0.5rem;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+
+.dict-sort:hover {
+  border-color: var(--text);
+}
+
+.dict-chips {
+  display: flex;
+  gap: 0.4rem;
 }
 
 .dict-list {
@@ -1046,11 +1162,19 @@ body.chrome-hidden .pager {
 .dict-row__state {
   font: inherit;
   font-size: 0.8rem;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
+  color: color-mix(in srgb, var(--text) 75%, transparent);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 6px;
   padding: 0.15rem 0.3rem;
+  cursor: pointer;
+}
+
+.dict-row__state:hover,
+.dict-row__state:focus {
+  color: var(--text);
+  background: var(--bg);
+  border-color: var(--border);
 }
 
 .dict-row__def {

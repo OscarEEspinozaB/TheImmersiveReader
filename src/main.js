@@ -11,7 +11,7 @@ import { attachMarking } from './marking.js';
 import { buildSentenceLookup } from './sentences.js';
 import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
-import { renderDashboard } from './dashboard.js';
+import { renderProgress, renderDictionary } from './dashboard.js';
 import { buildDeck, uniqueWords } from './deck.js';
 import { renderSwiper } from './swiper.js';
 import { alertDialog, confirmDialog, selectDialog } from './dialog.js';
@@ -38,6 +38,8 @@ import {
   setOllamaUrl,
   getOllamaModel,
   setOllamaModel,
+  getKbUrl,
+  setKbUrl,
   SORT_OPTIONS,
   getSortBy,
   setSortBy,
@@ -52,7 +54,10 @@ const shelf = document.getElementById('shelf');
 const shelfGrid = document.getElementById('shelf-grid');
 const shelfButton = document.getElementById('shelf-button');
 const dashboard = document.getElementById('dashboard');
-const vocabButton = document.getElementById('vocab-button');
+const primaryNav = document.getElementById('primary-nav');
+const navLibrary = document.getElementById('nav-library');
+const navDictionary = document.getElementById('nav-dictionary');
+const navProgress = document.getElementById('nav-progress');
 const swiperEl = document.getElementById('swiper');
 const addBookInput = document.getElementById('add-book');
 const viewToggle = document.getElementById('view-toggle');
@@ -69,6 +74,7 @@ const langSelect = document.getElementById('lang-select');
 const readingLangSelect = document.getElementById('reading-lang-select');
 const ollamaUrlInput = document.getElementById('ollama-url');
 const ollamaModelInput = document.getElementById('ollama-model');
+const kbUrlInput = document.getElementById('kb-url');
 const exportButton = document.getElementById('export-words');
 const importInput = document.getElementById('import-words');
 const resetButton = document.getElementById('reset-data');
@@ -85,7 +91,7 @@ loadVocabulary();
 // their component lemmas, so the stats count separated words, not contractions.
 migrateVocabularyEntries();
 
-// --- View switching: shelf / reader / vocabulary ---
+// --- View switching: shelf / reader / dictionary / progress / swiper ---
 function setView(view) {
   const reading = view === 'reader';
   // Tear down the swiper's key listener when leaving it.
@@ -94,11 +100,19 @@ function setView(view) {
     swiperEl._cleanup = null;
   }
   shelf.hidden = view !== 'shelf';
-  dashboard.hidden = view !== 'vocabulary';
+  dashboard.hidden = !(view === 'dictionary' || view === 'progress');
   swiperEl.hidden = view !== 'swiper';
   readerWrap.hidden = !reading;
   pager.hidden = !reading;
   shelfButton.hidden = !reading; // "back to library" only while reading
+
+  // Primary nav: shown only on the hub views, hidden in the immersive ones.
+  const hub = view === 'shelf' || view === 'dictionary' || view === 'progress';
+  document.body.classList.toggle('nav-hidden', !hub);
+  navLibrary.classList.toggle('is-active', view === 'shelf');
+  navDictionary.classList.toggle('is-active', view === 'dictionary');
+  navProgress.classList.toggle('is-active', view === 'progress');
+
   hasDocument = reading; // chrome auto-hide applies only in the reader
   if (reading) {
     showChrome();
@@ -123,10 +137,16 @@ async function openSwiper(id) {
   renderSwiper(swiperEl, { deck: cards, stats, onExit: showShelf });
 }
 
-function showDashboard() {
+function showProgress() {
   setMenuOpen(false);
-  setView('vocabulary');
-  renderDashboard(dashboard, { onBack: showShelf });
+  setView('progress');
+  renderProgress(dashboard, { onOpenDictionary: showDictionary });
+}
+
+function showDictionary(filter) {
+  setMenuOpen(false);
+  setView('dictionary');
+  renderDictionary(dashboard, { filter });
 }
 
 function renderLibrary() {
@@ -266,6 +286,8 @@ ollamaUrlInput.value = getOllamaUrl();
 ollamaUrlInput.addEventListener('change', () => setOllamaUrl(ollamaUrlInput.value));
 ollamaModelInput.value = getOllamaModel();
 ollamaModelInput.addEventListener('change', () => setOllamaModel(ollamaModelInput.value));
+kbUrlInput.value = getKbUrl();
+kbUrlInput.addEventListener('change', () => setKbUrl(kbUrlInput.value));
 
 // --- Vocabulary backup (export / import to a file) ---
 exportButton.addEventListener('click', () => {
@@ -379,7 +401,9 @@ function showDocument({ text, images = [] }, { restoreIndex = 0 } = {}) {
 
 // --- Shelf / add-book wiring ---
 shelfButton.addEventListener('click', showShelf);
-vocabButton.addEventListener('click', showDashboard);
+navLibrary.addEventListener('click', showShelf);
+navDictionary.addEventListener('click', () => showDictionary());
+navProgress.addEventListener('click', showProgress);
 viewToggle.addEventListener('click', () => {
   currentView = currentView === 'grid' ? 'list' : 'grid';
   renderLibrary();

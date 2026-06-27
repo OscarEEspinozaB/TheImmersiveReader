@@ -4,6 +4,7 @@
 // can change without touching the UI.
 
 import { lookupLocal } from './localDict.js';
+import { lookupKB } from './kbApi.js';
 import { lookupDictionaryApi } from './dictionaryApi.js';
 import { lookupOllama, explainInLanguage, decompose, isReachable } from './ollama.js';
 
@@ -28,7 +29,7 @@ export function isAiAvailable() {
  * @returns {Promise<Definition | null>}
  */
 export async function getQuickDefinition(word, sentence) {
-  for (const provider of [lookupLocal, lookupDictionaryApi]) {
+  for (const provider of [lookupLocal, lookupKB, lookupDictionaryApi]) {
     try {
       const res = await provider(word, sentence);
       if (res && res.explanation) return res;

@@ -1,7 +1,7 @@
 // Vocabulary dashboard: a Stats tab (counts + growth chart) and a Dictionary tab
 // (browse marked words with their cached dictionary + AI explanations).
 
-import { listEntries, setState, STATES, normalize, getState } from './vocabulary.js';
+import { listEntries, setState, STATES, normalize, getState, usedLanguages } from './vocabulary.js';
 import { summary, growthSeries, recent } from './stats.js';
 import { growthChart, splitDonut } from './charts.js';
 import { getCached, cacheDictionary } from './definitionsCache.js';
@@ -9,7 +9,13 @@ import { getQuickDefinition } from './definitions/index.js';
 import { buildExternalLinks } from './externalLookup.js';
 import { listBooks, getBookWords, setBookWords, getBookContent } from './library.js';
 import { uniqueWords } from './deck.js';
-import { getReadingLang, setActiveReadingLang, getDefaultReadingLang } from './settings.js';
+import {
+  getReadingLang,
+  setActiveReadingLang,
+  getDefaultReadingLang,
+  READING_LANGUAGES,
+  readingLangName,
+} from './settings.js';
 
 const DICT_CHUNK = 25; // dictionary rows rendered per windowed chunk
 const ROW_PX = 64; // height estimate per row (before measuring)
@@ -18,76 +24,82 @@ function truncate(text, max) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-/**
- * @param {HTMLElement} root
- * @param {{ onBack: () => void }} opts
- */
-export function renderDashboard(root, { onBack }) {
-  root.replaceChildren();
-  const state = { tab: 'stats', search: '', filter: 'all', sort: 'recent' };
+// Shared dictionary controls state, persisted across hub switches so search / sort
+// (and the last filter) survive leaving and re-entering the Dictionary view.
+const dictState = { search: '', filter: 'all', sort: 'recent' };
 
-  const bar = document.createElement('header');
-  bar.className = 'dash__bar';
+// The reading language the Progress / Dictionary hubs are scoped to. Vocabulary and
+// definitions are keyed per language, so each language is its OWN dictionary and its
+// OWN progress — never mixed. Defaults to the active reading language (the last book
+// opened) and is changed in-UI via the language switcher, not via settings.
+let dashLang = null;
 
-  const back = document.createElement('button');
-  back.type = 'button';
-  back.className = 'menu-toggle';
-  back.title = 'Back to library';
-  back.innerHTML =
-    '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
-  back.addEventListener('click', onBack);
-
-  const tabs = document.createElement('div');
-  tabs.className = 'dash__tabs';
-  const tabButtons = {};
-  for (const [id, label] of [['stats', 'Stats'], ['dictionary', 'Dictionary']]) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'dash__tab';
-    b.textContent = label;
-    b.addEventListener('click', () => {
-      state.tab = id;
-      updateTabs();
-      renderBody();
-    });
-    tabButtons[id] = b;
-    tabs.appendChild(b);
-  }
-
-  bar.append(back, tabs);
-  const body = document.createElement('div');
-  body.className = 'dash__body';
-  root.append(bar, body);
-
-  function updateTabs() {
-    for (const [id, b] of Object.entries(tabButtons)) {
-      b.classList.toggle('is-active', id === state.tab);
-    }
-  }
-
-  function renderBody() {
-    if (state._io) {
-      state._io.disconnect();
-      state._io = null;
-    }
-    body.replaceChildren();
-    if (state.tab === 'stats') renderStats(body);
-    else renderDictionary(body, state, root);
-  }
-
-  updateTabs();
-  renderBody();
+function currentLang() {
+  if (!dashLang) dashLang = getReadingLang();
+  return dashLang;
 }
 
-function renderStats(body) {
-  const s = summary();
-  const r = recent(7);
+/**
+ * A small selector that switches which language's dictionary / progress is shown.
+ * Lists every language that has marked words, plus the one currently in view. When
+ * changed it re-aligns the whole stack (state writes, lookups, caching) by setting
+ * the active reading language, then re-renders via `onChange`.
+ * @param {(code: string) => void} onChange
+ */
+function langSwitcher(onChange) {
+  const codes = new Set(usedLanguages());
+  codes.add(currentLang()); // always offer the language being viewed
+  const options = READING_LANGUAGES.filter((l) => codes.has(l.code));
+
+  const wrap = document.createElement('label');
+  wrap.className = 'dash-lang';
+
+  const text = document.createElement('span');
+  text.className = 'dash-lang__label';
+  text.textContent = 'Language';
+
+  const sel = document.createElement('select');
+  sel.className = 'dash-lang__select';
+  for (const { code } of options) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = readingLangName(code);
+    sel.appendChild(opt);
+  }
+  sel.value = currentLang();
+  sel.disabled = options.length <= 1; // nothing to switch between yet
+  sel.addEventListener('change', () => onChange(sel.value));
+
+  wrap.append(text, sel);
+  return wrap;
+}
+
+/**
+ * Progress hub: the user's learning at a glance (counts, growth, per-book).
+ * @param {HTMLElement} root
+ * @param {{ onOpenDictionary?: (filter: string) => void }} [opts]
+ */
+export function renderProgress(root, { onOpenDictionary } = {}) {
+  root.replaceChildren();
+  const lang = currentLang();
+  setActiveReadingLang(lang); // keep getState/cache in renderPerBook aligned
+
+  root.append(
+    langSwitcher((code) => {
+      dashLang = code;
+      renderProgress(root, { onOpenDictionary });
+    }),
+  );
+
+  const s = summary(lang);
+  const r = recent(7, lang);
 
   const cards = document.createElement('div');
   cards.className = 'stat-cards';
+  // Known / Learning are clickable: they deep-link into the Dictionary, pre-filtered.
   cards.append(
-    statCard('Known', s.known),
-    statCard('Learning', s.learning),
+    statCard('Known', s.known, onOpenDictionary && (() => onOpenDictionary('known'))),
+    statCard('Learning', s.learning, onOpenDictionary && (() => onOpenDictionary('learning'))),
     statCard('Total', s.total),
     statCard('This week', `+${r.known + r.learning}`),
   );
@@ -101,7 +113,7 @@ function renderStats(body) {
   const heading = document.createElement('div');
   heading.className = 'stat-chart__title';
   heading.textContent = 'Growth over time';
-  const points = growthSeries();
+  const points = growthSeries(lang);
   chartWrap.append(heading);
   if (points.length) {
     chartWrap.append(growthChart(points));
@@ -115,18 +127,24 @@ function renderStats(body) {
   const perBook = document.createElement('div');
   perBook.className = 'stat-perbook';
   perBook.innerHTML = '<div class="stat-chart__title">Per book</div>';
-  body.append(cards, split, chartWrap, perBook);
-  renderPerBook(perBook);
+  root.append(cards, split, chartWrap, perBook);
+  renderPerBook(perBook, lang);
 }
 
 // Per-book breakdown: how many of each book's unique words are known/learning/new.
-async function renderPerBook(container) {
-  const books = await listBooks();
-  if (!books.length) return;
+// Scoped to `lang` so it only shows books written in the language being viewed.
+async function renderPerBook(container, lang) {
   const prevLang = getReadingLang();
+  const books = (await listBooks()).filter((b) => (b.lang || getDefaultReadingLang()) === lang);
+  if (!books.length) {
+    const empty = document.createElement('p');
+    empty.className = 'dash__empty';
+    empty.textContent = 'No books in this language yet.';
+    container.appendChild(empty);
+    return;
+  }
   for (const book of books) {
-    // Word states (and tokenization) are language-scoped, so evaluate each book
-    // in its OWN language, not whichever book was last opened.
+    // Word states are language-scoped; every book here is already in `lang`.
     setActiveReadingLang(book.lang || getDefaultReadingLang());
     let words = await getBookWords(book.id);
     if (!words) {
@@ -162,9 +180,16 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
-function statCard(label, value) {
-  const card = document.createElement('div');
+// A stat card. With an `onClick` it renders as a real <button> (focusable, keyboard
+// accessible) that deep-links elsewhere; otherwise it's a plain, inert <div>.
+function statCard(label, value, onClick) {
+  const card = document.createElement(onClick ? 'button' : 'div');
   card.className = 'stat-card';
+  if (onClick) {
+    card.type = 'button';
+    card.classList.add('stat-card--btn');
+    card.addEventListener('click', onClick);
+  }
   card.innerHTML = `<span class="stat-card__value">${value}</span><span class="stat-card__label">${label}</span>`;
   return card;
 }
@@ -178,7 +203,31 @@ function legend() {
   return el;
 }
 
-function renderDictionary(body, state, scrollRoot) {
+/**
+ * Dictionary hub: browse marked words with their cached definitions.
+ * @param {HTMLElement} root
+ * @param {{ filter?: string }} [opts] When given, pre-selects a filter chip
+ *   (used by the Progress stat-card deep-link).
+ */
+export function renderDictionary(root, { filter } = {}) {
+  root.replaceChildren();
+  if (filter) dictState.filter = filter;
+  if (dictState._io) {
+    dictState._io.disconnect();
+    dictState._io = null;
+  }
+  const state = dictState;
+  const scrollRoot = root;
+  const lang = currentLang();
+  setActiveReadingLang(lang); // state writes / lookups / caching target this language
+
+  root.append(
+    langSwitcher((code) => {
+      dashLang = code;
+      renderDictionary(root, {});
+    }),
+  );
+
   const controls = document.createElement('div');
   controls.className = 'dict-controls';
 
@@ -188,10 +237,49 @@ function renderDictionary(body, state, scrollRoot) {
   search.className = 'dict-search';
   search.value = state.search;
 
-  const filter = select(['all', 'known', 'learning'], state.filter);
-  const sort = select(['recent', 'a-z'], state.sort);
+  // Sort toggle (Recent ⇆ A–Z) — same values the old <select> used.
+  const sortToggle = document.createElement('button');
+  sortToggle.type = 'button';
+  sortToggle.className = 'dict-sort';
+  const sortText = () => (state.sort === 'a-z' ? 'A–Z' : 'Recent');
+  sortToggle.textContent = sortText();
+  sortToggle.addEventListener('click', () => {
+    state.sort = state.sort === 'a-z' ? 'recent' : 'a-z';
+    sortToggle.textContent = sortText();
+    renderList();
+  });
 
-  controls.append(search, filter, sort);
+  const top = document.createElement('div');
+  top.className = 'dict-controls__top';
+  top.append(search, sortToggle);
+
+  // Filter chips (All / Known / Learning) replacing the old <select>; the active
+  // one is filled. Seeded from state.filter so a deep-link lands already filtered.
+  const chips = document.createElement('div');
+  chips.className = 'dict-chips';
+  const chipButtons = {};
+  for (const f of ['all', 'known', 'learning']) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.textContent = f[0].toUpperCase() + f.slice(1);
+    chip.addEventListener('click', () => {
+      state.filter = f;
+      updateChips();
+      renderList();
+    });
+    chipButtons[f] = chip;
+    chips.appendChild(chip);
+  }
+  function updateChips() {
+    for (const [f, chip] of Object.entries(chipButtons)) {
+      const on = f === state.filter;
+      chip.classList.toggle('is-active', on);
+      chip.setAttribute('aria-pressed', String(on));
+    }
+  }
+
+  controls.append(top, chips);
 
   const list = document.createElement('div');
   list.className = 'dict-list';
@@ -200,7 +288,7 @@ function renderDictionary(body, state, scrollRoot) {
     if (state._io) state._io.disconnect();
     list.replaceChildren();
 
-    let items = listEntries();
+    let items = listEntries(lang);
     if (state.filter !== 'all') items = items.filter((e) => e.state === state.filter);
     const q = state.search.trim().toLowerCase();
     if (q) items = items.filter((e) => e.word.includes(q));
@@ -208,7 +296,7 @@ function renderDictionary(body, state, scrollRoot) {
 
     // Search a word not in the list yet → offer to look it up.
     const key = normalize(q);
-    if (key && !listEntries().some((e) => e.word === key)) {
+    if (key && !listEntries(lang).some((e) => e.word === key)) {
       list.appendChild(lookupCard(key, renderList));
     }
 
@@ -264,30 +352,10 @@ function renderDictionary(body, state, scrollRoot) {
     state.search = search.value;
     renderList();
   });
-  filter.addEventListener('change', () => {
-    state.filter = filter.value;
-    renderList();
-  });
-  sort.addEventListener('change', () => {
-    state.sort = sort.value;
-    renderList();
-  });
 
-  body.append(controls, list);
+  root.append(controls, list);
+  updateChips();
   renderList();
-}
-
-function select(values, current) {
-  const el = document.createElement('select');
-  el.className = 'dict-select';
-  for (const v of values) {
-    const opt = document.createElement('option');
-    opt.value = v;
-    opt.textContent = v[0].toUpperCase() + v.slice(1);
-    el.appendChild(opt);
-  }
-  el.value = current;
-  return el;
 }
 
 function dictRow(entry, reRender) {

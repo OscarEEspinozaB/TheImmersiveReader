@@ -4,9 +4,12 @@ import { listEntries, counts } from './vocabulary.js';
 
 const DAY = 86400000;
 
-/** @returns {{ known:number, learning:number, total:number, pctKnown:number }} */
-export function summary() {
-  const c = counts();
+/**
+ * @param {string} [lang] scope the summary to a single reading language.
+ * @returns {{ known:number, learning:number, total:number, pctKnown:number }}
+ */
+export function summary(lang) {
+  const c = counts(lang);
   return { ...c, pctKnown: c.total ? Math.round((c.known / c.total) * 100) : 0 };
 }
 
@@ -16,8 +19,8 @@ export function summary() {
  * state — good enough to visualize growth.)
  * @returns {{ day:number, known:number, learning:number }[]}
  */
-export function growthSeries() {
-  const items = listEntries().filter((e) => Number.isFinite(e.at));
+export function growthSeries(lang) {
+  const items = listEntries(lang).filter((e) => Number.isFinite(e.at));
   if (!items.length) return [];
 
   const known = items.filter((e) => e.state === 'known').map((e) => e.at).sort((a, b) => a - b);
@@ -41,11 +44,11 @@ export function growthSeries() {
 }
 
 /** Count of words that reached Known/Learning within the last `days` days. */
-export function recent(days = 7) {
+export function recent(days = 7, lang) {
   const since = Date.now() - days * DAY;
   let known = 0;
   let learning = 0;
-  for (const e of listEntries()) {
+  for (const e of listEntries(lang)) {
     if (e.at < since) continue;
     if (e.state === 'known') known += 1;
     else if (e.state === 'learning') learning += 1;

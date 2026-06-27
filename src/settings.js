@@ -29,6 +29,9 @@ const settings = {
   defaultReadingLang: 'en', // default for NEW books; each book stores its own lang
   ollamaUrl: '',
   ollamaModel: DEFAULT_MODEL,
+  // Local dictionary KB service on the LAN. Defaults to the home machine so the
+  // offline dictionary works out of the box with no configuration.
+  kbUrl: 'http://192.168.100.6:4321',
   sortBy: 'lastRead',
   readingMode: 'paged', // 'paged' | 'continuous'
 };
@@ -51,6 +54,9 @@ function load() {
     activeReadingLang = settings.defaultReadingLang;
     if (typeof obj.ollamaUrl === 'string') settings.ollamaUrl = obj.ollamaUrl;
     if (typeof obj.ollamaModel === 'string' && obj.ollamaModel) settings.ollamaModel = obj.ollamaModel;
+    // Only a non-empty saved value overrides the default — a blank/absent one
+    // keeps the built-in home IP, so the local dictionary stays on by default.
+    if (typeof obj.kbUrl === 'string' && obj.kbUrl) settings.kbUrl = obj.kbUrl;
     if (SORT_OPTIONS.some((o) => o.value === obj.sortBy)) settings.sortBy = obj.sortBy;
     if (obj.readingMode === 'paged' || obj.readingMode === 'continuous') settings.readingMode = obj.readingMode;
   } catch {
@@ -128,6 +134,16 @@ export function getOllamaModel() {
 
 export function setOllamaModel(model) {
   settings.ollamaModel = (model || '').trim() || DEFAULT_MODEL;
+  save();
+}
+
+/** Local dictionary KB service URL, e.g. "http://192.168.100.6:4321" (empty = off). */
+export function getKbUrl() {
+  return settings.kbUrl;
+}
+
+export function setKbUrl(url) {
+  settings.kbUrl = (url || '').trim().replace(/\/+$/, '');
   save();
 }
 

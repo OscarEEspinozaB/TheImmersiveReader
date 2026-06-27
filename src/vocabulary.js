@@ -12,6 +12,11 @@
 /** @typedef {"known" | "learning" | "unknown"} WordState */
 
 import { getReadingLang } from './settings.js';
+// normalize()/normalizeSurface() live in a dependency-free module so the Node
+// dictionary service can share the exact same word-key rule. Re-exported here so
+// existing importers (marking.js, popup.js, …) keep importing from vocabulary.js.
+export { normalize, normalizeSurface } from './normalize.js';
+import { normalize } from './normalize.js';
 
 export const STATES = /** @type {const} */ (['unknown', 'learning', 'known']);
 export const DEFAULT_STATE = 'unknown';
@@ -23,46 +28,6 @@ const STORAGE_KEY = 'immersive-reader.vocabulary.v2';
 const LEGACY_STORAGE_KEY = 'immersive-reader.vocabulary.v1';
 // A stored key already carrying a "<lang>:" prefix (en, es, pt-BR, …).
 const LANG_PREFIX = /^[a-z]{2}(?:-[A-Z]{2})?:/;
-
-const TRIM_EDGES = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
-// Curly/typographic apostrophes that EPUB and PDF sources often use instead of
-// the plain ASCII apostrophe. Normalizing early means all downstream regexes
-// (POSSESSIVE_S, contraction table keys, etc.) only need to handle U+0027.
-//   U+2018  ‘  LEFT SINGLE QUOTATION MARK
-//   U+2019  ‘  RIGHT SINGLE QUOTATION MARK
-//   U+02BC  ʼ  MODIFIER LETTER APOSTROPHE
-const CURLY_APOS = /[‘’ʼ]/g;
-// Possessive ‘s suffix: "Dursley’s" → "dursley", "Harry’s" → "harry".
-// "he’s"→"he", "it’s"→"it" are acceptable conflations for vocabulary learning.
-const POSSESSIVE_S = /'s$/; // U+0027 straight apostrophe + s at end
-
-/**
- * Canonical surface form: lowercase, curly apostrophes → straight, edges
- * trimmed, but the apostrophe is KEPT. This is the key used to look a word up in
- * the contraction registry ("didn't", "you'd", "it's" stay intact).
- * @param {string} word
- * @returns {string}
- */
-export function normalizeSurface(word) {
-  return word
-    .toLowerCase()
-    .normalize('NFC')
-    .replace(CURLY_APOS, "'")
-    .replace(TRIM_EDGES, '');
-}
-
-/**
- * Normalize a surface word into its vocabulary key (a single lemma). Same as
- * {@link normalizeSurface} but also strips a trailing possessive 's
- * ("Dursley's" → "dursley"). Contractions are handled separately (they map to
- * several lemmas, not one) — see contractions.js — so this is only the key for
- * ordinary words and possessives.
- * @param {string} word
- * @returns {string}
- */
-export function normalize(word) {
-  return normalizeSurface(word).replace(POSSESSIVE_S, '');
-}
 
 /**
  * In-memory store of non-default entries, keyed by the language-scoped key
@@ -104,29 +69,55 @@ export function setState(word, state) {
 }
 
 /**
- * All non-default entries. The stored key is "<lang>:<word>"; it is split back
- * into a bare `word` (lemma) plus its `lang`, so existing readers that only use
- * `word`/`state`/`at` keep working.
- * @returns {{ word: string, lang: string, state: WordState, at: number }[]}
+ * Split a stored "<lang>:<word>" key into its language and bare word (lemma).
+ * @param {string} key
  */
-export function listEntries() {
-  return [...entries].map(([key, e]) => {
-    const sep = key.indexOf(':');
-    const lang = sep > 0 ? key.slice(0, sep) : '';
-    const word = sep > 0 ? key.slice(sep + 1) : key;
-    return { word, lang, state: e.state, at: e.at };
-  });
+function splitKey(key) {
+  const sep = key.indexOf(':');
+  return sep > 0 ? { lang: key.slice(0, sep), word: key.slice(sep + 1) } : { lang: '', word: key };
 }
 
-/** @returns {{ known: number, learning: number, total: number }} */
-export function counts() {
+/**
+ * Non-default entries, optionally scoped to a single reading language. The stored
+ * key is "<lang>:<word>"; it is split back into a bare `word` (lemma) plus its
+ * `lang`, so existing readers that only use `word`/`state`/`at` keep working.
+ * @param {string} [lang] when given, only entries in this language are returned.
+ * @returns {{ word: string, lang: string, state: WordState, at: number }[]}
+ */
+export function listEntries(lang) {
+  const out = [];
+  for (const [key, e] of entries) {
+    const { lang: l, word } = splitKey(key);
+    if (lang && l !== lang) continue;
+    out.push({ word, lang: l, state: e.state, at: e.at });
+  }
+  return out;
+}
+
+/**
+ * Known/learning/total counts, optionally scoped to a single reading language.
+ * @param {string} [lang]
+ * @returns {{ known: number, learning: number, total: number }}
+ */
+export function counts(lang) {
   let known = 0;
   let learning = 0;
-  for (const e of entries.values()) {
+  for (const [key, e] of entries) {
+    if (lang && splitKey(key).lang !== lang) continue;
     if (e.state === 'known') known += 1;
     else if (e.state === 'learning') learning += 1;
   }
   return { known, learning, total: known + learning };
+}
+
+/** Reading-language codes that currently have at least one marked word. */
+export function usedLanguages() {
+  const set = new Set();
+  for (const key of entries.keys()) {
+    const { lang } = splitKey(key);
+    if (lang) set.add(lang);
+  }
+  return [...set];
 }
 
 // Coerce a stored/imported value (legacy string OR { state, at }) into an entry.

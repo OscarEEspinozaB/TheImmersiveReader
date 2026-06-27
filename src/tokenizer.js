@@ -23,6 +23,13 @@ const CONTR_CLITIC = /^['‘’ʼ](?:t|d|re|ve|ll|m)$/i;
 // Standalone possessive 's — surface text only, not a vocabulary word.
 const POSSESSIVE_CLITIC = /^['‘’ʼ]s$/i;
 
+// A word-like segment that is purely a number ("0", "42", "1.1", "1,000", "3:30")
+// is not vocabulary — render it as plain text so it never joins the red sea. Tokens
+// mixing letters and digits ("covid19", "mp3", "1st") stay words.
+function isNumeric(segment) {
+  return /\p{N}/u.test(segment) && !/\p{L}/u.test(segment);
+}
+
 /**
  * @param {string} text clean text string
  * @returns {Token[]}
@@ -31,7 +38,7 @@ export function tokenize(text) {
   const segmenter = new Intl.Segmenter(getReadingLang(), { granularity: 'word' });
   const tokens = [];
   for (const seg of segmenter.segment(text)) {
-    const isWord = seg.isWordLike === true;
+    const isWord = seg.isWordLike === true && !isNumeric(seg.segment);
     const prev = tokens.length > 0 ? tokens[tokens.length - 1] : null;
 
     // Merge contractive clitics onto the preceding word ("didn" + "'t" → "didn't").
