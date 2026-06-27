@@ -6,6 +6,7 @@
 
 import { normalize } from './vocabulary.js';
 import { getReadingLang } from './settings.js';
+import { CONTR_CLITIC, POSSESSIVE_CLITIC, isNumeric } from './words.js';
 
 /**
  * @typedef {Object} Token
@@ -14,21 +15,6 @@ import { getReadingLang } from './settings.js';
  * @property {boolean} isWord    false for whitespace / punctuation chunks
  * @property {number} start      character offset of this token in the source text
  */
-
-// English contractive clitics ('t, 'd, 're, 've, 'll, 'm) and curly-apostrophe
-// variants. If the segmenter emits them as standalone segments, we merge them
-// back into the preceding word token so "didn't" stays one vocabulary entry.
-const CONTR_CLITIC = /^['‘’ʼ](?:t|d|re|ve|ll|m)$/i;
-
-// Standalone possessive 's — surface text only, not a vocabulary word.
-const POSSESSIVE_CLITIC = /^['‘’ʼ]s$/i;
-
-// A word-like segment that is purely a number ("0", "42", "1.1", "1,000", "3:30")
-// is not vocabulary — render it as plain text so it never joins the red sea. Tokens
-// mixing letters and digits ("covid19", "mp3", "1st") stay words.
-function isNumeric(segment) {
-  return /\p{N}/u.test(segment) && !/\p{L}/u.test(segment);
-}
 
 /**
  * @param {string} text clean text string

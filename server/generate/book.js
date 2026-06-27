@@ -16,7 +16,7 @@
 
 import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
-import { normalize } from '../../src/normalize.js';
+import { extractWords } from '../../src/words.js';
 import { getDb } from '../db.js';
 import { refineWords } from './build.js';
 import { extractPdfText } from '../ingest/pdfText.js';
@@ -44,12 +44,13 @@ async function loadText(file) {
 
 // Unique words in READING ORDER (first appearance) by default, or by descending
 // frequency with --by-frequency. Filtered by --min-count, then capped by --limit.
-function orderWords(text, { minCount, limit, byFrequency }) {
+// Uses the shared segmenter (src/words.js) so the words match what the reader makes
+// clickable: hyphenated compounds split, numbers/possessives dropped, contractions
+// kept whole.
+function orderWords(text, { lang, minCount, limit, byFrequency }) {
   const counts = new Map();
   const appearance = []; // each word once, in the order it first appears
-  for (const tok of text.split(/\s+/)) {
-    const w = normalize(tok);
-    if (!w) continue;
+  for (const w of extractWords(text, lang)) {
     if (!counts.has(w)) {
       counts.set(w, 0);
       appearance.push(w);
