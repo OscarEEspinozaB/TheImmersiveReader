@@ -27,6 +27,20 @@ defineRouter.get('/define', (req, res) => {
   const relStmt = db.prepare('SELECT to_word, type FROM relations WHERE from_sense = ?');
   const inflections = db.prepare('SELECT tag, form FROM inflections WHERE entry_id = ?').all(id);
 
+  // The AI-refined "clean" definition, if this word has been built (read-through).
+  // When present it is the entry's primary definition; the raw senses stay below.
+  const refinedRow = db
+    .prepare('SELECT definition, synonyms, antonyms, model FROM refined WHERE entry_id = ?')
+    .get(id);
+  const refined = refinedRow
+    ? {
+        definition: refinedRow.definition,
+        synonyms: JSON.parse(refinedRow.synonyms || '[]'),
+        antonyms: JSON.parse(refinedRow.antonyms || '[]'),
+        model: refinedRow.model || undefined,
+      }
+    : undefined;
+
   res.json({
     entry: {
       id: entry.id,
@@ -34,6 +48,7 @@ defineRouter.get('/define', (req, res) => {
       word: entry.word,
       pos: JSON.parse(entry.pos || '[]'),
       inflections,
+      refined,
       senses: senses.map((s) => {
         const relations = relStmt.all(s.id);
         return {

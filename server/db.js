@@ -80,6 +80,19 @@ CREATE TABLE IF NOT EXISTS generation_progress (
   status TEXT NOT NULL,            -- "running" | "paused" | "done" | "error"
   started_at INTEGER
 );
+
+-- AI-refined "clean" view of an entry, built once from the raw Kaikki data: a
+-- single simple-English definition plus curated synonyms/antonyms. Stored beside
+-- (not over) the raw senses so a re-refine can replace it without losing the
+-- offline source, and /define serves it as the primary definition when present.
+CREATE TABLE IF NOT EXISTS refined (
+  entry_id     TEXT PRIMARY KEY REFERENCES entries(id),
+  definition   TEXT NOT NULL,
+  synonyms     TEXT NOT NULL DEFAULT '[]',  -- JSON array
+  antonyms     TEXT NOT NULL DEFAULT '[]',  -- JSON array
+  model        TEXT,
+  generated_at INTEGER NOT NULL
+);
 `;
 
 /** The KB schema version stamped on each entry (for later batch migrations). */

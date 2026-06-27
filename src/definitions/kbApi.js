@@ -60,19 +60,40 @@ export async function lookupKB(word) {
 
   const data = await res.json();
   const entry = data?.entry;
-  const senses = Array.isArray(entry?.senses) ? entry.senses : [];
+  if (!entry) return null;
+  const senses = Array.isArray(entry.senses) ? entry.senses : [];
+  const inflections = Array.isArray(entry.inflections) ? entry.inflections : []; // [{ tag, form }]
+  const pos = Array.isArray(entry.pos) ? entry.pos : [];
+
+  // Prefer the AI-refined "clean" entry when this word has been built: one
+  // simple-English definition plus its curated synonyms/antonyms. Verb tenses
+  // always come from the raw (deterministic) Kaikki data.
+  const refined = entry.refined;
+  if (refined?.definition) {
+    return {
+      explanation: refined.definition.trim(),
+      source: 'kb',
+      kb: {
+        pos,
+        inflections,
+        synonyms: relatedList(refined.synonyms || [], word),
+        antonyms: relatedList(refined.antonyms || [], word),
+      },
+    };
+  }
+
+  // Otherwise fall back to the raw data: first definition + synonyms/antonyms
+  // aggregated across all senses.
   const explanation = senses[0]?.definition?.trim();
   if (!explanation) return null;
-
-  // Aggregate the richer linguistic data across all senses so the UI can show
-  // verb tenses, synonyms and antonyms — not just the first definition.
-  const synonyms = relatedList(senses.flatMap((s) => s.synonyms || []), word);
-  const antonyms = relatedList(senses.flatMap((s) => s.antonyms || []), word);
-  const kb = {
-    pos: Array.isArray(entry.pos) ? entry.pos : [],
-    inflections: Array.isArray(entry.inflections) ? entry.inflections : [], // [{ tag, form }]
-    synonyms,
-    antonyms,
+  return {
+    explanation,
+    source: 'kb',
+    kb: {
+      pos,
+      inflections,
+      synonyms: relatedList(senses.flatMap((s) => s.synonyms || []), word),
+      antonyms: relatedList(senses.flatMap((s) => s.antonyms || []), word),
+    },
   };
-  return { explanation, source: 'kb', kb };
 }
