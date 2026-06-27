@@ -300,12 +300,19 @@ export class WordPopup {
     return block;
   }
 
-  showRefreshAiButton(onRefresh) {
+  /**
+   * Show the on-demand AI button. The AI (Ollama) is never auto-queried — the
+   * user asks for the current context explicitly, for every word state.
+   * @param {string} label e.g. "Ask AI (this context)"
+   * @param {() => void} onAsk
+   */
+  showAiButton(label, onAsk) {
+    this.refreshAiButton.textContent = label;
     this.refreshAiButton.hidden = false;
-    this._onRefreshAi = onRefresh;
+    this._onRefreshAi = onAsk;
   }
 
-  hideRefreshAiButton() {
+  hideAiButton() {
     this.refreshAiButton.hidden = true;
   }
 

@@ -6,9 +6,9 @@
 // It sits in the quick chain AFTER the contraction lookup and BEFORE the public
 // dictionaryapi.dev, so it's preferred when available but never blocks the reader:
 // any miss / unreachable host / error returns null and the existing chain takes
-// over unchanged. The result is the same { explanation, source } shape the rest of
-// the UI already renders; the richer KB fields (inflections, synonyms, per-sense
-// translations) are surfaced by the Dictionary-tab redesign, not here.
+// over unchanged. The returned Definition carries the richer KB fields (pos, verb
+// tenses, synonyms, antonyms) for the popup/Dictionary tab, plus `refined` telling
+// the reader whether to trigger a background build (see requestKbBuild).
 
 import { getKbUrl, getReadingLang } from '../settings.js';
 
@@ -67,12 +67,14 @@ export async function lookupKB(word) {
 
   // Prefer the AI-refined "clean" entry when this word has been built: one
   // simple-English definition plus its curated synonyms/antonyms. Verb tenses
-  // always come from the raw (deterministic) Kaikki data.
+  // always come from the raw (deterministic) Kaikki data. `refined: true` tells
+  // the reader this entry is already built, so no background build is needed.
   const refined = entry.refined;
   if (refined?.definition) {
     return {
       explanation: refined.definition.trim(),
       source: 'kb',
+      refined: true,
       kb: {
         pos,
         inflections,
@@ -83,12 +85,14 @@ export async function lookupKB(word) {
   }
 
   // Otherwise fall back to the raw data: first definition + synonyms/antonyms
-  // aggregated across all senses.
+  // aggregated across all senses. `refined: false` — the reader will trigger a
+  // background build so the next lookup serves the refined version.
   const explanation = senses[0]?.definition?.trim();
   if (!explanation) return null;
   return {
     explanation,
     source: 'kb',
+    refined: false,
     kb: {
       pos,
       inflections,
@@ -96,4 +100,40 @@ export async function lookupKB(word) {
       antonyms: relatedList(senses.flatMap((s) => s.antonyms || []), word),
     },
   };
+}
+
+// Words for which a background build has already been requested this session, so
+// we never fire the same slow LLM job twice.
+const buildRequested = new Set();
+
+/**
+ * Read-through build: ask the KB service to refine + store this word in the
+ * background. Fire-and-forget — the reader never waits on it. Resolves to true if
+ * the KB now has a refined entry for the word (built just now, or already present),
+ * so the caller can re-fetch and upgrade the popup; false if nothing was built
+ * (Ollama unreachable, true miss, or KB off).
+ * @param {string} word normalized word
+ * @returns {Promise<boolean>}
+ */
+export async function requestKbBuild(word) {
+  const base = getKbUrl();
+  if (!base || !word || buildRequested.has(word)) return false;
+  buildRequested.add(word);
+  try {
+    const res = await fetch(`${base}/build`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words: [word], lang: getReadingLang() }),
+    });
+    if (!res.ok) {
+      buildRequested.delete(word); // let a later click retry
+      return false;
+    }
+    const data = await res.json();
+    const status = data?.results?.[0]?.status;
+    return status === 'refined' || status === 'skipped';
+  } catch {
+    buildRequested.delete(word); // unreachable — allow a retry next time
+    return false;
+  }
 }

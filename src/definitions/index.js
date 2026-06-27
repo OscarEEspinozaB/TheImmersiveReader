@@ -4,9 +4,11 @@
 // can change without touching the UI.
 
 import { lookupLocal } from './localDict.js';
-import { lookupKB } from './kbApi.js';
+import { lookupKB, requestKbBuild } from './kbApi.js';
 import { lookupDictionaryApi } from './dictionaryApi.js';
 import { lookupOllama, explainInLanguage, decompose, isReachable } from './ollama.js';
+
+export { requestKbBuild };
 
 /** Whether the AI (Ollama) is currently reachable. Cached probe. */
 export function isAiAvailable() {
@@ -17,6 +19,8 @@ export function isAiAvailable() {
  * @typedef {Object} Definition
  * @property {string} explanation
  * @property {string} source  e.g. "dictionary" | "ollama" | "local" | "kb"
+ * @property {boolean} [refined]  for `kb` source: whether the entry is the
+ *   AI-refined one (true) or still the raw Kaikki data (false, build pending)
  * @property {import('../definitionsCache.js').KbDetails} [kb]  rich data from the
  *   local KB (part of speech, verb tenses, synonyms, antonyms); only on `kb` source
  */
