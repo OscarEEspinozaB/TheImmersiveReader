@@ -515,8 +515,23 @@ function dictRow(entry, reRender) {
     p.className = 'dict-row__def';
     p.textContent = dict;
     row.appendChild(p);
-    const details = renderKbDetails(cached?.dictionary?.kb);
-    if (details) row.appendChild(details);
+    const detailHost = document.createElement('div');
+    const initial = renderKbDetails(cached?.dictionary?.kb);
+    if (initial) detailHost.appendChild(initial);
+    row.appendChild(detailHost);
+
+    // A cached KB definition can be stale (the word was rebuilt / re-refined with a
+    // stronger model). Revalidate against the local KB and update in place.
+    if (cached.dictionary.source === 'kb') {
+      getQuickDefinition(entry.word, '').then((fresh) => {
+        if (!fresh || fresh.explanation === cached.dictionary.explanation) return;
+        cacheDictionary(entry.word, fresh);
+        p.textContent = fresh.explanation;
+        detailHost.replaceChildren();
+        const refreshed = renderKbDetails(fresh.kb);
+        if (refreshed) detailHost.appendChild(refreshed);
+      });
+    }
   }
   for (const ctx of ai) {
     const block = document.createElement('div');

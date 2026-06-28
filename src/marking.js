@@ -102,17 +102,27 @@ export function attachMarking(flow, { getSentence = () => '' } = {}) {
     });
   };
 
-  // Load the quick (local) dictionary for a word, cache-first. The AI is separate
-  // and on-demand (setupAi), so this never triggers a blocking LLM call — but a
-  // non-refined entry kicks off a background KB build (read-through).
+  // Load the quick dictionary for a word. The AI is separate and on-demand
+  // (setupAi), so this never triggers a blocking LLM call — but a non-refined entry
+  // kicks off a background KB build (read-through).
+  //
+  // Caching is stale-while-revalidate for KB entries: a word's KB entry can be
+  // rebuilt (read-through, or a re-refine with a stronger model), so a cached KB
+  // definition may be out of date. We show the cached one instantly, then always
+  // re-query the (local, fast) KB and update if it changed. Online/local/contraction
+  // definitions are stable, so those are trusted from cache without a refetch.
   const loadDictionary = (word, sentence, active) => {
-    const cached = getCached(word);
-    if (cached?.dictionary) {
-      popup.setQuick(cached.dictionary);
-      buildInBackground(word, cached.dictionary, sentence, active);
+    const cached = getCached(word)?.dictionary;
+
+    if (cached && cached.source !== 'kb') {
+      popup.setQuick(cached);
+      buildInBackground(word, cached, sentence, active);
       return;
     }
-    popup.quickLoading();
+
+    if (cached) popup.setQuick(cached); // KB cache: show instantly, then revalidate
+    else popup.quickLoading();
+
     getQuickDefinition(word, sentence)
       .then((def) => {
         if (!active()) return;
@@ -120,12 +130,12 @@ export function attachMarking(flow, { getSentence = () => '' } = {}) {
           cacheDictionary(word, def);
           popup.setQuick(def);
           buildInBackground(word, def, sentence, active);
-        } else {
+        } else if (!cached) {
           popup.setQuickLinks(word);
           buildInBackground(word, { source: 'miss' }, sentence, active);
         }
       })
-      .catch(() => active() && popup.setQuickLinks(word));
+      .catch(() => active() && !cached && popup.setQuickLinks(word));
   };
 
   // Show the contraction breakdown ("didn't = did + not") with each part's
