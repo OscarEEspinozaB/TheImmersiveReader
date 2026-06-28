@@ -587,6 +587,11 @@ body.nav-hidden .primary-nav {
   opacity: 0.7;
 }
 
+.kb-formof {
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
 .kb-label {
   font-size: 0.7em;
   text-transform: uppercase;

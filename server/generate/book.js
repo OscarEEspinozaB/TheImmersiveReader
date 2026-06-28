@@ -1,7 +1,9 @@
 // Batch dictionary builder for a whole study book.
 //
-//   node server/generate/book.js <file> [--batch N] [--lang en] [--limit N] [--min-count M] [--force]
+//   node server/generate/book.js <file> [--batch N] [--model M] [--lang en] [--limit N] [--min-count M] [--force]
 //   npm run build:book -- "Book 1 - The Philosopher's Stone.pdf" --batch 500
+//   # re-refine everything with a stronger model:
+//   npm run build:book -- "Book 1 - The Philosopher's Stone.pdf" --model gemma4:e4b --force
 //
 // Extracts the book's text (PDF via pdfjs, or plain .txt/.md) and refines + stores
 // each unique word IN READING ORDER (the order it first appears in the book) — a
@@ -22,12 +24,13 @@ import { refineWords } from './build.js';
 import { extractPdfText } from '../ingest/pdfText.js';
 
 function parseArgs(argv) {
-  const opts = { lang: 'en', file: null, batch: 0, limit: 0, minCount: 1, force: false, byFrequency: false };
+  const opts = { lang: 'en', file: null, batch: 0, limit: 0, minCount: 1, force: false, byFrequency: false, model: '' };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--force') opts.force = true;
     else if (a === '--by-frequency') opts.byFrequency = true;
     else if (a === '--lang') opts.lang = argv[++i];
+    else if (a === '--model') opts.model = argv[++i];
     else if (a === '--batch') opts.batch = Number(argv[++i]) || 0;
     else if (a === '--limit') opts.limit = Number(argv[++i]) || 0;
     else if (a === '--min-count') opts.minCount = Number(argv[++i]) || 1;
@@ -90,7 +93,7 @@ console.log(
     `${pendingAll.length.toLocaleString()} pending → processing ${toProcess.length.toLocaleString()} this run ` +
     `(order=${opts.byFrequency ? 'frequency' : 'reading'}, lang=${opts.lang}, min-count=${opts.minCount}` +
     `${opts.limit ? `, limit=${opts.limit}` : ''}${opts.batch ? `, batch=${opts.batch}` : ''}` +
-    `${opts.force ? ', force' : ''}).\n`,
+    `${opts.model ? `, model=${opts.model}` : ''}${opts.force ? ', force' : ''}).\n`,
 );
 
 if (!toProcess.length) {
@@ -109,6 +112,7 @@ await refineWords({
   lang: opts.lang,
   words: toProcess,
   force: opts.force,
+  ...(opts.model ? { model: opts.model } : {}),
   onResult: (r) => {
     done += 1;
     counts[r.status] = (counts[r.status] || 0) + 1;

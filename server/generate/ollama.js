@@ -25,15 +25,30 @@ async function fetchWithTimeout(url, options, timeout) {
   }
 }
 
-function buildPrompt({ word, pos, definitions, synonyms, antonyms }) {
+// Phrase the inflection link for the prompt, e.g. "past tense / past participle".
+const FORM_WORDS = {
+  past: 'past tense',
+  'past participle': 'past participle',
+  'present participle': 'present participle',
+  'third-person singular': 'third-person singular',
+};
+
+function buildPrompt({ word, pos, definitions, synonyms, antonyms, formOf }) {
   const posLine = pos.length ? `Part of speech: ${pos.join(', ')}.` : '';
   const defList = definitions.map((d, i) => `${i + 1}. ${d}`).join('\n');
   const synLine = synonyms.length ? `Known synonyms: ${synonyms.join(', ')}.` : '';
   const antLine = antonyms.length ? `Known antonyms: ${antonyms.join(', ')}.` : '';
+  // The single most important fact for an inflected form — keep it in the definition.
+  const formLine = formOf?.lemma
+    ? `IMPORTANT: "${word}" is the ${(formOf.tags || []).map((t) => FORM_WORDS[t] || t).join(' / ')} ` +
+      `of the verb "${formOf.lemma}". The definition MUST start by saying so, e.g. ` +
+      `"${(FORM_WORDS[formOf.tags?.[0]] || 'form').replace(/^./, (c) => c.toUpperCase())} of '${formOf.lemma}': …".`
+    : '';
   return [
     `You are writing a learner's dictionary for someone learning English.`,
     `Refine the dictionary data below for the word "${word}" into ONE clear definition.`,
     posLine,
+    formLine,
     `Source definitions (may be archaic, noisy, or list several senses):`,
     defList,
     synLine,
@@ -65,10 +80,11 @@ function cleanList(value) {
 
 /**
  * Refine one entry's raw data into a clean simple-English definition.
- * @param {{ word: string, pos: string[], definitions: string[], synonyms: string[], antonyms: string[] }} raw
+ * @param {{ word: string, pos: string[], definitions: string[], synonyms: string[], antonyms: string[], formOf?: { lemma: string, tags: string[] } }} raw
+ * @param {string} [model] Ollama model to use (default REFINE_MODEL)
  * @returns {Promise<{ definition: string, synonyms: string[], antonyms: string[] } | null>}
  */
-export async function refineEntry(raw) {
+export async function refineEntry(raw, model = REFINE_MODEL) {
   const prompt = buildPrompt(raw);
   let res;
   try {
@@ -77,7 +93,7 @@ export async function refineEntry(raw) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: REFINE_MODEL, prompt, stream: false, format: 'json' }),
+        body: JSON.stringify({ model, prompt, stream: false, format: 'json' }),
       },
       TIMEOUT,
     );

@@ -19,6 +19,19 @@ const POS_LABELS = {
 // Order the verb-tense tags the way a learner reads them, regardless of dump order.
 const TENSE_ORDER = ['past', 'past participle', 'present participle', 'third-person singular'];
 
+// Readable phrasing for "<word> is the <tag> of <lemma>".
+const FORM_LABELS = {
+  past: 'Past tense',
+  'past participle': 'Past participle',
+  'present participle': 'Present participle',
+  'third-person singular': 'Third-person singular',
+};
+
+function formOfLabel(tags) {
+  const labels = (tags || []).map((t) => FORM_LABELS[t] || t);
+  return labels.length ? labels.join(' / ') : 'Form';
+}
+
 function posLabel(pos) {
   return POS_LABELS[pos] || pos;
 }
@@ -65,11 +78,23 @@ export function renderKbDetails(kb) {
   const tenses = groupTenses(kb.inflections || []);
   const synonyms = kb.synonyms || [];
   const antonyms = kb.antonyms || [];
-  if (!pos.length && !tenses.length && !synonyms.length && !antonyms.length) return null;
+  const formOf = kb.formOf && kb.formOf.lemma ? kb.formOf : null;
+  if (!pos.length && !tenses.length && !synonyms.length && !antonyms.length && !formOf) return null;
 
   const frag = document.createDocumentFragment();
   const wrap = document.createElement('div');
   wrap.className = 'kb-details';
+
+  // "Past tense of come" — an inflected form pointing at its base word.
+  if (formOf) {
+    const row = document.createElement('div');
+    row.className = 'kb-row kb-formof';
+    row.append(`${formOfLabel(formOf.tags)} of `);
+    const lemma = document.createElement('b');
+    lemma.textContent = formOf.lemma;
+    row.appendChild(lemma);
+    wrap.appendChild(row);
+  }
 
   if (pos.length) {
     const row = document.createElement('div');

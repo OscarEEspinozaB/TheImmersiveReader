@@ -8,11 +8,13 @@
 // raw senses/inflections, so it is safe to re-run with a better model later.
 
 import { normalize } from '../../src/normalize.js';
+import { formOf } from '../lemma.js';
 import { refineEntry, REFINE_MODEL } from './ollama.js';
 
 // Pull the raw data the refiner needs for one entry, or null if the word is not
 // in the KB at all (a true miss — nothing to refine from yet).
-function readRaw(db, id) {
+function readRaw(db, lang, word) {
+  const id = `${lang}:${word}`;
   const entry = db.prepare('SELECT pos FROM entries WHERE id = ?').get(id);
   if (!entry) return null;
   const senses = db
@@ -32,6 +34,8 @@ function readRaw(db, id) {
     definitions: senses.slice(0, 8).map((s) => s.definition),
     synonyms: [...synonyms].slice(0, 20),
     antonyms: [...antonyms].slice(0, 20),
+    // "came" → { lemma: "come", tags: ["past", ...] } so the prompt keeps the link.
+    formOf: formOf(db, lang, word),
   };
 }
 
@@ -42,11 +46,12 @@ function readRaw(db, id) {
  * @param {string} opts.lang
  * @param {string[]} opts.words surface or normalized words (deduped internally)
  * @param {boolean} [opts.force] re-refine even if a refined row already exists
+ * @param {string} [opts.model] Ollama model to refine with (default REFINE_MODEL)
  * @param {(word: string) => void} [opts.onStart] called just before a word's slow LLM build
  * @param {(r: { word: string, status: string, definition?: string }) => void} [opts.onResult]
  * @returns {Promise<{ word: string, status: string, definition?: string }[]>}
  */
-export async function refineWords({ db, lang, words, force = false, onStart, onResult }) {
+export async function refineWords({ db, lang, words, force = false, model = REFINE_MODEL, onStart, onResult }) {
   const hasRefined = db.prepare('SELECT 1 FROM refined WHERE entry_id = ?');
   const upsertRefined = db.prepare(`
     INSERT INTO refined (entry_id, definition, synonyms, antonyms, model, generated_at)
@@ -76,14 +81,14 @@ export async function refineWords({ db, lang, words, force = false, onStart, onR
       results.push(r); onResult?.(r);
       continue;
     }
-    const raw = readRaw(db, id);
+    const raw = readRaw(db, lang, word);
     if (!raw) {
       const r = { word, status: 'absent' }; // not in KB — a true miss (future LLM-from-scratch)
       results.push(r); onResult?.(r);
       continue;
     }
     onStart?.(word);
-    const refined = await refineEntry({ word, ...raw });
+    const refined = await refineEntry({ word, ...raw }, model);
     if (!refined) {
       const r = { word, status: 'failed' };
       results.push(r); onResult?.(r);
@@ -96,10 +101,10 @@ export async function refineWords({ db, lang, words, force = false, onStart, onR
         definition: refined.definition,
         synonyms: JSON.stringify(refined.synonyms),
         antonyms: JSON.stringify(refined.antonyms),
-        model: REFINE_MODEL,
+        model,
         at,
       });
-      stampProv.run(id, REFINE_MODEL, at);
+      stampProv.run(id, model, at);
     })();
     const r = { word, status: 'refined', definition: refined.definition };
     results.push(r); onResult?.(r);

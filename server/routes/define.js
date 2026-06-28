@@ -8,6 +8,7 @@
 import { Router } from 'express';
 import { normalize } from '../../src/normalize.js';
 import { getDb } from '../db.js';
+import { formOf } from '../lemma.js';
 import { kbLog, KB_COLORS as C } from '../log.js';
 
 export const defineRouter = Router();
@@ -48,6 +49,11 @@ defineRouter.get('/define', (req, res) => {
   if (refined) kbLog(C.green, 'HAVE·ai', word, refined.definition);
   else kbLog(C.yellow, 'HAVE·raw', word, 'not refined yet');
 
+  // Deterministic lemma link: e.g. "came" → past tense of "come". Surfaced so an
+  // inflected form always points at its base word, regardless of how the LLM
+  // refined its definition.
+  const lemma = formOf(db, lang, word);
+
   res.json({
     entry: {
       id: entry.id,
@@ -55,6 +61,7 @@ defineRouter.get('/define', (req, res) => {
       word: entry.word,
       pos: JSON.parse(entry.pos || '[]'),
       inflections,
+      formOf: lemma || undefined,
       refined,
       senses: senses.map((s) => {
         const relations = relStmt.all(s.id);

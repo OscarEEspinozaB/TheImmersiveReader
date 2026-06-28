@@ -30,7 +30,7 @@ function scopedKey(word) {
 
 /**
  * @typedef {{ tag: string, form: string }} Inflection
- * @typedef {{ pos?: string[], inflections?: Inflection[], synonyms?: string[], antonyms?: string[] }} KbDetails
+ * @typedef {{ pos?: string[], formOf?: { lemma: string, tags: string[] }, inflections?: Inflection[], synonyms?: string[], antonyms?: string[] }} KbDetails
  * @typedef {{ explanation: string, source: string, refined?: boolean, kb?: KbDetails }} Definition
  * @typedef {{ sentence: string, explanation: string, source: string }} AiContext
  * @typedef {{

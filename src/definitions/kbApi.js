@@ -65,6 +65,7 @@ export async function lookupKB(word) {
   const senses = Array.isArray(entry.senses) ? entry.senses : [];
   const inflections = Array.isArray(entry.inflections) ? entry.inflections : []; // [{ tag, form }]
   const pos = Array.isArray(entry.pos) ? entry.pos : [];
+  const formOf = entry.formOf || undefined; // { lemma, tags } when an inflected form
 
   // Prefer the AI-refined "clean" entry when this word has been built: one
   // simple-English definition plus its curated synonyms/antonyms. Verb tenses
@@ -78,6 +79,7 @@ export async function lookupKB(word) {
       refined: true,
       kb: {
         pos,
+        formOf,
         inflections,
         synonyms: relatedList(refined.synonyms || [], word),
         antonyms: relatedList(refined.antonyms || [], word),
@@ -96,6 +98,7 @@ export async function lookupKB(word) {
     refined: false,
     kb: {
       pos,
+      formOf,
       inflections,
       synonyms: relatedList(senses.flatMap((s) => s.synonyms || []), word),
       antonyms: relatedList(senses.flatMap((s) => s.antonyms || []), word),
