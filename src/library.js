@@ -10,32 +10,50 @@ function uuid() {
 
 /**
  * @typedef {{ id: string, title: string, addedAt: number, lastOpenedAt: number,
- *   progressWordIndex: number, cover: Blob | null }} BookMeta
+ *   progressWordIndex: number, cover: Blob | null, lang?: string }} BookMeta
+ *   `lang` is the book's reading-language code (e.g. "en"); absent on books
+ *   added before per-book languages existed (the user is prompted on open).
  */
 
 /**
  * Add a book to the library.
- * @param {{ title: string, text: string, images?: any[], cover?: Blob | null }} book
+ * @param {{ title: string, text: string, images?: any[], cover?: Blob | null,
+ *   words?: string[] | null, lang?: string }} book
  * @returns {Promise<string>} the new book id
  */
-export async function addBook({ title, text, images = [], cover = null, words = null }) {
-  const id = uuid();
+// Version of the per-book word list. Bumped when the meaning of the list changes
+// so stale lists are recomputed. v2: contractions are expanded into their
+// component lemmas (so "didn't" counts as "did" + "not"), not stored whole.
+const WORDS_VERSION = 2;
+
+export async function addBook({ id, title, text, images = [], cover = null, words = null, lang, addedAt }) {
+  // `id`/`addedAt` may be supplied when importing a `.tir` so the book keeps its
+  // stable identity across devices (the same logical book is not duplicated). New
+  // books generate both.
+  id = id || uuid();
   const now = Date.now();
   /** @type {BookMeta} */
-  const meta = { id, title, addedAt: now, lastOpenedAt: now, progressWordIndex: 0, cover };
+  const meta = { id, title, addedAt: addedAt || now, lastOpenedAt: now, progressWordIndex: 0, cover, lang };
   await idbSet('books', id, meta);
   await idbSet('content', id, { text, images });
-  if (words) await idbSet('bookwords', id, words);
+  if (words) await setBookWords(id, words);
   return id;
 }
 
-/** Unique normalized words in a book (for per-book stats). @returns {Promise<string[]|undefined>} */
-export function getBookWords(id) {
-  return idbGet('bookwords', id);
+/**
+ * Unique vocabulary lemmas in a book (for per-book stats). Returns undefined when
+ * the stored list is missing OR was saved in an older format (a bare array, or an
+ * older version), which signals the caller to recompute it from the book's text.
+ * @returns {Promise<string[]|undefined>}
+ */
+export async function getBookWords(id) {
+  const rec = await idbGet('bookwords', id);
+  if (!rec || Array.isArray(rec) || rec.v !== WORDS_VERSION) return undefined;
+  return rec.words;
 }
 
 export function setBookWords(id, words) {
-  return idbSet('bookwords', id, words);
+  return idbSet('bookwords', id, { v: WORDS_VERSION, words });
 }
 
 /** @returns {Promise<BookMeta[]>} books, most recently opened first */
@@ -52,6 +70,21 @@ export function getBook(id) {
 /** @returns {Promise<{ text: string, images: any[] } | undefined>} */
 export function getBookContent(id) {
   return idbGet('content', id);
+}
+
+/**
+ * Set a book's reading language. Clears the cached word list so it is recomputed
+ * under the new language (tokenization is language-dependent).
+ * @param {string} id
+ * @param {string} code a READING_LANGUAGES code, e.g. "es"
+ */
+export async function setBookLang(id, code) {
+  const book = await idbGet('books', id);
+  if (book && book.lang !== code) {
+    book.lang = code;
+    await idbSet('books', id, book);
+    await idbDelete('bookwords', id);
+  }
 }
 
 export async function renameBook(id, title) {

@@ -3,12 +3,38 @@
 // callback.
 
 import { buildExternalLinks } from './externalLookup.js';
+import { renderKbDetails } from './kbDetails.js';
+import { getKbUrl } from './settings.js';
 
 const STATE_LABELS = [
   { state: 'known', label: 'Known', key: '1' },
   { state: 'learning', label: 'Learning', key: '2' },
   { state: 'unknown', label: 'Unknown', key: '3' },
 ];
+
+// Host[:port] of a URL, for a compact source label (e.g. "192.168.100.6:4321").
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+// Human-readable label for a definition's `source`, making it obvious whether the
+// answer came from the LOCAL dictionary (the LAN KB) or an ONLINE service.
+function sourceLabel(source) {
+  if (!source) return '';
+  if (source === 'kb') {
+    const host = hostOf(getKbUrl());
+    return host ? `Local dictionary · ${host}` : 'Local dictionary';
+  }
+  if (source === 'dictionary') return 'Online · dictionaryapi.dev';
+  if (source === 'contraction') return 'Contraction';
+  if (source === 'local') return 'Local dictionary';
+  if (source.startsWith('ollama')) return source.replace(/^ollama/, 'AI · Ollama');
+  return source;
+}
 
 function truncate(text, max) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -23,6 +49,13 @@ export class WordPopup {
     this.title = document.createElement('div');
     this.title.className = 'popup__word';
     this.el.appendChild(this.title);
+
+    // Contraction breakdown: shows "didn't = did + not" with each component's
+    // current state as a colored chip. Hidden for ordinary words.
+    this.breakdown = document.createElement('div');
+    this.breakdown.className = 'popup__breakdown';
+    this.breakdown.hidden = true;
+    this.el.appendChild(this.breakdown);
 
     const buttons = document.createElement('div');
     buttons.className = 'popup__buttons';
@@ -102,6 +135,8 @@ export class WordPopup {
     this._anchor = anchor;
     this._onChoose = onChoose;
     this.title.textContent = anchor.textContent;
+    this.breakdown.hidden = true;
+    this.breakdown.textContent = '';
     for (const [state, btn] of Object.entries(this._buttons)) {
       btn.setAttribute('aria-current', String(state === currentState));
     }
@@ -151,6 +186,47 @@ export class WordPopup {
     }
   }
 
+  /**
+   * Show a contraction's decomposition: "didn't = did + not", each part a chip
+   * colored by its current state. Marking the word (the buttons above) applies to
+   * ALL parts at once. An optional note explains nuance (would/had, irregulars).
+   * @param {string} surface e.g. "didn't"
+   * @param {{ lemma: string, state: string }[]} components
+   * @param {string} [note]
+   */
+  setBreakdown(surface, components, note) {
+    this.breakdown.textContent = '';
+    this.breakdown.hidden = false;
+
+    const eq = document.createElement('div');
+    eq.className = 'popup__breakdown-row';
+    const head = document.createElement('span');
+    head.className = 'popup__breakdown-eq';
+    head.textContent = '=';
+    eq.appendChild(head);
+    components.forEach((c, i) => {
+      if (i) {
+        const plus = document.createElement('span');
+        plus.className = 'popup__breakdown-plus';
+        plus.textContent = '+';
+        eq.appendChild(plus);
+      }
+      const chip = document.createElement('span');
+      chip.className = 'popup__breakdown-chip word';
+      chip.dataset.state = c.state;
+      chip.textContent = c.lemma;
+      eq.appendChild(chip);
+    });
+    this.breakdown.appendChild(eq);
+
+    if (note) {
+      const n = document.createElement('p');
+      n.className = 'popup__breakdown-note';
+      n.textContent = note;
+      this.breakdown.appendChild(n);
+    }
+  }
+
   // --- Dictionary (quick) slot ---
   quickLoading() {
     this._fillSlot(this.quickSlot, { state: 'loading', text: 'Looking up…' });
@@ -158,7 +234,7 @@ export class WordPopup {
 
   /** @param {import('./definitions/index.js').Definition | null} def */
   setQuick(def) {
-    if (def) this._fillSlot(this.quickSlot, { state: 'ready', text: def.explanation, source: def.source });
+    if (def) this._fillSlot(this.quickSlot, { state: 'ready', text: def.explanation, source: def.source, kb: def.kb });
     else this._hideSlot(this.quickSlot);
   }
 
@@ -170,13 +246,15 @@ export class WordPopup {
    * @param {import('./definitionsCache.js').AiContext[]} items
    * @param {string} currentSentence
    * @param {boolean} [loadingCurrent]
+   * @param {boolean} [errorCurrent]  the current lookup failed (timeout / error /
+   *   empty reply); show an error row instead of silently hiding the panel
    */
-  setAiList(items, currentSentence, loadingCurrent = false) {
+  setAiList(items, currentSentence, loadingCurrent = false, errorCurrent = false) {
     const list = Array.isArray(items) ? items : [];
     const current = list.find((i) => i.sentence === currentSentence) || null;
     const others = list.filter((i) => i.sentence !== currentSentence);
 
-    if (!loadingCurrent && !current && others.length === 0) {
+    if (!loadingCurrent && !errorCurrent && !current && others.length === 0) {
       this._hideSlot(this.aiSlot);
       return;
     }
@@ -197,6 +275,14 @@ export class WordPopup {
       slot.appendChild(block);
     } else if (current) {
       slot.appendChild(this._aiItem(current, true));
+    } else if (errorCurrent) {
+      const block = document.createElement('div');
+      block.className = 'ai-item is-current is-error';
+      const text = document.createElement('p');
+      text.className = 'ai-item__text';
+      text.textContent = 'Could not get an answer (is the AI reachable? it may be slow — try again).';
+      block.appendChild(text);
+      slot.appendChild(block);
     }
     for (const o of others) slot.appendChild(this._aiItem(o, false));
 
@@ -204,7 +290,7 @@ export class WordPopup {
     if (source) {
       const el = document.createElement('span');
       el.className = 'popup__slot-source';
-      el.textContent = source;
+      el.textContent = sourceLabel(source);
       slot.appendChild(el);
     }
     this.definition.hidden = false;
@@ -224,12 +310,19 @@ export class WordPopup {
     return block;
   }
 
-  showRefreshAiButton(onRefresh) {
+  /**
+   * Show the on-demand AI button. The AI (Ollama) is never auto-queried — the
+   * user asks for the current context explicitly, for every word state.
+   * @param {string} label e.g. "Ask AI (this context)"
+   * @param {() => void} onAsk
+   */
+  showAiButton(label, onAsk) {
+    this.refreshAiButton.textContent = label;
     this.refreshAiButton.hidden = false;
-    this._onRefreshAi = onRefresh;
+    this._onRefreshAi = onAsk;
   }
 
-  hideRefreshAiButton() {
+  hideAiButton() {
     this.refreshAiButton.hidden = true;
   }
 
@@ -305,7 +398,7 @@ export class WordPopup {
     return slot;
   }
 
-  _fillSlot(slot, { state, text, source }) {
+  _fillSlot(slot, { state, text, source, kb }) {
     slot.hidden = false;
     slot.dataset.state = state;
     slot.textContent = '';
@@ -313,10 +406,12 @@ export class WordPopup {
     p.className = 'popup__slot-text';
     p.textContent = text;
     slot.appendChild(p);
+    const details = renderKbDetails(kb);
+    if (details) slot.appendChild(details);
     if (source) {
       const s = document.createElement('span');
       s.className = 'popup__slot-source';
-      s.textContent = source;
+      s.textContent = sourceLabel(source);
       slot.appendChild(s);
     }
     this.definition.hidden = false;

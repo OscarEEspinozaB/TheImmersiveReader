@@ -11,31 +11,46 @@
 
 /** @typedef {"known" | "learning" | "unknown"} WordState */
 
+import { getReadingLang } from './settings.js';
+// normalize()/normalizeSurface() live in a dependency-free module so the Node
+// dictionary service can share the exact same word-key rule. Re-exported here so
+// existing importers (marking.js, popup.js, …) keep importing from vocabulary.js.
+export { normalize, normalizeSurface } from './normalize.js';
+import { normalize } from './normalize.js';
+
 export const STATES = /** @type {const} */ (['unknown', 'learning', 'known']);
 export const DEFAULT_STATE = 'unknown';
 
-const STORAGE_KEY = 'immersive-reader.vocabulary.v1';
-
-const TRIM_EDGES = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+// v2 keys entries by language ("<lang>:<normalized>", e.g. "en:harry") so the
+// same spelling in two languages ("no", "son", "casa") never collide. The old
+// v1 store was language-agnostic and is abandoned on upgrade (start fresh).
+const STORAGE_KEY = 'immersive-reader.vocabulary.v2';
+const LEGACY_STORAGE_KEY = 'immersive-reader.vocabulary.v1';
+// A stored key already carrying a "<lang>:" prefix (en, es, pt-BR, …).
+const LANG_PREFIX = /^[a-z]{2}(?:-[A-Z]{2})?:/;
 
 /**
- * Normalize a surface word into its vocabulary key.
- * @param {string} word
- * @returns {string}
+ * In-memory store of non-default entries, keyed by the language-scoped key
+ * "<lang>:<normalized>" -> { state, at }.
  */
-export function normalize(word) {
-  return word.toLowerCase().normalize('NFC').replace(TRIM_EDGES, '');
-}
-
-/** In-memory store of non-default entries: normalizedWord -> { state, at }. */
 const entries = new Map();
+
+/**
+ * Build the language-scoped storage key for a word, using the ACTIVE reading
+ * language (the open book's). Returns "" when the word normalizes to nothing.
+ * @param {string} word raw or normalized word
+ */
+function scopedKey(word) {
+  const n = normalize(word);
+  return n ? `${getReadingLang()}:${n}` : '';
+}
 
 /**
  * @param {string} word raw or normalized word
  * @returns {WordState}
  */
 export function getState(word) {
-  return entries.get(normalize(word))?.state ?? DEFAULT_STATE;
+  return entries.get(scopedKey(word))?.state ?? DEFAULT_STATE;
 }
 
 /**
@@ -43,30 +58,113 @@ export function getState(word) {
  * @param {WordState} state
  */
 export function setState(word, state) {
-  const key = normalize(word);
+  const key = scopedKey(word);
   if (!key) return;
+  const at = Date.now();
   if (state === DEFAULT_STATE) {
     entries.delete(key); // only persist non-default states
   } else {
-    entries.set(key, { state, at: Date.now() });
+    entries.set(key, { state, at });
   }
   save();
+  emitChange(key, state, at);
 }
 
-/** All non-default entries. @returns {{ word: string, state: WordState, at: number }[]} */
-export function listEntries() {
-  return [...entries].map(([word, e]) => ({ word, state: e.state, at: e.at }));
+// --- Change subscription (for server sync) -------------------------------------
+// A local edit notifies subscribers so the sync layer can push it. Remote edits
+// applied via applyRemoteEntry() do NOT notify, to avoid echoing them back.
+const changeListeners = new Set();
+
+/** Subscribe to local vocabulary edits. @returns an unsubscribe function. */
+export function onChange(fn) {
+  changeListeners.add(fn);
+  return () => changeListeners.delete(fn);
 }
 
-/** @returns {{ known: number, learning: number, total: number }} */
-export function counts() {
+function emitChange(key, state, at) {
+  if (!changeListeners.size) return;
+  const { lang, word } = splitKey(key);
+  for (const fn of changeListeners) {
+    try {
+      fn({ lang, word, state, at });
+    } catch (err) {
+      console.warn('vocabulary change listener failed:', err);
+    }
+  }
+}
+
+/**
+ * Apply a change pulled from the server, last-write-wins by timestamp. Does NOT
+ * emit a change event (so it is not pushed straight back). `word` is already the
+ * normalized lemma and `lang` its language.
+ * @returns {boolean} true if the local store changed (caller may recolor).
+ */
+export function applyRemoteEntry(lang, word, state, at) {
+  const n = normalize(word);
+  if (!n || !lang) return false;
+  const key = `${lang}:${n}`;
+  const cur = entries.get(key);
+  if (cur && cur.at >= at) return false; // local is at least as new — keep it
+  if (state === DEFAULT_STATE) {
+    if (!cur) return false;
+    entries.delete(key);
+  } else {
+    entries.set(key, { state, at });
+  }
+  save();
+  return true;
+}
+
+/**
+ * Split a stored "<lang>:<word>" key into its language and bare word (lemma).
+ * @param {string} key
+ */
+function splitKey(key) {
+  const sep = key.indexOf(':');
+  return sep > 0 ? { lang: key.slice(0, sep), word: key.slice(sep + 1) } : { lang: '', word: key };
+}
+
+/**
+ * Non-default entries, optionally scoped to a single reading language. The stored
+ * key is "<lang>:<word>"; it is split back into a bare `word` (lemma) plus its
+ * `lang`, so existing readers that only use `word`/`state`/`at` keep working.
+ * @param {string} [lang] when given, only entries in this language are returned.
+ * @returns {{ word: string, lang: string, state: WordState, at: number }[]}
+ */
+export function listEntries(lang) {
+  const out = [];
+  for (const [key, e] of entries) {
+    const { lang: l, word } = splitKey(key);
+    if (lang && l !== lang) continue;
+    out.push({ word, lang: l, state: e.state, at: e.at });
+  }
+  return out;
+}
+
+/**
+ * Known/learning/total counts, optionally scoped to a single reading language.
+ * @param {string} [lang]
+ * @returns {{ known: number, learning: number, total: number }}
+ */
+export function counts(lang) {
   let known = 0;
   let learning = 0;
-  for (const e of entries.values()) {
+  for (const [key, e] of entries) {
+    if (lang && splitKey(key).lang !== lang) continue;
     if (e.state === 'known') known += 1;
     else if (e.state === 'learning') learning += 1;
   }
   return { known, learning, total: known + learning };
+}
+
+/** Reading-language codes that currently have at least one marked word. */
+export function usedLanguages() {
+  const set = new Set();
+  for (const key of entries.keys()) {
+    const { lang } = splitKey(key);
+    if (lang) set.add(lang);
+  }
+  return [...set];
 }
 
 // Coerce a stored/imported value (legacy string OR { state, at }) into an entry.
@@ -125,8 +223,10 @@ export function importVocabulary(data, { replace = false } = {}) {
   if (replace) entries.clear();
   const now = Date.now();
   let applied = 0;
-  for (const [word, value] of Object.entries(words)) {
-    const key = normalize(word);
+  for (const [rawKey, value] of Object.entries(words)) {
+    // New backups carry "<lang>:<word>" keys (kept verbatim); legacy backups are
+    // bare words, scoped to the active reading language on import.
+    const key = LANG_PREFIX.test(rawKey) ? rawKey : scopedKey(rawKey);
     const entry = toEntry(value, now);
     if (key && entry) {
       entries.set(key, entry);
@@ -135,4 +235,18 @@ export function importVocabulary(data, { replace = false } = {}) {
   }
   save();
   return applied;
+}
+
+/**
+ * Wipe the entire vocabulary (both the v2 store and the abandoned v1 store).
+ * Used by the "reset" action when the language model changes.
+ */
+export function resetAll() {
+  entries.clear();
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }

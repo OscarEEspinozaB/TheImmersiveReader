@@ -21,3 +21,9 @@ npm-debug.log*
 *.pdf
 *.epub
 
+# Dictionary KB service: heavy source dumps + generated SQLite database
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+

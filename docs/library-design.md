@@ -1,11 +1,12 @@
 # The Immersive Reader — Library & Book Format (Design)
 
-> Status: **Implemented** (library/bookshelf, per-book progress, sorting). The `.tir`
-> export/import file format is **still pending**. Last updated 2026-06-24.
+> Status: **Implemented** (library/bookshelf, per-book progress, sorting, and the
+> `.tir` export/import file format). Last updated 2026-06-29.
 >
 > Built in `src/library.js` (IndexedDB books/content/bookwords stores), `src/shelf.js`
-> (grid/list shelf with cover, rename, delete, practice), and the view switching in
-> `src/main.js`. Per-book vocabulary stats live in the dashboard.
+> (grid/list shelf with cover, export, rename, delete, practice), `src/tir.js` (the
+> `.tir` zip format), and the view switching in `src/main.js`. Per-book vocabulary
+> stats live in the dashboard.
 
 ## 1. Context
 
@@ -50,6 +51,7 @@ IndexedDB "immersive-reader"
       cover?: Blob               // thumbnail for the shelf (first image or generated)
       progressWordIndex: number  // per-book reading position
       lastOpenedAt?: number
+      lang?: string              // reading-language code (e.g. "en"); asked on add
     }
   store "meta"  (small values: e.g. lastOpenedBookId)
 ```
@@ -70,11 +72,14 @@ For carrying a processed book between devices. **Recommended: a ZIP container**
 
 ```text
 book.tir  (zip)
-  manifest.json   { format: "tir", version: 1, title, author, addedAt,
-                    images: [{ file, start, width, height }] }
+  manifest.json   { format: "tir", version: 1, title, addedAt, lang,
+                    cover, coverMime,
+                    images: [{ file, mime, start, width, height }] }
   text.txt        the clean reading text
-  images/0.png …  the illustration blobs
+  images/0.png …  the illustration blobs (one per anchored image)
   cover.png       optional shelf thumbnail
+  -- `mime`/`coverMime` round-trip the exact image type; image entries are
+  -- zip-stored (level 0) since they are already compressed.
 ```
 
 - Use a tiny zip lib (e.g. **fflate**, ~8KB) — JSZip works too but is heavier.
@@ -119,7 +124,9 @@ book.tir  (zip)
 1. **Library store + bookshelf view**: books store, add/open/delete, per-book
    progress. (Cover = first extracted image, or a generated text thumbnail.)
 2. **Migrate** the current single-document flow into the library.
-3. **Export/import `.tir`** (zip via fflate).
+3. **Export/import `.tir`** (zip via fflate). ✅ Done — `src/tir.js`; export from the
+   shelf, import by adding a `.tir` like any other book (language comes from the
+   manifest, so no re-extraction and no language prompt).
 4. Polish: PDF metadata for title/author, sorting, search, reading stats.
 
 ## 9. Open questions

@@ -17,8 +17,12 @@ literally visible.
   illustrations are shown inline.
 - **Word states**: Unknown (red) → Learning (gold) → Known (blends in). The default
   is Unknown — you grow your vocabulary by marking words; state is **never** changed
-  automatically. Keyed by the **normalized word**, so marking one occurrence recolors
-  every occurrence across all books, and it persists.
+  automatically. Keyed by the **normalized word per language** (`<lang>:<word>`), so
+  marking one occurrence recolors every occurrence across books in that language and
+  persists, while the same spelling in another language stays independent.
+- **Per-book language**: each book has its own reading language (asked when you add a
+  book, editable from the library card or the reader menu). When a book is in your
+  native language the "red sea" is suppressed — you already know those words.
 - **Reading modes**: a virtualized **paginated** eReader (only the current page is in
   the DOM, so huge books don't freeze) with swipe / arrows / buttons, and a windowed
   **continuous** scroll mode (so external read-aloud can see the text).
@@ -33,8 +37,10 @@ literally visible.
 - **Word Swiper**: a Tinder-style game per book to triage/reinforce words fast —
   swipe up = known, down = unknown, left = learning, right = skip.
 - Selectable **color themes** (dark + light), themed scrollbars, an auto-hiding
-  minimal UI, in-app dialogs, and **vocabulary export/import** to a JSON file.
-- Configurable **Ollama URL + model** and **reading / native language**.
+  minimal UI, in-app dialogs, **vocabulary export/import** to a JSON file, and a
+  **reset** action that clears the vocabulary + learned dictionary (books are kept).
+- Configurable **Ollama URL + model**, a **native language**, and a **default reading
+  language** for new books (each book then keeps its own).
 - Saved locally: vocabulary and definitions cache in localStorage; books (text +
   images) and reading positions in IndexedDB.
 

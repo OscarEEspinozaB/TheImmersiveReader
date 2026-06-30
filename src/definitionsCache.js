@@ -13,13 +13,25 @@
 // Storage: localStorage for now. Definitions are small text, but if this grows
 // large alongside documents it should move to IndexedDB (see docs/mvp-design.md).
 
+import { getReadingLang } from './settings.js';
+
 const STORAGE_KEY = 'immersive-reader.definitions.v1';
 
 // How many past contexts to remember per word for the AI usage panorama.
 export const AI_HISTORY_MAX = 5;
 
+// Cache keys are scoped to the ACTIVE reading language ("<lang>:<word>") so the
+// same spelling in two languages ("important", "table", "son") keeps independent
+// definitions — mirroring how the vocabulary store is keyed. Entries saved by the
+// older language-agnostic format simply become orphaned and are re-fetched.
+function scopedKey(word) {
+  return `${getReadingLang()}:${word}`;
+}
+
 /**
- * @typedef {{ explanation: string, source: string }} Definition
+ * @typedef {{ tag: string, form: string }} Inflection
+ * @typedef {{ pos?: string[], formOf?: { lemma: string, tags: string[] }, inflections?: Inflection[], synonyms?: string[], antonyms?: string[] }} KbDetails
+ * @typedef {{ explanation: string, source: string, refined?: boolean, kb?: KbDetails }} Definition
  * @typedef {{ sentence: string, explanation: string, source: string }} AiContext
  * @typedef {{
  *   dictionary?: Definition,
@@ -49,13 +61,14 @@ function save() {
 }
 
 function ensure(word) {
-  if (!cache[word]) cache[word] = {};
-  return cache[word];
+  const k = scopedKey(word);
+  if (!cache[k]) cache[k] = {};
+  return cache[k];
 }
 
 /** @returns {CacheEntry | null} */
 export function getCached(word) {
-  return cache[word] || null;
+  return cache[scopedKey(word)] || null;
 }
 
 export function cacheDictionary(word, def) {
@@ -65,7 +78,7 @@ export function cacheDictionary(word, def) {
 
 /** The word's AI context history, newest first. @returns {AiContext[]} */
 export function getAiList(word) {
-  const ai = cache[word]?.ai;
+  const ai = cache[scopedKey(word)]?.ai;
   // Tolerate data saved by older cache formats (was an object, not an array).
   return Array.isArray(ai) ? ai : [];
 }
@@ -89,7 +102,7 @@ export function pushAi(word, sentence, def) {
 
 /** Native-language answer for a specific context. @returns {Definition | null} */
 export function getCachedLang(word, language, sentence) {
-  return cache[word]?.lang?.[language]?.[sentence] || null;
+  return cache[scopedKey(word)]?.lang?.[language]?.[sentence] || null;
 }
 
 export function cacheLang(word, language, sentence, def) {

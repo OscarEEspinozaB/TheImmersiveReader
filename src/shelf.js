@@ -1,8 +1,11 @@
 // Bookshelf view: renders the library as a grid or list of books (cover + title),
 // with open / rename / delete actions. Opening is delegated to the caller.
 
-import { listBooks, renameBook, deleteBook } from './library.js';
-import { confirmDialog, promptDialog } from './dialog.js';
+import { listBooks, renameBook, deleteBook, setBookLang } from './library.js';
+import { confirmDialog, promptDialog, selectDialog, alertDialog } from './dialog.js';
+import { READING_LANGUAGES, readingLangName } from './settings.js';
+import { exportBookToBlob } from './tir.js';
+import { uploadBook } from './serverLibrary.js';
 
 let coverUrls = []; // object URLs for the current render, revoked on re-render
 
@@ -81,6 +84,61 @@ function bookCard(book, container, opts) {
   const practice = iconButton('Practice words', 'M5 3l14 9-14 9z');
   practice.addEventListener('click', () => onPractice?.(book.id));
 
+  const langLabel = book.lang ? readingLangName(book.lang) : 'not set';
+  const lang = iconButton(
+    `Language: ${langLabel}`,
+    'M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20 M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20',
+  );
+  lang.addEventListener('click', async () => {
+    const code = await selectDialog(
+      'Book language:',
+      READING_LANGUAGES.map((l) => ({ value: l.code, label: l.name })),
+      book.lang || READING_LANGUAGES[0].code,
+    );
+    if (code) {
+      await setBookLang(book.id, code);
+      reRender();
+    }
+  });
+
+  const exportBtn = iconButton(
+    'Export as .tir',
+    'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3',
+  );
+  exportBtn.addEventListener('click', async () => {
+    exportBtn.disabled = true;
+    try {
+      const { blob, filename } = await exportBookToBlob(book.id);
+      downloadBlob(blob, filename);
+    } catch (err) {
+      console.error(err);
+      await alertDialog(`Could not export this book: ${err.message}`);
+    } finally {
+      exportBtn.disabled = false;
+    }
+  });
+
+  const upload = iconButton(
+    'Upload to server',
+    'M12 12v9 M8 16l4-4 4 4 M20 16.7A5 5 0 0 0 18 9h-1.3A8 8 0 1 0 4 15.2',
+  );
+  upload.addEventListener('click', async () => {
+    upload.disabled = true;
+    try {
+      const r = await uploadBook(book.id);
+      await alertDialog(
+        r.duplicate
+          ? `"${r.title}" is already in the server library.`
+          : `"${r.title}" was uploaded to the server library.`,
+      );
+    } catch (err) {
+      console.error(err);
+      await alertDialog(`Could not upload: ${err.message}`);
+    } finally {
+      upload.disabled = false;
+    }
+  });
+
   const rename = iconButton('Rename', 'M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z');
   rename.addEventListener('click', async () => {
     const name = await promptDialog('Book title:', book.title);
@@ -102,10 +160,54 @@ function bookCard(book, container, opts) {
     }
   });
 
-  actions.append(practice, rename, del);
+  // Keep the card uncluttered: only "Read" is always visible; everything else
+  // (practice, language, export, upload, rename, delete) lives behind a "⋮" menu.
+  const read = iconButton('Read', 'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z');
+  read.addEventListener('click', () => onOpen(book.id));
+
+  const more = document.createElement('div');
+  more.className = 'book__more';
+  more.hidden = true;
+  more.append(practice, lang, exportBtn, upload, rename, del);
+
+  const moreWrap = document.createElement('div');
+  moreWrap.className = 'book__more-wrap';
+  const kebab = document.createElement('button');
+  kebab.type = 'button';
+  kebab.className = 'book__action book__kebab';
+  kebab.title = 'More actions';
+  kebab.setAttribute('aria-label', 'More actions');
+  kebab.textContent = '⋮';
+  kebab.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = more.hidden;
+    document.querySelectorAll('.book__more').forEach((m) => { m.hidden = true; }); // close others
+    more.hidden = !willOpen;
+    if (more.hidden) return;
+    const onDocClick = (ev) => {
+      if (!moreWrap.contains(ev.target)) {
+        more.hidden = true;
+        document.removeEventListener('click', onDocClick);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', onDocClick), 0);
+  });
+  moreWrap.append(kebab, more);
+
+  actions.append(read, moreWrap);
   meta.appendChild(actions);
   card.appendChild(meta);
   return card;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  // Revoke after the click has had a chance to start the download.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function iconButton(label, path) {

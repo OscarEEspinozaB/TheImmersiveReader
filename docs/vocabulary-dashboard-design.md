@@ -20,6 +20,10 @@ This is a third top-level view alongside the **Library** (shelf) and the **Reade
 ## 2. Goals
 
 - **Stats**: current counts of Known and Learning words; simple growth over time.
+  Counts are by vocabulary lemma: a contraction is never counted on its own —
+  `didn't` contributes to `did` and `not` (see `contractions.js`). Old books'
+  per-book lists are recomputed (versioned) and old whole-contraction entries are
+  migrated to lemmas on load, so the totals reflect the separated words.
 - **Dictionary**: browse the words you've marked, with their meanings from the
   dictionary cache AND the AI's per-context explanations we already store.
 - Filter (by state), search, and sort the dictionary.
