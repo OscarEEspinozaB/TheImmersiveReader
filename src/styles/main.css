@@ -655,6 +655,16 @@ body.nav-hidden .primary-nav {
   opacity: 0.6;
 }
 
+.ai-item.is-error .ai-item__text {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.ai-item.is-error .ai-item__text::before {
+  content: '⚠ ';
+  color: var(--word-unknown);
+}
+
 .ai-item__context {
   margin: 0;
   font-size: 0.78rem;
@@ -824,6 +834,36 @@ body.nav-hidden .primary-nav {
 
 .book__action:hover {
   opacity: 1;
+}
+
+.book__kebab {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* Overflow menu: the secondary actions, revealed by the "⋮" button. */
+.book__more-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.book__more {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  display: flex;
+  flex-direction: row;
+  gap: 0.3rem;
+  padding: 0.35rem 0.45rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  z-index: 20;
+}
+
+.book__more[hidden] {
+  display: none;
 }
 
 /* List view: cover on the left, meta filling the row. */

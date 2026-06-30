@@ -70,10 +70,17 @@ export function attachMarking(flow, { getSentence = () => '' } = {}) {
         .then((def) => {
           if (!active()) return;
           if (def) pushAi(word, sentence, def);
-          popup.setAiList(getAiList(word), sentence);
+          // A null answer (timeout / error / empty reply) must not vanish silently:
+          // surface an error row so the user knows the lookup failed, not that it
+          // is still working.
+          popup.setAiList(getAiList(word), sentence, false, !def);
           popup.showAiButton('↻ Ask AI again (this context)', ask);
         })
-        .catch(() => active() && popup.setAiList(getAiList(word), sentence));
+        .catch(() => {
+          if (!active()) return;
+          popup.setAiList(getAiList(word), sentence, false, true);
+          popup.showAiButton('↻ Ask AI again (this context)', ask);
+        });
     };
 
     const label = getAiForSentence(word, sentence)

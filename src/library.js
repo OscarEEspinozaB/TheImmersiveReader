@@ -26,11 +26,14 @@ function uuid() {
 // component lemmas (so "didn't" counts as "did" + "not"), not stored whole.
 const WORDS_VERSION = 2;
 
-export async function addBook({ title, text, images = [], cover = null, words = null, lang }) {
-  const id = uuid();
+export async function addBook({ id, title, text, images = [], cover = null, words = null, lang, addedAt }) {
+  // `id`/`addedAt` may be supplied when importing a `.tir` so the book keeps its
+  // stable identity across devices (the same logical book is not duplicated). New
+  // books generate both.
+  id = id || uuid();
   const now = Date.now();
   /** @type {BookMeta} */
-  const meta = { id, title, addedAt: now, lastOpenedAt: now, progressWordIndex: 0, cover, lang };
+  const meta = { id, title, addedAt: addedAt || now, lastOpenedAt: now, progressWordIndex: 0, cover, lang };
   await idbSet('books', id, meta);
   await idbSet('content', id, { text, images });
   if (words) await setBookWords(id, words);

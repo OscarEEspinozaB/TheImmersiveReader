@@ -246,13 +246,15 @@ export class WordPopup {
    * @param {import('./definitionsCache.js').AiContext[]} items
    * @param {string} currentSentence
    * @param {boolean} [loadingCurrent]
+   * @param {boolean} [errorCurrent]  the current lookup failed (timeout / error /
+   *   empty reply); show an error row instead of silently hiding the panel
    */
-  setAiList(items, currentSentence, loadingCurrent = false) {
+  setAiList(items, currentSentence, loadingCurrent = false, errorCurrent = false) {
     const list = Array.isArray(items) ? items : [];
     const current = list.find((i) => i.sentence === currentSentence) || null;
     const others = list.filter((i) => i.sentence !== currentSentence);
 
-    if (!loadingCurrent && !current && others.length === 0) {
+    if (!loadingCurrent && !errorCurrent && !current && others.length === 0) {
       this._hideSlot(this.aiSlot);
       return;
     }
@@ -273,6 +275,14 @@ export class WordPopup {
       slot.appendChild(block);
     } else if (current) {
       slot.appendChild(this._aiItem(current, true));
+    } else if (errorCurrent) {
+      const block = document.createElement('div');
+      block.className = 'ai-item is-current is-error';
+      const text = document.createElement('p');
+      text.className = 'ai-item__text';
+      text.textContent = 'Could not get an answer (is the AI reachable? it may be slow — try again).';
+      block.appendChild(text);
+      slot.appendChild(block);
     }
     for (const o of others) slot.appendChild(this._aiItem(o, false));
 

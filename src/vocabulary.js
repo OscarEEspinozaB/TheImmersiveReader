@@ -60,12 +60,59 @@ export function getState(word) {
 export function setState(word, state) {
   const key = scopedKey(word);
   if (!key) return;
+  const at = Date.now();
   if (state === DEFAULT_STATE) {
     entries.delete(key); // only persist non-default states
   } else {
-    entries.set(key, { state, at: Date.now() });
+    entries.set(key, { state, at });
   }
   save();
+  emitChange(key, state, at);
+}
+
+// --- Change subscription (for server sync) -------------------------------------
+// A local edit notifies subscribers so the sync layer can push it. Remote edits
+// applied via applyRemoteEntry() do NOT notify, to avoid echoing them back.
+const changeListeners = new Set();
+
+/** Subscribe to local vocabulary edits. @returns an unsubscribe function. */
+export function onChange(fn) {
+  changeListeners.add(fn);
+  return () => changeListeners.delete(fn);
+}
+
+function emitChange(key, state, at) {
+  if (!changeListeners.size) return;
+  const { lang, word } = splitKey(key);
+  for (const fn of changeListeners) {
+    try {
+      fn({ lang, word, state, at });
+    } catch (err) {
+      console.warn('vocabulary change listener failed:', err);
+    }
+  }
+}
+
+/**
+ * Apply a change pulled from the server, last-write-wins by timestamp. Does NOT
+ * emit a change event (so it is not pushed straight back). `word` is already the
+ * normalized lemma and `lang` its language.
+ * @returns {boolean} true if the local store changed (caller may recolor).
+ */
+export function applyRemoteEntry(lang, word, state, at) {
+  const n = normalize(word);
+  if (!n || !lang) return false;
+  const key = `${lang}:${n}`;
+  const cur = entries.get(key);
+  if (cur && cur.at >= at) return false; // local is at least as new — keep it
+  if (state === DEFAULT_STATE) {
+    if (!cur) return false;
+    entries.delete(key);
+  } else {
+    entries.set(key, { state, at });
+  }
+  save();
+  return true;
 }
 
 /**

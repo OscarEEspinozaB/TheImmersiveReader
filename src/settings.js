@@ -32,6 +32,9 @@ const settings = {
   // Local dictionary KB service on the LAN. Defaults to the home machine so the
   // offline dictionary works out of the box with no configuration.
   kbUrl: 'http://192.168.100.6:4321',
+  // Lightweight profile name for per-user vocabulary sync (empty = sync off, the
+  // vocabulary stays device-local). No password — trusted home LAN.
+  profile: '',
   sortBy: 'lastRead',
   readingMode: 'paged', // 'paged' | 'continuous'
 };
@@ -57,6 +60,7 @@ function load() {
     // Only a non-empty saved value overrides the default — a blank/absent one
     // keeps the built-in home IP, so the local dictionary stays on by default.
     if (typeof obj.kbUrl === 'string' && obj.kbUrl) settings.kbUrl = obj.kbUrl;
+    if (typeof obj.profile === 'string') settings.profile = obj.profile;
     if (SORT_OPTIONS.some((o) => o.value === obj.sortBy)) settings.sortBy = obj.sortBy;
     if (obj.readingMode === 'paged' || obj.readingMode === 'continuous') settings.readingMode = obj.readingMode;
   } catch {
@@ -144,6 +148,16 @@ export function getKbUrl() {
 
 export function setKbUrl(url) {
   settings.kbUrl = (url || '').trim().replace(/\/+$/, '');
+  save();
+}
+
+/** Lightweight profile name for vocabulary sync (empty = sync off). */
+export function getProfile() {
+  return settings.profile;
+}
+
+export function setProfile(name) {
+  settings.profile = (name || '').trim();
   save();
 }
 

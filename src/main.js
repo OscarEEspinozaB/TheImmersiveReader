@@ -11,8 +11,12 @@ import { attachMarking } from './marking.js';
 import { buildSentenceLookup } from './sentences.js';
 import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
+import { renderServerShelf } from './serverShelf.js';
+import { initVocabSync, syncNow } from './vocabSync.js';
+import { recolorWord } from './reader/render.js';
 import { renderProgress, renderDictionary } from './dashboard.js';
 import { buildDeck, uniqueWords } from './deck.js';
+import { importTir } from './tir.js';
 import { renderSwiper } from './swiper.js';
 import { alertDialog, confirmDialog, selectDialog } from './dialog.js';
 import {
@@ -40,6 +44,8 @@ import {
   setOllamaModel,
   getKbUrl,
   setKbUrl,
+  getProfile,
+  setProfile,
   SORT_OPTIONS,
   getSortBy,
   setSortBy,
@@ -54,8 +60,12 @@ const shelf = document.getElementById('shelf');
 const shelfGrid = document.getElementById('shelf-grid');
 const shelfButton = document.getElementById('shelf-button');
 const dashboard = document.getElementById('dashboard');
+const serverShelf = document.getElementById('server-shelf');
+const serverShelfGrid = document.getElementById('server-shelf-grid');
+const serverRefresh = document.getElementById('server-refresh');
 const primaryNav = document.getElementById('primary-nav');
 const navLibrary = document.getElementById('nav-library');
+const navServer = document.getElementById('nav-server');
 const navDictionary = document.getElementById('nav-dictionary');
 const navProgress = document.getElementById('nav-progress');
 const swiperEl = document.getElementById('swiper');
@@ -75,6 +85,7 @@ const readingLangSelect = document.getElementById('reading-lang-select');
 const ollamaUrlInput = document.getElementById('ollama-url');
 const ollamaModelInput = document.getElementById('ollama-model');
 const kbUrlInput = document.getElementById('kb-url');
+const profileInput = document.getElementById('profile-name');
 const exportButton = document.getElementById('export-words');
 const importInput = document.getElementById('import-words');
 const resetButton = document.getElementById('reset-data');
@@ -90,6 +101,17 @@ loadVocabulary();
 // Re-map any vocabulary entries saved as whole contractions (e.g. "didn't") into
 // their component lemmas, so the stats count separated words, not contractions.
 migrateVocabularyEntries();
+// Keep the vocabulary in sync with the home server (per profile). When the server
+// pushes a change while a book is open, recolor that word in place.
+initVocabSync({
+  onRemoteApplied: (changes) => {
+    if (readerWrap.hidden) return; // not reading — the next render picks it up
+    const lang = getReadingLang();
+    for (const c of changes) {
+      if (c.lang === lang) recolorWord(reader, c.word, c.state);
+    }
+  },
+});
 
 // --- View switching: shelf / reader / dictionary / progress / swiper ---
 function setView(view) {
@@ -100,6 +122,7 @@ function setView(view) {
     swiperEl._cleanup = null;
   }
   shelf.hidden = view !== 'shelf';
+  serverShelf.hidden = view !== 'server';
   dashboard.hidden = !(view === 'dictionary' || view === 'progress');
   swiperEl.hidden = view !== 'swiper';
   readerWrap.hidden = !reading;
@@ -107,9 +130,10 @@ function setView(view) {
   shelfButton.hidden = !reading; // "back to library" only while reading
 
   // Primary nav: shown only on the hub views, hidden in the immersive ones.
-  const hub = view === 'shelf' || view === 'dictionary' || view === 'progress';
+  const hub = view === 'shelf' || view === 'server' || view === 'dictionary' || view === 'progress';
   document.body.classList.toggle('nav-hidden', !hub);
   navLibrary.classList.toggle('is-active', view === 'shelf');
+  navServer.classList.toggle('is-active', view === 'server');
   navDictionary.classList.toggle('is-active', view === 'dictionary');
   navProgress.classList.toggle('is-active', view === 'progress');
 
@@ -166,6 +190,14 @@ async function showShelf() {
   await renderLibrary();
 }
 
+async function showServerLibrary() {
+  setMenuOpen(false);
+  setView('server');
+  // After a download lands in the local library, refresh the local shelf so it is
+  // up to date the next time the user switches back to it.
+  await renderServerShelf(serverShelfGrid, { onDownloaded: renderLibrary });
+}
+
 /** Ask the user to pick a reading language. @returns {Promise<string|null>} */
 function pickReadingLang(message, defaultCode) {
   return selectDialog(
@@ -195,6 +227,24 @@ async function openBook(id) {
 async function addBookFromFile(file) {
   if (!file) return;
   setMenuOpen(false);
+
+  // A `.tir` is an already-processed book: import it directly (its language comes
+  // from the manifest, so there is no extraction step and no language prompt).
+  if (/\.tir$/i.test(file.name)) {
+    setView('reader');
+    reader.innerHTML = '<p class="reader__placeholder">Importing…</p>';
+    try {
+      const { id } = await importTir(file);
+      const book = await getBook(id);
+      setActiveReadingLang(book?.lang || getDefaultReadingLang());
+      await openBook(id);
+    } catch (err) {
+      console.error(err);
+      reader.innerHTML = `<p class="reader__placeholder">Could not import this .tir: ${err.message}</p>`;
+    }
+    return;
+  }
+
   const lang = (await pickReadingLang('What language is this book in?', getDefaultReadingLang())) || getDefaultReadingLang();
   setActiveReadingLang(lang);
   setView('reader');
@@ -288,6 +338,12 @@ ollamaModelInput.value = getOllamaModel();
 ollamaModelInput.addEventListener('change', () => setOllamaModel(ollamaModelInput.value));
 kbUrlInput.value = getKbUrl();
 kbUrlInput.addEventListener('change', () => setKbUrl(kbUrlInput.value));
+
+profileInput.value = getProfile();
+profileInput.addEventListener('change', () => {
+  setProfile(profileInput.value);
+  syncNow(); // adopt the new profile: push local state, pull that profile's progress
+});
 
 // --- Vocabulary backup (export / import to a file) ---
 exportButton.addEventListener('click', () => {
@@ -402,8 +458,12 @@ function showDocument({ text, images = [] }, { restoreIndex = 0 } = {}) {
 // --- Shelf / add-book wiring ---
 shelfButton.addEventListener('click', showShelf);
 navLibrary.addEventListener('click', showShelf);
+navServer.addEventListener('click', showServerLibrary);
 navDictionary.addEventListener('click', () => showDictionary());
 navProgress.addEventListener('click', showProgress);
+serverRefresh.addEventListener('click', () =>
+  renderServerShelf(serverShelfGrid, { onDownloaded: renderLibrary }),
+);
 viewToggle.addEventListener('click', () => {
   currentView = currentView === 'grid' ? 'list' : 'grid';
   renderLibrary();
