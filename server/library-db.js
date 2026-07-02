@@ -46,6 +46,30 @@ CREATE TABLE IF NOT EXISTS vocabulary (
   updated_at  INTEGER NOT NULL,
   PRIMARY KEY (user, lang, word)
 );
+
+-- Context-aware AI explanations, generated once and shared across all devices.
+-- The reader no longer talks to Ollama directly for these: it asks the server,
+-- which serves a stored answer when present and only calls the LLM on a miss. The
+-- context (the sentence) is the stable identity across devices — the visual page
+-- is not — so the key hashes book + lang + kind + native language + word + sentence.
+-- 'kind' is 'explain' (in the reading language) or 'native' (in the user's language;
+-- native_lang names it). book_uid/page default to '' / NULL so consults without an
+-- active book (e.g. the review deck) still reuse the cache by sentence.
+CREATE TABLE IF NOT EXISTS ai_definitions (
+  key         TEXT PRIMARY KEY,      -- sha256(book_uid|lang|kind|native_lang|word|sentence)
+  book_uid    TEXT NOT NULL DEFAULT '',
+  lang        TEXT NOT NULL,         -- reading-language code (e.g. 'en')
+  word        TEXT NOT NULL,         -- normalized (normalize.js)
+  surface     TEXT,                  -- original surface form sent to the model
+  sentence    TEXT NOT NULL,         -- the exact context
+  kind        TEXT NOT NULL,         -- 'explain' | 'native'
+  native_lang TEXT NOT NULL DEFAULT '', -- '' for explain; e.g. 'Spanish' for native
+  explanation TEXT NOT NULL,
+  source      TEXT NOT NULL,         -- 'ollama' | 'ollama · Spanish'
+  model       TEXT,
+  page        INTEGER,               -- informational word-index hint
+  created_at  INTEGER NOT NULL
+);
 `;
 
 // Indexes are created AFTER the migration, since idx_books_uid references a column
@@ -58,6 +82,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_books_sha ON books(sha);
 CREATE INDEX IF NOT EXISTS idx_books_lang ON books(lang);
 -- Pulling a user's changes since a timestamp is the hot path for sync.
 CREATE INDEX IF NOT EXISTS idx_vocab_pull ON vocabulary(user, updated_at);
+-- Browsing a book's stored explanations (e.g. a future per-book glossary view).
+CREATE INDEX IF NOT EXISTS idx_aidef_book ON ai_definitions(book_uid, lang);
 `;
 
 // Add the book_uid column to a library.sqlite created before it existed.

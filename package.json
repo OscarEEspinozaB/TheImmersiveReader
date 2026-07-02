@@ -13,6 +13,7 @@
     "build:book": "node server/generate/book.js"
   },
   "dependencies": {
+    "@fontsource-variable/literata": "^5.2.8",
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",

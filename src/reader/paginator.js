@@ -76,8 +76,36 @@ export class Paginator {
     }
     const start = this.pageStarts[0];
     if (start <= 0) return;
-    this.pageStarts.unshift(this._fillBackward(start));
+    this.pageStarts.unshift(this._fillBackward(this.content, start));
     this._render();
+  }
+
+  /** Is there a page after the current one? */
+  hasNext() {
+    return this.endIndex < this.total;
+  }
+
+  /** Is there a page before the current one? */
+  hasPrev() {
+    return !(this.current === 0 && this.pageStarts[this.current] <= 0);
+  }
+
+  /** Render the NEXT page into `el` (a viewport-sized layer) without changing state.
+   * Used by the page-turn animation to show the incoming page during a drag. */
+  peekNext(el) {
+    if (!this.hasNext()) return false;
+    this._fillForward(el, this.endIndex);
+    return true;
+  }
+
+  /** Render the PREVIOUS page into `el` without changing state. */
+  peekPrev(el) {
+    const start = this.pageStarts[this.current];
+    if (this.current === 0 && start <= 0) return false;
+    const prevStart =
+      this.current > 0 ? this.pageStarts[this.current - 1] : this._fillBackward(el, start);
+    this._fillForward(el, prevStart);
+    return true;
   }
 
   currentFirstWordIndex() {
@@ -116,37 +144,43 @@ export class Paginator {
 
   _render() {
     const start = this.pageStarts[this.current];
-    const c = this.content;
-    const maxH = this.viewport.clientHeight;
-    c.replaceChildren();
-
-    let i = start;
-    for (; i < this.total; i++) {
-      c.appendChild(makeNode(this.items[i]));
-      if (c.scrollHeight > maxH && i > start) {
-        c.removeChild(c.lastChild);
-        break;
-      }
-    }
-    this.endIndex = i;
-    if (i < this.total) this.pageStarts[this.current + 1] = i;
+    this.endIndex = this._fillForward(this.content, start);
+    if (this.endIndex < this.total) this.pageStarts[this.current + 1] = this.endIndex;
     this._emit();
   }
 
-  _fillBackward(end) {
-    const c = this.content;
+  /** Fill `el` forward from item `start` until it overflows the viewport; returns
+   * the first index that did NOT fit (the exclusive end of the page). */
+  _fillForward(el, start) {
     const maxH = this.viewport.clientHeight;
-    c.replaceChildren();
+    el.replaceChildren();
 
-    let i = end - 1;
-    for (; i >= 0; i--) {
-      c.insertBefore(makeNode(this.items[i]), c.firstChild);
-      if (c.scrollHeight > maxH) {
-        c.removeChild(c.firstChild);
+    let i = start;
+    for (; i < this.total; i++) {
+      el.appendChild(makeNode(this.items[i]));
+      if (el.scrollHeight > maxH && i > start) {
+        el.removeChild(el.lastChild);
         break;
       }
     }
-    c.replaceChildren();
+    return i;
+  }
+
+  /** Measure backward from item `end` to find the start of the page that ends
+   * there. Uses `el` only as a scratch measuring surface (left empty on return). */
+  _fillBackward(el, end) {
+    const maxH = this.viewport.clientHeight;
+    el.replaceChildren();
+
+    let i = end - 1;
+    for (; i >= 0; i--) {
+      el.insertBefore(makeNode(this.items[i]), el.firstChild);
+      if (el.scrollHeight > maxH) {
+        el.removeChild(el.firstChild);
+        break;
+      }
+    }
+    el.replaceChildren();
     return Math.max(0, Math.min(i + 1, end - 1));
   }
 

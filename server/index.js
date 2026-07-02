@@ -19,6 +19,7 @@ import { wordsRouter } from './routes/words.js';
 import { statsRouter } from './routes/stats.js';
 import { booksRouter } from './routes/books.js';
 import { vocabRouter } from './routes/vocab.js';
+import { aiDefineRouter } from './routes/aiDefine.js';
 import { getLibraryDb } from './library-db.js';
 
 const PORT = Number(process.env.KB_PORT || 4321);
@@ -36,9 +37,11 @@ app.use(wordsRouter);
 app.use(statsRouter);
 app.use(booksRouter);
 app.use(vocabRouter);
+app.use(aiDefineRouter);
 
 getDb(); // open the connection + ensure schema before accepting requests
 getLibraryDb(); // open the library DB + ensure its schema/dirs exist
+
 app.listen(PORT, () => {
   console.log(`Dictionary KB + library service listening on http://0.0.0.0:${PORT}`);
 });

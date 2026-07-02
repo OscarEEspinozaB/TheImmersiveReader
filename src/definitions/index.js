@@ -6,13 +6,18 @@
 import { lookupLocal } from './localDict.js';
 import { lookupKB, requestKbBuild, listKbWords, getKbStats } from './kbApi.js';
 import { lookupDictionaryApi } from './dictionaryApi.js';
-import { lookupOllama, explainInLanguage, decompose, isReachable } from './ollama.js';
+import { decompose } from './ollama.js';
+import { serverAiDefine, serverAiExplain, serverAiAvailable, listAiModels } from './serverAi.js';
 
-export { requestKbBuild, listKbWords, getKbStats };
+export { requestKbBuild, listKbWords, getKbStats, listAiModels };
 
-/** Whether the AI (Ollama) is currently reachable. Cached probe. */
+/**
+ * Whether AI explanations are currently available. Context-aware explanations are
+ * now brokered + cached by the home server, so this asks the server (is it reachable
+ * AND is Ollama up behind it?), not Ollama directly. Cached probe.
+ */
 export function isAiAvailable() {
-  return isReachable();
+  return serverAiAvailable();
 }
 
 /**
@@ -47,31 +52,35 @@ export async function getQuickDefinition(word, sentence) {
 }
 
 /**
- * AI definition: Ollama — context-aware, simple English. Slower and may be
- * unavailable (e.g. away from home), in which case it resolves to null.
- * @param {string} word normalized word
+ * AI definition: context-aware, simple English. Brokered + cached by the home
+ * server (generated once, shared across devices); slower on a miss, instant on a
+ * cache hit. Resolves to null when no server/AI is available (e.g. away from home).
+ * @param {string} word surface form (e.g. "didn't", "Dursley's")
  * @param {string} sentence
+ * @param {{ uid?: string, page?: number }} [book] active book context for storage
  * @returns {Promise<Definition | null>}
  */
-export async function getAiDefinition(word, sentence) {
+export async function getAiDefinition(word, sentence, book) {
   try {
-    return await lookupOllama(word, sentence);
+    return await serverAiDefine(word, sentence, book);
   } catch (err) {
-    console.warn('AI provider "lookupOllama" failed:', err);
+    console.warn('AI provider "serverAiDefine" failed:', err);
     return null;
   }
 }
 
 /**
  * On-demand AI explanation in the user's native language (rescue for hard cases).
- * @param {string} word normalized word
+ * Also brokered + cached by the server.
+ * @param {string} word surface form
  * @param {string} sentence
  * @param {string} language e.g. "Spanish"
+ * @param {{ uid?: string, page?: number }} [book] active book context for storage
  * @returns {Promise<Definition | null>}
  */
-export async function getAiDefinitionInLanguage(word, sentence, language) {
+export async function getAiDefinitionInLanguage(word, sentence, language, book) {
   try {
-    return await explainInLanguage(word, sentence, language);
+    return await serverAiExplain(word, sentence, language, book);
   } catch (err) {
     console.warn('AI native-language explanation failed:', err);
     return null;

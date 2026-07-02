@@ -1,15 +1,20 @@
-// Word Swiper deck builder. From a book's text, compute the per-book vocabulary
-// breakdown and a practice deck that MIXES states for reinforcement: mostly new
-// (unknown) words, some learning, a few known — ranked by frequency. As new words
-// run out (a book's vocabulary is finite), the mix naturally shifts toward review.
+// Word Swiper deck builder. The game exists to REINFORCE the words the user is
+// learning — really knowing a word is what buys reading fluency, not growing the
+// known-words number fast. So the deck leads with the LEARNING words, oldest
+// last-touch first (the ones most in need of a re-encounter), then brings in new
+// (unknown) words by frequency, and closes with a few known ones as a light check.
+// Pools fill from each other when one runs short, so a fresh book (no learning
+// words yet) still deals a full deck of new words.
 
 import { tokenize } from './tokenizer.js';
 import { buildSentenceLookup } from './sentences.js';
-import { getState } from './vocabulary.js';
+import { getStateInfo } from './vocabulary.js';
+import { getReadingLang } from './settings.js';
 import { parts as contractionParts } from './contractions.js';
 
 // Target share of the deck per state (filled from other pools when one is short).
-const MIX = { unknown: 0.7, learning: 0.2, known: 0.1 };
+// Learning leads on purpose — reinforcement over acquisition.
+const MIX = { learning: 0.6, unknown: 0.3, known: 0.1 };
 
 // The vocabulary lemmas a token contributes. A contraction expands into its
 // component words (so "didn't" counts as "did" + "not", never as a word of its
@@ -21,14 +26,64 @@ function lemmasOf(token) {
   return token.normalized && !/^\d+$/.test(token.normalized) ? [token.normalized] : [];
 }
 
-/** Unique vocabulary lemmas in a text (for per-book stats). @returns {string[]} */
-export function uniqueWords(text) {
-  const set = new Set();
-  for (const t of tokenize(text)) {
-    for (const lemma of lemmasOf(t)) set.add(lemma);
+/**
+ * Everything the shelf/hubs need to know about a book's text, in ONE
+ * tokenization pass: its unique lemmas (in first-appearance order), their
+ * occurrence counts, and — per sentence — which lemmas each sentence uses
+ * (as indexes into `words`). The sentence structure is what backs the shelf's
+ * "how much of this book can you actually READ" badge: a sentence is readable
+ * only when every word in it is known, so the badge speaks in units of
+ * reading, not word statistics.
+ * @param {string} text the book's clean text
+ * @returns {{ words: string[], counts: number[], sentences: number[][] }}
+ */
+export function bookWordData(text) {
+  const lang = getReadingLang();
+  const tokens = tokenize(text);
+
+  // Sentence end-offsets in document order (Intl.Segmenter, like sentences.js).
+  const bounds = [];
+  for (const s of new Intl.Segmenter(lang, { granularity: 'sentence' }).segment(text)) {
+    bounds.push(s.index + s.segment.length);
   }
-  return [...set];
+
+  const indexOf = new Map(); // lemma -> index into words[]
+  const words = [];
+  const counts = [];
+  const sentences = [];
+  let si = 0;
+  let offset = 0;
+  let cur = new Set();
+  const flush = () => {
+    if (cur.size) sentences.push([...cur]);
+    cur = new Set();
+  };
+
+  for (const t of tokens) {
+    while (si < bounds.length && offset >= bounds[si]) {
+      flush(); // the previous sentence ended before this token
+      si += 1;
+    }
+    if (t.isWord) {
+      for (const lemma of lemmasOf(t)) {
+        let i = indexOf.get(lemma);
+        if (i === undefined) {
+          i = words.length;
+          indexOf.set(lemma, i);
+          words.push(lemma);
+          counts.push(0);
+        }
+        counts[i] += 1;
+        cur.add(i);
+      }
+    }
+    offset += t.text.length;
+  }
+  flush();
+
+  return { words, counts, sentences };
 }
+
 
 /**
  * @param {string} text the book's clean text
@@ -40,7 +95,7 @@ export function buildDeck(text, { limit = 50 } = {}) {
   const tokens = tokenize(text);
   const getSentence = buildSentenceLookup(text, tokens);
 
-  const info = new Map(); // lemma -> { count, firstWordIndex, state }
+  const info = new Map(); // lemma -> { count, firstWordIndex, state, at }
   let wordIndex = -1;
   for (const t of tokens) {
     if (!t.isWord) continue;
@@ -48,7 +103,8 @@ export function buildDeck(text, { limit = 50 } = {}) {
     for (const w of lemmasOf(t)) {
       let e = info.get(w);
       if (!e) {
-        e = { count: 0, firstWordIndex: wordIndex, state: getState(w) };
+        const { state, at } = getStateInfo(w);
+        e = { count: 0, firstWordIndex: wordIndex, state, at };
         info.set(w, e);
       }
       e.count += 1;
@@ -59,22 +115,23 @@ export function buildDeck(text, { limit = 50 } = {}) {
   const pools = { unknown: [], learning: [], known: [] };
   for (const [word, e] of info) {
     stats[e.state] += 1;
-    pools[e.state].push({ word, count: e.count, sentence: getSentence(e.firstWordIndex), state: e.state });
+    pools[e.state].push({ word, count: e.count, sentence: getSentence(e.firstWordIndex), state: e.state, at: e.at });
   }
-  // New words: most frequent first (most useful to learn). Reviews: shuffled, so
-  // it isn't always the same high-frequency function words ("the", "and"…).
+  // Learning words: least-recently touched first — the longer since the last
+  // encounter, the more the word needs reinforcing. New words: most frequent
+  // first (most useful to learn). Known: shuffled light check.
+  pools.learning.sort((a, b) => (a.at || 0) - (b.at || 0));
   pools.unknown.sort((a, b) => b.count - a.count);
-  shuffle(pools.learning);
   shuffle(pools.known);
 
-  // New words lead; then learning review, then known review. NO final frequency
-  // sort (that would pull known function words back to the top).
+  // Reinforcement leads: learning first, then new words, then a few known. NO
+  // final frequency sort (that would pull known function words back to the top).
   const deck = [];
-  for (const k of ['unknown', 'learning', 'known']) {
+  for (const k of ['learning', 'unknown', 'known']) {
     deck.push(...pools[k].splice(0, Math.round(limit * MIX[k])));
   }
   if (deck.length < limit) {
-    deck.push(...pools.unknown, ...pools.learning, ...pools.known);
+    deck.push(...pools.learning, ...pools.unknown, ...pools.known);
   }
 
   return { cards: deck.slice(0, limit), stats };

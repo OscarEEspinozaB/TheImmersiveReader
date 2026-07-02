@@ -105,21 +105,39 @@ booksRouter.post(
       writeFileSync(coverPath(id), Buffer.from(files[manifest.cover]));
     }
 
-    db.prepare(
-      `INSERT INTO books (id, book_uid, sha, title, author, lang, size, cover_mime, book_added_at, uploaded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      id,
-      bookUid,
-      sha,
-      manifest.title || 'Untitled',
-      manifest.author || null,
-      manifest.lang || null,
-      buf.length,
-      coverMime,
-      manifest.addedAt || null,
-      Date.now(),
-    );
+    try {
+      db.prepare(
+        `INSERT INTO books (id, book_uid, sha, title, author, lang, size, cover_mime, book_added_at, uploaded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        bookUid,
+        sha,
+        manifest.title || 'Untitled',
+        manifest.author || null,
+        manifest.lang || null,
+        buf.length,
+        coverMime,
+        manifest.addedAt || null,
+        Date.now(),
+      );
+    } catch (err) {
+      // The insert can fail after the payload files were written (the DB held
+      // locked past busy_timeout by another process, disk full, or a duplicate
+      // slipping past the check above if this handler ever gains an await) —
+      // don't leave orphan files behind.
+      for (const p of [tirPath(id), coverPath(id)]) {
+        if (existsSync(p)) unlinkSync(p);
+      }
+      // If the UNIQUE(book_uid/sha) index rejected it, the book is already
+      // stored — answer exactly like the pre-check instead of a 500. Try both
+      // identities: the same bytes may have been stored under no uid (legacy).
+      const row =
+        (bookUid && db.prepare('SELECT id, title FROM books WHERE book_uid = ?').get(bookUid)) ||
+        db.prepare('SELECT id, title FROM books WHERE sha = ?').get(sha);
+      if (row) return res.json({ id: row.id, title: row.title, duplicate: true });
+      throw err;
+    }
 
     res.status(201).json({ id, title: manifest.title || 'Untitled' });
   },

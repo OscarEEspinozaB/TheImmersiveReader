@@ -8,8 +8,9 @@ import { getCached, cacheDictionary } from './definitionsCache.js';
 import { getQuickDefinition, listKbWords, getKbStats } from './definitions/index.js';
 import { renderKbDetails } from './kbDetails.js';
 import { buildExternalLinks } from './externalLookup.js';
+import { speakerButton } from './speech.js';
 import { listBooks, getBookWords, setBookWords, getBookContent } from './library.js';
-import { uniqueWords } from './deck.js';
+import { bookWordData } from './deck.js';
 import {
   getReadingLang,
   setActiveReadingLang,
@@ -149,11 +150,13 @@ async function renderPerBook(container, lang) {
     setActiveReadingLang(book.lang || getDefaultReadingLang());
     let words = await getBookWords(book.id);
     if (!words) {
-      // Backfill for books added before per-book words were stored.
+      // Backfill for books added before per-book word data was stored (or when
+      // its stored format is older than the current version).
       const content = await getBookContent(book.id);
       if (content?.text) {
-        words = uniqueWords(content.text);
-        setBookWords(book.id, words);
+        const data = bookWordData(content.text);
+        words = data.words;
+        setBookWords(book.id, data);
       }
     }
     const c = { known: 0, learning: 0, unknown: 0 };
@@ -503,7 +506,9 @@ function dictRow(entry, reRender) {
     reRender(); // word may now be unknown (dropped) or change filter membership
   });
 
-  head.append(word, stateSel);
+  // Hearing the word is part of knowing it — pronounce it with the hub's language.
+  const speak = speakerButton(entry.word, getReadingLang);
+  head.append(word, ...(speak ? [speak] : []), stateSel);
   row.appendChild(head);
 
   const cached = getCached(entry.word);
@@ -582,7 +587,12 @@ function kbRow(item) {
   pos.textContent = (item.pos || []).join(' · ');
 
   head.append(word, pos);
-  row.appendChild(head);
+  // The head is itself a <button> (expand toggle), so the 🔊 lives beside it.
+  const headRow = document.createElement('div');
+  headRow.className = 'dict-row__headrow';
+  const speak = speakerButton(item.word, getReadingLang);
+  headRow.append(head, ...(speak ? [speak] : []));
+  row.appendChild(headRow);
 
   const def = document.createElement('p');
   def.className = 'dict-row__def';

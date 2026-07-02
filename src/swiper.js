@@ -151,7 +151,8 @@ export function renderSwiper(root, { deck, stats, onExit }) {
     wordEl.textContent = cardData.word;
     wordEl.dataset.state = cardData.state;
 
-    const tag = cardData.state === 'unknown' ? 'new' : `${cardData.state} · review`;
+    // Learning cards are the deck's point: reinforcement, not acquisition speed.
+    const tag = { unknown: 'new', learning: 'reinforce', known: 'review' }[cardData.state] || cardData.state;
     card.querySelector('.swipe-card__count').textContent =
       `${tag} · appears ${cardData.count.toLocaleString()}× in this book`;
     card.querySelector('.swipe-card__sentence').textContent = cardData.sentence ? `“${cardData.sentence}”` : '';

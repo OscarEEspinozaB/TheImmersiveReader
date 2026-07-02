@@ -4,21 +4,25 @@
 import { ingest } from './ingest/index.js';
 import { tokenize } from './tokenizer.js';
 import { load as loadVocabulary, exportVocabulary, importVocabulary, resetAll } from './vocabulary.js';
+import '@fontsource-variable/literata/wght.css'; // self-hosted reader font (offline)
 import { Paginator } from './reader/paginator.js';
 import { Scroller } from './reader/scroller.js';
+import { attachPageTurn } from './reader/pageTurn.js';
 import { initTheme, setTheme, getTheme, THEMES } from './reader/theme.js';
 import { attachMarking } from './marking.js';
-import { buildSentenceLookup } from './sentences.js';
+import { buildSentenceLookup, buildParagraphLookup } from './sentences.js';
 import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
 import { renderServerShelf } from './serverShelf.js';
 import { initVocabSync, syncNow } from './vocabSync.js';
 import { recolorWord } from './reader/render.js';
 import { renderProgress, renderDictionary } from './dashboard.js';
-import { buildDeck, uniqueWords } from './deck.js';
+import { buildDeck, bookWordData } from './deck.js';
 import { importTir } from './tir.js';
 import { renderSwiper } from './swiper.js';
 import { alertDialog, confirmDialog, selectDialog } from './dialog.js';
+import { listAiModels } from './definitions/index.js';
+import { canSpeak, voicesForLang } from './speech.js';
 import {
   addBook,
   getBook,
@@ -38,19 +42,25 @@ import {
   setActiveReadingLang,
   getDefaultReadingLang,
   setDefaultReadingLang,
-  getOllamaUrl,
-  setOllamaUrl,
-  getOllamaModel,
-  setOllamaModel,
   getKbUrl,
   setKbUrl,
   getProfile,
   setProfile,
+  getAiModel,
+  setAiModel,
+  getTtsRate,
+  setTtsRate,
+  getTtsVoice,
+  setTtsVoice,
   SORT_OPTIONS,
   getSortBy,
   setSortBy,
   getReadingMode,
   setReadingMode,
+  FONT_OPTIONS,
+  getReadingFont,
+  setReadingFont,
+  getReadingFontOption,
 } from './settings.js';
 
 const reader = document.getElementById('reader');
@@ -73,6 +83,7 @@ const addBookInput = document.getElementById('add-book');
 const viewToggle = document.getElementById('view-toggle');
 const sortSelect = document.getElementById('sort-select');
 const readingModeSelect = document.getElementById('reading-mode-select');
+const readingFontSelect = document.getElementById('reading-font-select');
 const fileInput = document.getElementById('file-input');
 const sampleButton = document.getElementById('sample-button');
 const prevButton = document.getElementById('prev-page');
@@ -82,21 +93,22 @@ const menuToggle = document.getElementById('menu-toggle');
 const menu = document.getElementById('menu');
 const langSelect = document.getElementById('lang-select');
 const readingLangSelect = document.getElementById('reading-lang-select');
-const ollamaUrlInput = document.getElementById('ollama-url');
-const ollamaModelInput = document.getElementById('ollama-model');
 const kbUrlInput = document.getElementById('kb-url');
 const profileInput = document.getElementById('profile-name');
+const aiModelSelect = document.getElementById('ai-model-select');
 const exportButton = document.getElementById('export-words');
 const importInput = document.getElementById('import-words');
 const resetButton = document.getElementById('reset-data');
 const themeSwatches = document.getElementById('theme-swatches');
 
 let paginator = null;
+let pageTurn = null; // live drag page-turn controller (paged mode only)
 let currentBookId = null;
 let currentContent = null; // {text, images} of the open book (to re-render on mode change)
 let currentView = 'grid';
 
 initTheme();
+applyReadingFont();
 loadVocabulary();
 // Re-map any vocabulary entries saved as whole contractions (e.g. "didn't") into
 // their component lemmas, so the stats count separated words, not contractions.
@@ -253,7 +265,7 @@ async function addBookFromFile(file) {
     const { text, images } = await ingest(file);
     const cover = images[0]?.blob || null;
     const title = file.name.replace(/\.[^.]+$/, '');
-    const id = await addBook({ title, text, images, cover, words: uniqueWords(text), lang });
+    const id = await addBook({ title, text, images, cover, lang, wordData: bookWordData(text) });
     await openBook(id);
   } catch (err) {
     console.error(err);
@@ -265,7 +277,11 @@ async function addBookFromFile(file) {
 function setMenuOpen(open) {
   menu.hidden = !open;
   menuToggle.setAttribute('aria-expanded', String(open));
-  if (open) showChrome();
+  if (open) {
+    showChrome();
+    populateAiModelOptions();
+    populateVoiceOptions();
+  }
 }
 menuToggle.addEventListener('click', () => setMenuOpen(menu.hidden));
 document.addEventListener('pointerdown', (e) => {
@@ -290,8 +306,18 @@ function showChrome() {
   hideTimer = setTimeout(hideChrome, HIDE_DELAY);
 }
 
-document.addEventListener('pointermove', showChrome);
-document.addEventListener('pointerdown', showChrome);
+// The bars are a distraction mid-page, so they only reveal near the screen edges
+// where they live: hovering (mouse) or tapping (touch) within CHROME_EDGE px of the
+// top or bottom. A tap in the reading area turns the page instead (see pageTurn.js).
+const CHROME_EDGE = 72;
+const nearEdge = (y) => y < CHROME_EDGE || y > window.innerHeight - CHROME_EDGE;
+
+document.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse' && nearEdge(e.clientY)) showChrome();
+});
+document.addEventListener('pointerdown', (e) => {
+  if (nearEdge(e.clientY)) showChrome();
+});
 document.addEventListener('keydown', showChrome);
 
 // --- Native language selector ---
@@ -331,11 +357,7 @@ readingLangSelect.addEventListener('change', async () => {
   }
 });
 
-// --- Ollama server config ---
-ollamaUrlInput.value = getOllamaUrl();
-ollamaUrlInput.addEventListener('change', () => setOllamaUrl(ollamaUrlInput.value));
-ollamaModelInput.value = getOllamaModel();
-ollamaModelInput.addEventListener('change', () => setOllamaModel(ollamaModelInput.value));
+// --- Home server config ---
 kbUrlInput.value = getKbUrl();
 kbUrlInput.addEventListener('change', () => setKbUrl(kbUrlInput.value));
 
@@ -344,6 +366,76 @@ profileInput.addEventListener('change', () => {
   setProfile(profileInput.value);
   syncNow(); // adopt the new profile: push local state, pull that profile's progress
 });
+
+// --- AI model (Ollama) ---
+// The saved setting is the source of truth for the selection — never the select's
+// own value: the select starts with only the "Server default" option, so assigning
+// a saved model name before its option exists silently falls back to "".
+function setAiModelOptions(models) {
+  const current = getAiModel();
+  aiModelSelect.innerHTML = '<option value="">Server default</option>';
+  for (const name of models) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    aiModelSelect.appendChild(opt);
+  }
+  // Keep a saved model selectable even when it's not in the fresh list (server
+  // unreachable, model removed) so the control never misreports the setting.
+  if (current && !models.includes(current)) {
+    const opt = document.createElement('option');
+    opt.value = current;
+    opt.textContent = `${current} (saved)`;
+    aiModelSelect.appendChild(opt);
+  }
+  aiModelSelect.value = current;
+}
+setAiModelOptions([]);
+aiModelSelect.addEventListener('change', () => setAiModel(aiModelSelect.value));
+
+// Fetches the server's installed Ollama models each time the menu opens (cheap,
+// and picks up models pulled since the last visit) and repopulates the <select>.
+let aiModelsLoaded = false;
+async function populateAiModelOptions() {
+  const models = await listAiModels();
+  if (!models.length && aiModelsLoaded) return; // keep what we have on a transient miss
+  setAiModelOptions(models);
+  aiModelsLoaded = models.length > 0;
+}
+
+// --- Read-aloud voice & speed (Web Speech) ---
+// Hidden entirely when the browser has no speech synthesis. The voice list is
+// rebuilt each time the menu opens: it is filtered to the CURRENT reading
+// language (voices are per language), and engines load voices asynchronously.
+const voiceField = document.getElementById('voice-field');
+const voiceRateField = document.getElementById('voice-rate-field');
+const voiceSelect = document.getElementById('voice-select');
+const voiceRateSelect = document.getElementById('voice-rate-select');
+
+if (!canSpeak()) {
+  voiceField.hidden = true;
+  voiceRateField.hidden = true;
+}
+
+voiceRateSelect.value = String(getTtsRate());
+if (voiceRateSelect.value === '') voiceRateSelect.value = '0.9'; // saved value not an option
+voiceRateSelect.addEventListener('change', () => setTtsRate(voiceRateSelect.value));
+
+voiceSelect.addEventListener('change', () => setTtsVoice(voiceSelect.value));
+
+function populateVoiceOptions() {
+  if (!canSpeak()) return;
+  const current = getTtsVoice(); // the setting is the source of truth, not the select
+  voiceSelect.innerHTML = '<option value="">Auto (language default)</option>';
+  for (const v of voicesForLang(getReadingLang())) {
+    const opt = document.createElement('option');
+    opt.value = v.voiceURI;
+    opt.textContent = `${v.name} (${v.lang})`;
+    voiceSelect.appendChild(opt);
+  }
+  voiceSelect.value = current;
+  if (voiceSelect.value !== current) voiceSelect.value = ''; // saved voice not installed here
+}
 
 // --- Vocabulary backup (export / import to a file) ---
 exportButton.addEventListener('click', () => {
@@ -428,7 +520,19 @@ function applyRedSeaSuppression() {
   reader.classList.toggle('reader--no-red-sea', suppress);
 }
 
+// Push the selected reader typeface into the CSS variables the reading flow reads.
+function applyReadingFont() {
+  const { stack, weight } = getReadingFontOption();
+  const root = document.documentElement.style;
+  root.setProperty('--reader-font', stack);
+  root.setProperty('--reader-weight', weight);
+}
+
 function showDocument({ text, images = [] }, { restoreIndex = 0 } = {}) {
+  if (pageTurn) {
+    pageTurn.destroy();
+    pageTurn = null;
+  }
   if (paginator) paginator.destroy();
   currentContent = { text, images };
   applyRedSeaSuppression();
@@ -440,7 +544,13 @@ function showDocument({ text, images = [] }, { restoreIndex = 0 } = {}) {
   const tokens = tokenize(text);
   const Reader = continuous ? Scroller : Paginator;
   paginator = new Reader(reader, tokens, images);
-  attachMarking(paginator.content, { getSentence: buildSentenceLookup(text, tokens) });
+  // Listen on the full-width wrap so the empty side margins turn pages too.
+  if (!continuous) pageTurn = attachPageTurn(paginator, { surface: readerWrap });
+  attachMarking(paginator.content, {
+    getSentence: buildSentenceLookup(text, tokens),
+    getParagraph: buildParagraphLookup(text, tokens),
+    book: { uid: currentBookId || '' },
+  });
 
   // Restore the saved position BEFORE wiring progress-saving, so the first event
   // reports the restored spot (not the top, which would overwrite it).
@@ -485,11 +595,31 @@ sortSelect.addEventListener('change', () => {
 readingModeSelect.value = getReadingMode();
 readingModeSelect.addEventListener('change', () => {
   setReadingMode(readingModeSelect.value);
+  reRenderAtCurrentSpot();
+});
+
+// Reading font: populate options, then re-paginate on change (the new metrics
+// shift where pages break, so a full re-render keeps the position honest).
+for (const { value, label } of FONT_OPTIONS) {
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = label;
+  readingFontSelect.appendChild(opt);
+}
+readingFontSelect.value = getReadingFont();
+readingFontSelect.addEventListener('change', () => {
+  setReadingFont(readingFontSelect.value);
+  applyReadingFont();
+  reRenderAtCurrentSpot();
+});
+
+// Re-render the open book (if any) at the reader's current position.
+function reRenderAtCurrentSpot() {
   if (currentContent && !readerWrap.hidden) {
     const at = paginator ? paginator.currentFirstWordIndex() : 0;
     showDocument(currentContent, { restoreIndex: at });
   }
-});
+}
 addBookInput.addEventListener('change', (e) => addBookFromFile(e.target.files[0]));
 fileInput.addEventListener('change', (e) => addBookFromFile(e.target.files[0]));
 
@@ -503,7 +633,7 @@ sampleButton.addEventListener('click', async () => {
     text,
     images: [],
     cover: null,
-    words: uniqueWords(text),
+    wordData: bookWordData(text),
     lang: 'en',
   });
   await openBook(id);
@@ -515,44 +645,19 @@ migrateOldDocument()
   .finally(showShelf);
 
 // --- Page navigation ---
-prevButton.addEventListener('click', () => paginator?.prev());
-nextButton.addEventListener('click', () => paginator?.next());
+// Buttons and arrow keys route through the page-turn controller (animated slide)
+// in paged mode; in continuous mode there is no controller, so they no-op / scroll.
+const turnPrev = () => (pageTurn ? pageTurn.prev() : paginator?.prev());
+const turnNext = () => (pageTurn ? pageTurn.next() : paginator?.next());
+
+prevButton.addEventListener('click', turnPrev);
+nextButton.addEventListener('click', turnNext);
 
 document.addEventListener('keydown', (e) => {
   if (!paginator || readerWrap.hidden) return;
-  if (e.key === 'ArrowLeft') paginator.prev();
-  else if (e.key === 'ArrowRight') paginator.next();
+  if (e.key === 'ArrowLeft') turnPrev();
+  else if (e.key === 'ArrowRight') turnNext();
 });
 
-// Touch swipe: horizontal drag turns the page (left = next, right = prev).
-const SWIPE_THRESHOLD = 50;
-let touchStartX = 0;
-let touchStartY = 0;
-let tracking = false;
-
-reader.addEventListener(
-  'touchstart',
-  (e) => {
-    if (e.touches.length !== 1) return;
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    tracking = true;
-  },
-  { passive: true },
-);
-
-reader.addEventListener(
-  'touchend',
-  (e) => {
-    if (!tracking || !paginator) return;
-    tracking = false;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - touchStartX;
-    const dy = t.clientY - touchStartY;
-    if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      if (dx < 0) paginator.next();
-      else paginator.prev();
-    }
-  },
-  { passive: true },
-);
+// The live drag turn (finger follows the page) is wired per-document in
+// showDocument via attachPageTurn — see src/reader/pageTurn.js.

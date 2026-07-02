@@ -18,12 +18,20 @@ import { createInterface } from 'node:readline';
 import { normalize } from '../../src/normalize.js';
 import { KB_SCHEMA_VERSION } from '../db.js';
 
+// Wiktextract also emits archaic/obsolete/dialectal/nonstandard conjugations
+// under the SAME tag as the modern one (e.g. "go" past: went, but also the
+// archaic "yode" and the nonstandard "goed"). Surfacing more than one form per
+// tense is worse than surfacing none — reject these upfront so each tense
+// collapses to the one standard form.
+const EXCLUDED_QUALIFIERS = ['archaic', 'obsolete', 'dialectal', 'nonstandard', 'dated', 'rare', 'colloquial'];
+
 // Map a Wiktextract form's tag set to one canonical verb-tense label, or null if
 // the form isn't a tense we surface. Wiktextract splits tags into arrays like
 // ["past"], ["past","participle"], ["present","participle"], ["third-person",
 // "singular","present"].
 function tenseLabel(tags = []) {
   const t = new Set(tags);
+  if (EXCLUDED_QUALIFIERS.some((q) => t.has(q))) return null;
   if (t.has('past') && t.has('participle')) return 'past participle';
   if (t.has('present') && t.has('participle')) return 'present participle';
   if (t.has('past')) return 'past';

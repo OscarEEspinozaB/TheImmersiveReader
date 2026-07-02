@@ -1,9 +1,20 @@
 // Bookshelf view: renders the library as a grid or list of books (cover + title),
 // with open / rename / delete actions. Opening is delegated to the caller.
+// Each card also shows a COMPREHENSIBILITY verdict — how much of the book's
+// running text is still NEW (not marked known) — so the reader can pick material
+// at the right level: extensive reading is comfortable under ~5% new words.
 
-import { listBooks, renameBook, deleteBook, setBookLang } from './library.js';
+import {
+  listBooks, renameBook, deleteBook, setBookLang,
+  getBookWordData, setBookWords, getBookContent,
+} from './library.js';
 import { confirmDialog, promptDialog, selectDialog, alertDialog } from './dialog.js';
-import { READING_LANGUAGES, readingLangName } from './settings.js';
+import {
+  READING_LANGUAGES, readingLangName,
+  getLanguage, getReadingLang, setActiveReadingLang,
+} from './settings.js';
+import { listEntries } from './vocabulary.js';
+import { bookWordData } from './deck.js';
 import { exportBookToBlob } from './tir.js';
 import { uploadBook } from './serverLibrary.js';
 
@@ -77,6 +88,13 @@ function bookCard(book, container, opts) {
   title.textContent = book.title;
   title.addEventListener('click', () => onOpen(book.id));
   meta.appendChild(title);
+
+  // Comprehensibility score, filled in asynchronously (may tokenize the book once).
+  const coverage = document.createElement('div');
+  coverage.className = 'book__coverage';
+  coverage.hidden = true;
+  meta.appendChild(coverage);
+  queueCoverage(() => fillCoverage(book, coverage));
 
   const actions = document.createElement('div');
   actions.className = 'book__actions';
@@ -184,6 +202,16 @@ function bookCard(book, container, opts) {
     document.querySelectorAll('.book__more').forEach((m) => { m.hidden = true; }); // close others
     more.hidden = !willOpen;
     if (more.hidden) return;
+    // The menu is wider than a grid card and the shelf scroll container clips
+    // absolutely-positioned overflow, so position it FIXED next to the kebab,
+    // clamped inside the viewport (above the button, or below if there's no room).
+    const r = kebab.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.max(margin, Math.min(r.right - more.offsetWidth, window.innerWidth - more.offsetWidth - margin));
+    let top = r.top - more.offsetHeight - 4;
+    if (top < margin) top = r.bottom + 4;
+    more.style.left = `${left}px`;
+    more.style.top = `${top}px`;
     const onDocClick = (ev) => {
       if (!moreWrap.contains(ev.target)) {
         more.hidden = true;
@@ -198,6 +226,70 @@ function bookCard(book, container, opts) {
   meta.appendChild(actions);
   card.appendChild(meta);
   return card;
+}
+
+// --- Readability badge ------------------------------------------------------------
+// "How much of this BOOK can I actually read?" — measured in units of READING,
+// not word statistics: a sentence is readable only when EVERY word in it is
+// marked known, and the badge is the share of the book's sentences that pass.
+// Word-based framings were tried and rejected three times ("% known",
+// token-weighted "new", unique-word "new") — all disagreed with the owner's
+// lived reality of opening the book. This is the hard truth by construction:
+// with a fresh vocabulary it says 0%, exactly like the first page feels.
+// Legacy books without stored sentence data are tokenized once, in a sequential
+// queue, then cached.
+
+let coverageQueue = Promise.resolve();
+function queueCoverage(fn) {
+  coverageQueue = coverageQueue.then(fn).catch((err) => console.warn('readability failed:', err));
+}
+
+async function fillCoverage(book, badge) {
+  if (!badge.isConnected) return; // the shelf re-rendered while queued
+  // A book in the user's native language has no red sea — a score is meaningless.
+  if (!book.lang || readingLangName(book.lang) === getLanguage()) return;
+
+  let rec = await getBookWordData(book.id);
+  if (!rec) {
+    const content = await getBookContent(book.id);
+    if (!content?.text) return;
+    // tokenize() follows the ACTIVE reading language; point it at this book's
+    // language for the (synchronous) pass, then restore it.
+    const prev = getReadingLang();
+    setActiveReadingLang(book.lang);
+    try {
+      rec = bookWordData(content.text);
+    } finally {
+      setActiveReadingLang(prev);
+    }
+    await setBookWords(book.id, rec);
+  }
+  if (!rec.sentences?.length || !badge.isConnected) return;
+
+  const state = new Map(listEntries(book.lang).map((e) => [e.word, e.state]));
+  let readable = 0;
+  for (const sentence of rec.sentences) {
+    let ok = true;
+    for (const wi of sentence) {
+      if (state.get(rec.words[wi]) !== 'known') {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) readable += 1;
+  }
+
+  const total = rec.sentences.length;
+  // Floor: the book must never look more readable than it is.
+  const pct = Math.floor((readable / total) * 100);
+  const band = pct >= 90 ? 'ideal' : pct >= 50 ? 'ok' : 'hard';
+  badge.textContent = `You can read ${pct}%`;
+  badge.title =
+    `${readable.toLocaleString()} of this book's ${total.toLocaleString()} sentences are fully ` +
+    `readable right now — sentences where you know every single word. ` +
+    `Marking words as known raises this.`;
+  badge.classList.add(`book__coverage--${band}`);
+  badge.hidden = false;
 }
 
 function downloadBlob(blob, filename) {

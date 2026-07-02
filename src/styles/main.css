@@ -9,6 +9,14 @@
   --topbar-h: 3rem;
   --pager-h: 3.2rem;
   --nav-h: 3.6rem;
+  /* Device safe-area insets (notch / status bar / gesture bar). Zero on desktop
+     and on displays without cutouts; non-zero on phones (Safari applies these
+     under `viewport-fit=cover`). The fixed bars grow into them; the reader
+     gutters clear them. */
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
   --font-reading: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
   --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -118,11 +126,11 @@ body {
   left: 0;
   right: 0;
   z-index: 20;
-  height: var(--topbar-h);
+  height: calc(var(--topbar-h) + var(--sat));
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 0.9rem;
+  padding: var(--sat) calc(0.9rem + var(--sar)) 0 calc(0.9rem + var(--sal));
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(6px);
@@ -158,13 +166,13 @@ body {
 
 .menu {
   position: fixed;
-  top: calc(var(--topbar-h) + 0.4rem);
-  right: 0.8rem;
+  top: calc(var(--topbar-h) + var(--sat) + 0.4rem);
+  right: calc(0.8rem + var(--sar));
   z-index: 19;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  min-width: 12rem;
+  gap: 0.15rem;
+  width: 16.5rem;
   padding: 0.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -216,32 +224,38 @@ body {
   padding: 0.2rem 0.4rem;
 }
 
+.menu__field select,
 .menu__field input {
-  width: 7.5rem;
+  flex: 1;
   min-width: 0;
 }
 
-.menu__divider {
-  height: 1px;
-  background: var(--border);
-  margin: 0.25rem 0;
+/* Grouped settings: a labeled block of related fields, replacing plain
+   dividers so the flyout reads as sections instead of one long flat list. */
+.menu__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.menu__section-label {
+  padding: 0 0.6rem 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
 }
 
 /* Theme palette swatches */
-.menu__themes-wrap {
-  padding: 0.4rem 0.6rem;
-}
-
-.menu__label {
-  display: block;
-  font-size: 0.9rem;
-  margin-bottom: 0.45rem;
-}
-
 .menu__themes {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
+  padding: 0.2rem 0.6rem 0.4rem;
 }
 
 .swatch {
@@ -276,7 +290,9 @@ body {
   flex: 1;
   display: flex;
   min-height: 0;
-  padding: calc(var(--topbar-h) + 0.5rem) 1rem calc(var(--pager-h) + 0.5rem);
+  padding: calc(var(--topbar-h) + var(--sat) + 0.5rem) calc(1rem + var(--sar))
+    calc(var(--pager-h) + var(--sab) + 0.5rem) calc(1rem + var(--sal));
+  touch-action: pan-y; /* horizontal gestures (page turns) are handled in JS */
 }
 
 /* Reader viewport: clips the flowing columns; one column == one page.
@@ -289,14 +305,35 @@ body {
   margin: 0 auto;
   width: 100%;
   max-width: var(--reader-max-width);
+  position: relative; /* anchors the sliding page-turn layers */
   touch-action: pan-y; /* let vertical scroll pass; we handle horizontal swipes */
 }
 
 .reader__flow {
-  font-family: var(--font-reading);
+  font-family: var(--reader-font, var(--font-reading));
+  font-weight: var(--reader-weight, 400);
   font-size: 1.25rem;
-  line-height: 1.9;
+  line-height: 1.65;
   white-space: pre-wrap;
+  /* Press-and-hold is our gesture (see marking.js). On mobile a long press would
+     otherwise trigger native text selection / the iOS callout magnifier, hijacking
+     the hold and breaking the timer. Disabling selection on the WHOLE flow (not
+     just .word) keeps it consistent — selecting words alone left the punctuation
+     and spaces selectable, producing a garbage ", . ; --" selection. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Page-turn layers: during a turn the live page and the incoming page are both
+   absolutely stacked inside .reader and slide horizontally together (a slide
+   carousel); .reader's overflow:hidden clips whatever is off the edge. The opaque
+   background keeps the outgoing page from bleeding through the incoming one. */
+.reader__turn-layer {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  will-change: transform;
 }
 
 /* PDF illustrations, sized to fit the page without breaking pagination. */
@@ -314,6 +351,31 @@ body {
   opacity: 0.6;
   text-align: center;
   margin-top: 20vh;
+}
+
+/* Toast: brief confirmation (e.g. after a copy gesture). */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 2rem;
+  transform: translateX(-50%) translateY(1rem);
+  max-width: 90vw;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  font-family: var(--font-ui);
+  font-size: 0.95rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 1000;
+}
+.toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* Words */
@@ -344,6 +406,36 @@ body {
   background: color-mix(in srgb, var(--text) 14%, transparent);
 }
 
+/* Press-and-hold to open the dictionary: a fill grows left-to-right over the hold
+   time required for the word's state (set via --arm-ms in marking.js), so the user
+   sees how long to keep pressing. Only learning/known words arm; unknown open at
+   once. Respects reduced-motion by skipping the animation (the popup still opens). */
+.word.is-arming {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--text) 22%, transparent),
+    color-mix(in srgb, var(--text) 22%, transparent)
+  );
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  animation: word-arm var(--arm-ms, 1000ms) linear forwards;
+}
+
+@keyframes word-arm {
+  from {
+    background-size: 0% 100%;
+  }
+  to {
+    background-size: 100% 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word.is-arming {
+    animation: none;
+  }
+}
+
 /* Pager: fixed overlay at the bottom; slides away with the top bar. */
 .pager {
   position: fixed;
@@ -351,7 +443,8 @@ body {
   left: 0;
   right: 0;
   z-index: 20;
-  height: var(--pager-h);
+  height: calc(var(--pager-h) + var(--sab));
+  padding-bottom: var(--sab);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -379,8 +472,8 @@ body.chrome-hidden .pager {
   right: 0;
   z-index: 20;
   display: flex;
-  height: var(--nav-h);
-  padding-bottom: env(safe-area-inset-bottom);
+  height: calc(var(--nav-h) + var(--sab));
+  padding-bottom: var(--sab);
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   border-top: 1px solid var(--border);
   backdrop-filter: blur(6px);
@@ -438,6 +531,13 @@ body.nav-hidden .primary-nav {
 .pager button:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+/* On touch devices the live swipe replaces the arrows; keep only the % readout. */
+@media (hover: none) and (pointer: coarse) {
+  .pager button {
+    display: none;
+  }
 }
 
 .pager__indicator {
@@ -699,7 +799,8 @@ body.nav-hidden .primary-nav {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: calc(var(--topbar-h) + 1rem) 1rem calc(var(--nav-h) + 1.5rem);
+  padding: calc(var(--topbar-h) + var(--sat) + 1rem) calc(1rem + var(--sar))
+    calc(var(--nav-h) + var(--sab) + 1.5rem) calc(1rem + var(--sal));
 }
 
 .shelf__bar {
@@ -848,9 +949,10 @@ body.nav-hidden .primary-nav {
 }
 
 .book__more {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
+  /* Fixed + JS-positioned next to the kebab (shelf.js): the menu is wider than
+     a grid card, and the scroll container clips absolutely-positioned overflow
+     — fixed positioning escapes the clipping and clamps inside the viewport. */
+  position: fixed;
   display: flex;
   flex-direction: row;
   gap: 0.3rem;
@@ -859,7 +961,7 @@ body.nav-hidden .primary-nav {
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-  z-index: 20;
+  z-index: 40; /* above bars/nav (20) and popup layer (30) */
 }
 
 .book__more[hidden] {
@@ -1018,7 +1120,8 @@ body.nav-hidden .primary-nav {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: calc(var(--topbar-h) + 0.5rem) 1rem calc(var(--nav-h) + 1.5rem);
+  padding: calc(var(--topbar-h) + var(--sat) + 0.5rem) calc(1rem + var(--sar))
+    calc(var(--nav-h) + var(--sab) + 1.5rem) calc(1rem + var(--sal));
 }
 
 /* Dashboard content (Progress / Dictionary) shares one centered column. */
@@ -1079,12 +1182,20 @@ body.nav-hidden .primary-nav {
   padding: 2rem 1rem;
 }
 
-/* Stats */
+/* Stats — always exactly 4 cards (Known/Learning/Total/This week, or the KB
+   equivalents), so a fixed 2×2 grid stays balanced at any width; `auto-fit`
+   let the 4th card wrap alone onto a left-aligned orphan row on narrow screens. */
 .stat-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.8rem;
   margin-bottom: 1.2rem;
+}
+
+@media (min-width: 30rem) {
+  .stat-cards {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .stat-card {
@@ -1415,7 +1526,8 @@ body.nav-hidden .primary-nav {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: calc(var(--topbar-h) + 0.5rem) 1rem 1rem;
+  padding: calc(var(--topbar-h) + var(--sat) + 0.5rem) calc(1rem + var(--sar))
+    calc(1rem + var(--sab)) calc(1rem + var(--sal));
 }
 
 .swiper__bar {
@@ -1672,4 +1784,238 @@ body.nav-hidden .primary-nav {
 .dict-row__def,
 .swipe-card__def {
   white-space: pre-wrap;
+}
+
+/* --- The speech bubble (src/gloss.js): the single first look at a word or a
+   paragraph. Deliberately UNLIKE the book text — UI font, raised surface,
+   strong border, shadow, and a tail pointing at its anchor — so it never blends
+   into the page (words are colored by state; the bubble is chrome). */
+.gloss {
+  position: fixed;
+  z-index: 30; /* same layer as the popup */
+  width: max-content;
+  max-width: min(24rem, calc(100vw - 1rem));
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  --gloss-bg: color-mix(in srgb, var(--text) 7%, var(--surface));
+  --gloss-border: color-mix(in srgb, var(--text) 28%, var(--surface));
+  background: var(--gloss-bg);
+  color: var(--text);
+  border: 1px solid var(--gloss-border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  font-family: var(--font-ui);
+  font-size: 0.92rem;
+}
+
+/* The tail: a rotated square flush with the top/bottom edge, slid along the
+   bubble (--tail-x, set in JS) to stay centered on the anchor word. Only the
+   two outward edges carry a border so the seam with the bubble is invisible. */
+.gloss::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--gloss-bg);
+  transform: rotate(45deg);
+  left: calc(var(--tail-x, 20px) - 6px);
+}
+
+.gloss--below::after {
+  top: -6.5px;
+  border-top: 1px solid var(--gloss-border);
+  border-left: 1px solid var(--gloss-border);
+}
+
+.gloss--above::after {
+  bottom: -6.5px;
+  border-bottom: 1px solid var(--gloss-border);
+  border-right: 1px solid var(--gloss-border);
+}
+
+.gloss__head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.gloss__word {
+  font-weight: 700;
+  font-size: 1.02rem; /* state color comes from the shared .word[data-state] rules */
+}
+
+.gloss__pos {
+  opacity: 0.6;
+  font-size: 0.8rem;
+}
+
+.gloss__more {
+  margin-left: auto;
+  flex: none;
+  background: none;
+  border: 1px solid var(--gloss-border);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.05rem 0.4rem;
+  font-size: 1rem;
+}
+
+.gloss__more:hover,
+.gloss__more:focus-visible {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.gloss__def {
+  margin: 0.35rem 0 0;
+  color: color-mix(in srgb, var(--text) 85%, transparent);
+  cursor: pointer;
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* two lines max — the popup has the full story */
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.gloss__states {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.gloss__chip {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--gloss-border);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+}
+
+.gloss__chip[data-state='known'] {
+  color: var(--word-known);
+}
+.gloss__chip[data-state='learning'] {
+  color: var(--word-learning);
+}
+.gloss__chip[data-state='unknown'] {
+  color: var(--word-unknown);
+}
+
+.gloss__chip[aria-current='true'] {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+/* Paragraph-bubble bits */
+.gloss__title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.gloss__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+.gloss__action {
+  background: none;
+  border: 1px solid var(--gloss-border);
+  border-radius: 8px;
+  color: inherit;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+}
+
+.gloss__action:hover,
+.gloss__action:focus-visible {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+/* --- 🔊 pronounce button (gloss + Dictionary hub rows, see src/speech.js) --- */
+.speak-btn {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0 0.15rem;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.speak-btn:hover,
+.speak-btn:focus-visible {
+  opacity: 1;
+}
+
+/* Keep word + 🔊 together on the left; the auto margin sends the state select
+   back to the right edge (auto margins absorb the free space first). */
+.dict-row__head .dict-row__state {
+  margin-left: auto;
+}
+
+/* kbRow: the head is itself a <button> (expand toggle), so the 🔊 sits beside it. */
+.dict-row__headrow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dict-row__headrow .dict-row__head--toggle {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --- Shelf comprehensibility badge: % of the book's running words already
+   known. Reuses the app's own color code: calm = comfortable (≥95%), gold =
+   challenging (90–94%), red = hard (<90%). */
+.book__coverage {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
+}
+
+.book__coverage--ideal {
+  color: color-mix(in srgb, var(--text) 75%, transparent);
+}
+
+.book__coverage--ok {
+  color: var(--word-learning);
+}
+
+.book__coverage--hard {
+  color: var(--word-unknown);
+}
+
+/* --- "Now playing" pill (src/speech.js): visible while read-aloud is active —
+   the stop control that survives the bubble's auto-hide. Sits above the pager
+   (reader) and the bottom nav (hubs). */
+.playback-pill {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(4.2rem + var(--sab));
+  z-index: 35; /* above bars (20) and bubbles (30), below the book menu (40) */
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 28%, var(--surface));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.playback-pill:hover,
+.playback-pill:focus-visible {
+  background: color-mix(in srgb, var(--text) 10%, var(--surface));
 }

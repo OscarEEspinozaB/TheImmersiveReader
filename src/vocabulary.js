@@ -54,6 +54,17 @@ export function getState(word) {
 }
 
 /**
+ * State plus its last-change timestamp (0 for default/never-marked words). The
+ * swiper deck uses `at` to reinforce the least-recently touched learning words.
+ * @param {string} word raw or normalized word
+ * @returns {{ state: WordState, at: number }}
+ */
+export function getStateInfo(word) {
+  const e = entries.get(scopedKey(word));
+  return e ? { state: e.state, at: e.at } : { state: DEFAULT_STATE, at: 0 };
+}
+
+/**
  * @param {string} word raw or normalized word
  * @param {WordState} state
  */

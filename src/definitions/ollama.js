@@ -1,6 +1,10 @@
-// Ollama provider: a local LLM gives a context-aware explanation in simple,
-// basic English. The word AND its full sentence are sent so the meaning matches
-// how the word is actually used.
+// Ollama provider — used ONLY for contraction decomposition (growing the
+// contraction registry), a best-effort background task with no dedicated
+// settings UI: it auto-probes Ollama on the current host and silently no-ops
+// when unreachable. Context-aware word explanations (reading-language and
+// native-language) live on the home server instead, which brokers + caches
+// them across devices, configured there via KB_OLLAMA_URL/KB_EXPLAIN_MODEL
+// (see ./serverAi.js and server/routes/aiDefine.js, server/generate/explain.js).
 //
 // Network note: we assume Ollama runs on the same host that serves the app, so
 // the URL uses the current hostname. When reading from a phone (e.g.
@@ -8,19 +12,17 @@
 //   - listen on the network:  OLLAMA_HOST=0.0.0.0 ollama serve
 //   - allow the browser origin: OLLAMA_ORIGINS=* (or the specific origin)
 
-import { explainPrompt, explainInLanguagePrompt, decomposeContractionPrompt } from './prompts.js';
-import { getOllamaUrl, getOllamaModel } from '../settings.js';
+import { decomposeContractionPrompt } from './prompts.js';
 
 const PORT = 11434;
+const MODEL = 'gemma4:e2b';
 
 const REACH_TIMEOUT = 1500; // ms — fast "is Ollama there?" probe
 const REACH_TTL = 15000; // ms — cache the probe result to avoid pinging every click
 const GENERATE_TIMEOUT = 60000; // ms — generation may be slow on first load
 
 function ollamaBaseUrl() {
-  // Use the configured URL if set; otherwise assume Ollama runs on the same host
-  // serving the app.
-  return getOllamaUrl() || `http://${window.location.hostname}:${PORT}`;
+  return `http://${window.location.hostname}:${PORT}`;
 }
 
 // fetch with an AbortController timeout.
@@ -53,61 +55,6 @@ export async function isReachable() {
 }
 
 /**
- * @param {string} word normalized word
- * @param {string} sentence the sentence the word appears in
- * @returns {Promise<import('./index.js').Definition | null>}
- */
-export async function lookupOllama(word, sentence) {
-  // Skip fast if Ollama is not reachable (e.g. away from home) so the chain
-  // falls through to the dictionary without a long wait.
-  if (!(await isReachable())) return null;
-
-  const prompt = explainPrompt(word, sentence);
-
-  const res = await fetchWithTimeout(
-    `${ollamaBaseUrl()}/api/generate`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: getOllamaModel(), prompt, stream: false }),
-    },
-    GENERATE_TIMEOUT,
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  const explanation = data?.response?.trim();
-  return explanation ? { explanation, source: 'ollama' } : null;
-}
-
-/**
- * On-demand rescue: explain the word in the user's native language. The reading
- * material stays English; this is only used when the user explicitly asks for it.
- * @param {string} word normalized word
- * @param {string} sentence the sentence the word appears in
- * @param {string} language the user's native language (e.g. "Spanish")
- * @returns {Promise<import('./index.js').Definition | null>}
- */
-export async function explainInLanguage(word, sentence, language) {
-  if (!(await isReachable())) return null;
-
-  const prompt = explainInLanguagePrompt(word, sentence, language);
-
-  const res = await fetchWithTimeout(
-    `${ollamaBaseUrl()}/api/generate`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: getOllamaModel(), prompt, stream: false }),
-    },
-    GENERATE_TIMEOUT,
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  const explanation = data?.response?.trim();
-  return explanation ? { explanation, source: `ollama · ${language}` } : null;
-}
-
-/**
  * Decompose a contraction into its component words for the contraction registry.
  * Context-aware (resolves "'d" → would/had, "'s" → is/has).
  * @param {string} word the contraction surface form, e.g. "you'd"
@@ -123,7 +70,7 @@ export async function decompose(word, sentence) {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: getOllamaModel(), prompt, stream: false }),
+      body: JSON.stringify({ model: MODEL, prompt, stream: false }),
     },
     GENERATE_TIMEOUT,
   );

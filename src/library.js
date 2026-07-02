@@ -24,19 +24,21 @@ function uuid() {
 // Version of the per-book word list. Bumped when the meaning of the list changes
 // so stale lists are recomputed. v2: contractions are expanded into their
 // component lemmas (so "didn't" counts as "did" + "not"), not stored whole.
-const WORDS_VERSION = 2;
+// v3: added per-lemma occurrence counts. v4: adds per-sentence word indexes
+// (the shelf's "you can read N%" readability badge).
+const WORDS_VERSION = 4;
 
-export async function addBook({ id, title, text, images = [], cover = null, words = null, lang, addedAt }) {
+export async function addBook({ id, title, text, images = [], cover = null, wordData = null, lang, addedAt }) {
   // `id`/`addedAt` may be supplied when importing a `.tir` so the book keeps its
   // stable identity across devices (the same logical book is not duplicated). New
-  // books generate both.
+  // books generate both. `wordData` is deck.js#bookWordData(text).
   id = id || uuid();
   const now = Date.now();
   /** @type {BookMeta} */
   const meta = { id, title, addedAt: addedAt || now, lastOpenedAt: now, progressWordIndex: 0, cover, lang };
   await idbSet('books', id, meta);
   await idbSet('content', id, { text, images });
-  if (words) await setBookWords(id, words);
+  if (wordData) await setBookWords(id, wordData);
   return id;
 }
 
@@ -52,8 +54,21 @@ export async function getBookWords(id) {
   return rec.words;
 }
 
-export function setBookWords(id, words) {
-  return idbSet('bookwords', id, { v: WORDS_VERSION, words });
+/**
+ * The book's full word data: lemmas, occurrence counts, and per-sentence word
+ * indexes (see deck.js#bookWordData). Undefined when missing/stale — the caller
+ * recomputes from the text (same contract as getBookWords).
+ * @returns {Promise<{ words: string[], counts: number[], sentences: number[][] }|undefined>}
+ */
+export async function getBookWordData(id) {
+  const rec = await idbGet('bookwords', id);
+  if (!rec || Array.isArray(rec) || rec.v !== WORDS_VERSION || !rec.sentences) return undefined;
+  return { words: rec.words, counts: rec.counts, sentences: rec.sentences };
+}
+
+/** Persist a book's word data (`data` is deck.js#bookWordData's shape). */
+export function setBookWords(id, data) {
+  return idbSet('bookwords', id, { v: WORDS_VERSION, ...data });
 }
 
 /** @returns {Promise<BookMeta[]>} books, most recently opened first */

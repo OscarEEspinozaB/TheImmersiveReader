@@ -2,8 +2,10 @@
 <html lang="en" data-theme="midnight">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>The Immersive Reader</title>
+    <meta name="theme-color" content="#000000" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
     <link rel="stylesheet" href="/src/styles/main.css" />
   </head>
   <body>
@@ -39,74 +41,91 @@
         <span>Load sample</span>
       </button>
 
-      <div class="menu__divider"></div>
+      <div class="menu__section">
+        <span class="menu__section-label">Reading</span>
+        <label class="menu__field">
+          <span>Mode</span>
+          <select id="reading-mode-select">
+            <option value="paged">Paged</option>
+            <option value="continuous">Continuous</option>
+          </select>
+        </label>
+        <label class="menu__field">
+          <span>Font</span>
+          <select id="reading-font-select"></select>
+        </label>
+        <label class="menu__field" id="voice-field">
+          <span>Voice</span>
+          <select id="voice-select">
+            <option value="">Auto (language default)</option>
+          </select>
+        </label>
+        <label class="menu__field" id="voice-rate-field">
+          <span>Voice speed</span>
+          <select id="voice-rate-select">
+            <option value="0.6">Very slow</option>
+            <option value="0.75">Slow</option>
+            <option value="0.9">Normal</option>
+            <option value="1">Native</option>
+            <option value="1.15">Fast</option>
+            <option value="1.3">Very fast</option>
+          </select>
+        </label>
+        <label class="menu__field">
+          <span>Book language</span>
+          <select id="reading-lang-select"></select>
+        </label>
+        <label class="menu__field">
+          <span>My language</span>
+          <select id="lang-select"></select>
+        </label>
+      </div>
 
-      <label class="menu__field">
-        <span>Reading mode</span>
-        <select id="reading-mode-select">
-          <option value="paged">Paged</option>
-          <option value="continuous">Continuous</option>
-        </select>
-      </label>
+      <div class="menu__section">
+        <span class="menu__section-label">Server &amp; sync</span>
+        <label class="menu__field">
+          <span>Home server</span>
+          <input id="kb-url" type="text" placeholder="http://192.168.100.6:4321" autocomplete="off" />
+        </label>
+        <label class="menu__field">
+          <span>Profile</span>
+          <input id="profile-name" type="text" placeholder="e.g. oscar (syncs your progress)" autocomplete="off" />
+        </label>
+        <label class="menu__field">
+          <span>AI model</span>
+          <select id="ai-model-select">
+            <option value="">Server default</option>
+          </select>
+        </label>
+      </div>
 
-      <label class="menu__field">
-        <span>Reading lang</span>
-        <select id="reading-lang-select"></select>
-      </label>
+      <div class="menu__section">
+        <span class="menu__section-label">Data</span>
+        <button id="export-words" class="menu__item" type="button">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 4v12" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" />
+          </svg>
+          <span>Export words</span>
+        </button>
 
-      <label class="menu__field">
-        <span>My language</span>
-        <select id="lang-select"></select>
-      </label>
+        <label class="menu__item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20V8" /><path d="m7 13 5-5 5 5" /><path d="M5 4h14" />
+          </svg>
+          <span>Import words</span>
+          <input id="import-words" type="file" accept=".json,application/json" hidden />
+        </label>
 
-      <label class="menu__field">
-        <span>Ollama URL</span>
-        <input id="ollama-url" type="text" placeholder="auto (this host:11434)" autocomplete="off" />
-      </label>
+        <button id="reset-data" class="menu__item menu__item--danger" type="button">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" />
+          </svg>
+          <span>Reset vocabulary</span>
+        </button>
+      </div>
 
-      <label class="menu__field">
-        <span>Ollama model</span>
-        <input id="ollama-model" type="text" placeholder="gemma3:4b" autocomplete="off" />
-      </label>
-
-      <label class="menu__field">
-        <span>Home server URL</span>
-        <input id="kb-url" type="text" placeholder="http://192.168.100.6:4321" autocomplete="off" />
-      </label>
-
-      <label class="menu__field">
-        <span>Profile name</span>
-        <input id="profile-name" type="text" placeholder="e.g. oscar (syncs your progress)" autocomplete="off" />
-      </label>
-
-      <div class="menu__divider"></div>
-
-      <button id="export-words" class="menu__item" type="button">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 4v12" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" />
-        </svg>
-        <span>Export words</span>
-      </button>
-
-      <label class="menu__item">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 20V8" /><path d="m7 13 5-5 5 5" /><path d="M5 4h14" />
-        </svg>
-        <span>Import words</span>
-        <input id="import-words" type="file" accept=".json,application/json" hidden />
-      </label>
-
-      <button id="reset-data" class="menu__item menu__item--danger" type="button">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" />
-        </svg>
-        <span>Reset vocabulary</span>
-      </button>
-
-      <div class="menu__divider"></div>
-
-      <div class="menu__themes-wrap">
-        <span class="menu__label">Theme</span>
+      <div class="menu__section">
+        <span class="menu__section-label">Theme</span>
         <div id="theme-swatches" class="menu__themes"></div>
       </div>
     </nav>
