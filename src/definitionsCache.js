@@ -11,7 +11,7 @@
 // NOTE: this is separate from word STATE — caching never changes a word's state.
 //
 // Storage: localStorage for now. Definitions are small text, but if this grows
-// large alongside documents it should move to IndexedDB (see docs/mvp-design.md).
+// large alongside documents it should move to IndexedDB.
 
 import { getReadingLang } from './settings.js';
 

@@ -4,92 +4,121 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Language convention
 
-Code, comments, identifiers, and internal documents are written in **English**. The project's owner is learning English (that is the purpose of this app), so all **conversation and chat responses to the user must be in Spanish**. Keep the artifacts in English; speak to the user in Spanish.
+Code, comments, identifiers, and internal documents are written in **English**. The
+project's owner is learning English (that is the purpose of this app), so all
+**conversation and chat responses to the user must be in Spanish**. Keep the
+artifacts in English; speak to the user in Spanish.
 
-## Project status
+## Documentation rules
 
-Phase 1 MVP is under construction. Milestone **M1** (the core loop) is implemented:
-ingest `.txt`/`.md`/`.pdf` → tokenize → paginated eReader → red-sea coloring → click /
-keyboard marking → persist to localStorage. See [docs/mvp-design.md](docs/mvp-design.md)
-for the full design and remaining milestones (M2 definitions, M3 voice, M4 PWA).
-
-## Commands
-
-- `npm run dev` — start the Vite dev server (`http://localhost:5173`).
-- `npm run build` — production build into `dist/`.
-- `npm run preview` — serve the production build locally.
-
-No test runner yet. Verify by running `npm run dev` and using the in-app "Load sample"
-button (a public-domain text in `public/sample/`).
-
-## Code map (Phase 1)
-
-- `src/ingest/` — per-format readers (`txt`, `md`, `pdf` via pdf.js) + `index.js`
-  dispatcher; always outputs one clean text string. `pdf.js` also normalizes
-  hyphenation and hard line wraps.
-- `src/tokenizer.js` — text → `Token[]` via `Intl.Segmenter`, preserving whitespace
-  for exact re-render.
-- `src/vocabulary.js` — `normalize()` + the word→state store, keyed by
-  `<lang>:<normalized>` (the active book's language) so spellings don't collide
-  across languages; default state is `unknown`, only non-default states persist to
-  localStorage. `resetAll()` clears it.
-- `src/settings.js` — persisted settings incl. the **default** reading language for
-  new books, plus the runtime **active** reading language (the open book's), read by
-  the tokenizer/sentences/definitions via `getReadingLang()`.
-- `src/reader/` — `render.js` (word spans + bulk recolor), `paginator.js` (CSS
-  multi-column paging), `theme.js` (dark/sepia).
-- `src/marking.js` + `src/popup.js` — click/keyboard interaction to change a word's
-  state and recolor all its occurrences.
-- `src/main.js` — wires it all together.
+- Every document in `docs/` (and this file, and the README) describes **only what
+  is implemented**. Keep them in sync with the code when you change behavior.
+- **All future plans live in exactly one place: [docs/vision.md](docs/vision.md).**
+  Never add "pending / milestone / open questions" sections to other docs; when
+  something in the vision gets built, document it in the matching feature doc and
+  remove it from the vision.
 
 ## Product concept
 
-"The Immersive Reader" is a vocabulary-learning reading tool. The user loads a plain-text book (e.g. a `.txt`); the app tokenizes it into words and colors each word by its learning state, tracked per-user in a database:
+"The Immersive Reader" is a vocabulary-learning reading tool. The user loads a book;
+the app tokenizes it into words and colors each word by learning state:
 
-- **Known** — white / light gray (blends into background, zero friction)
+- **Known** — white / light gray (blends into the background, zero friction)
 - **Learning** — metallic orange / gold (subtly draws attention)
 - **Unknown** — vibrant red (stands out as an alert)
 
-**Default state is "Unknown" (the "red sea").** Every previously-unseen word starts red on purpose — the user wants to watch their knowledge grow as the red fades over time. Vocabulary state is keyed by **normalized word, scoped to the book's language** (`<lang>:<word>`, lowercased, punctuation stripped), not by position, so marking one occurrence recolors every occurrence across all texts **in that language** — while the same spelling in another language stays independent. Each book carries its own reading language (asked on add, editable later); when a book's language matches the user's native language the red sea is suppressed. An optional, opt-in "mark the N most frequent words as Known" feature may be added later, but it must never be the default behavior.
+**Default state is "Unknown" (the "red sea")** — every previously-unseen word starts
+red on purpose, and state is **never changed automatically**. Vocabulary is keyed by
+**normalized word scoped to the book's language** (`<lang>:<word>`), not by position:
+marking one occurrence recolors every occurrence in that language across all books,
+while the same spelling in another language stays independent. Each book carries its
+own reading language; when it matches the user's native language the red sea is
+suppressed. Contractions (`didn't`) are never vocabulary entries — they decompose
+into component lemmas (`did` + `not`): color derives from the parts (most-urgent
+wins), marking applies to all parts, stats expand them.
 
-Clicking an unknown word sends the word **plus its full sentence** to a local LLM for a context-aware definition. The user can then promote the word to "Learning," which recolors it and persists the new state for future chapters.
+Clicking/holding a word sends the word **plus its full sentence** through the
+definition layer for a context-aware, simple-language explanation. UI intent:
+spartan, minimal cognitive load, dark mode primary.
 
-Design intent for the UI: spartan, minimal cognitive load, flat 2D low-poly vector style, with dark mode as the primary target (deep black background) and a light/sepia mode as the alternate.
+## Architecture (implemented)
 
-### Input formats
+Two pieces:
 
-The app ingests `.txt`, `.md`, `.pdf`, and `.epub`. PDF text is extracted client-side (**pdf.js**) and is the messiest source — broken line wraps, hyphenation, and running headers/footers are normalized; paragraphs are reconstructed from geometry. EPUB (a ZIP of XHTML) is unzipped with **fflate**, read in spine order, with block elements → paragraphs. Both also extract embedded images, anchored by position. Markdown is flattened to plain reading text. Ingestion returns `{ text, images }`.
+- **Client** — vanilla JS + HTML + CSS (Vite, no framework). Ingests `.txt`/`.md`/
+  `.pdf` (pdf.js) / `.epub` (fflate) client-side, tokenizes with `Intl.Segmenter`,
+  renders the color-coded eReader, stores vocabulary/definitions in localStorage and
+  books in IndexedDB. Fully functional offline on its own.
+- **Home server** (optional, LAN) — one Node/Express process (`npm run server`,
+  port 4321) with two SQLite files (better-sqlite3): the **dictionary KB** (seeded
+  from a Kaikki/Wiktextract dump, AI-refined via a local Ollama), the **book
+  library** (`.tir` upload/download), per-profile **vocabulary sync**
+  (last-write-wins), and a shared cache of **context-aware AI explanations** (the
+  client never calls Ollama directly for explanations). The server imports
+  `src/normalize.js` / `src/words.js` so word keys never drift between client and
+  server. No accounts yet — trusted LAN + profile names.
 
-### eReader view
+## Commands
 
-Text is presented as a comfortable reader (readable typography, dark / sepia themes), with the per-word color highlighting layered on top.
+- `npm run dev` — Vite dev server (`http://localhost:5173`, LAN-exposed).
+- `npm run build` / `npm run preview` — production build / serve it.
+- `npm run server` — the home server (`http://<ip>:4321`; data in `data/`, gitignored).
+- `npm run ingest:en` — load `data/kaikki-en.jsonl` into the dictionary KB.
+- `npm run build:book -- "<file>" --batch N` — batch-refine a book's words
+  (resumable; `--model M --force` re-refines with a stronger model).
 
-### Definition layer (pluggable providers)
+No test runner. Verify with `npm run dev` (plus `npm run server` for
+KB/sync/AI features) and the in-app "Load sample" button.
 
-Explanations for words being learned come from a **swappable provider interface** so the source can change without touching the UI. Provider chain, in order of preference: local dictionary → free dictionary API → AI model (Ollama at `localhost:11434`, or another API). The interface takes a word + its sentence and returns an explanation.
+## Code map
 
-- **Explanations must be in simple / basic English** (the reading material is English; definitions stay English but simplified). For LLM providers this is a prompt instruction.
-- **Future goal:** constrain explanations to vocabulary the user already knows. This does **not** require training or fine-tuning a model — it is done by passing the user's known-words list into the prompt (in-context) and instructing the model to explain using only those words.
+- `src/ingest/` — per-format readers → `{ text, images }` (clean text + anchored
+  illustrations; PDF de-hyphenation/paragraph reconstruction, EPUB spine order).
+- `src/tokenizer.js` / `src/words.js` / `src/normalize.js` — segmentation and the
+  word→key rule (normalize is shared with the server; keep it dependency-free).
+- `src/vocabulary.js` — `<lang>:<word>` → `{ state, at }` store (localStorage; only
+  non-default states persist) + change events for sync.
+- `src/contractions.js` — contraction registry (surface → lemmas), color
+  aggregation, Ollama-grown entries, data migrations.
+- `src/reader/` — `render.js` (spans + bulk recolor), `paginator.js` (virtualized
+  pages), `scroller.js` (continuous), `pageTurn.js` (drag turns), `theme.js`.
+- `src/marking.js` + `src/gloss.js` + `src/popup.js` — the interaction rule:
+  **gestures only open bubbles; actions are visible buttons inside** (never add
+  a new hidden gesture). Tap on unknown/learning (or hold on any word) → the
+  word bubble (definition, 🔊, state chips, ⋯ → full popup); double tap → the
+  paragraph bubble (read aloud / copy). `src/speech.js` — Web Speech TTS.
+- `src/definitions/` — provider chain: `localDict` → `kbApi` (home-server KB) →
+  `dictionaryApi` (dictionaryapi.dev); `serverAi` (server-brokered explanations);
+  `ollama.js` only decomposes contractions. `src/definitionsCache.js` caches per
+  `<lang>:<word>`.
+- `src/library.js` / `src/shelf.js` / `src/tir.js` — IndexedDB library, shelf UI
+  (incl. the readability badge: % of sentences whose every word is known —
+  never word statistics; see docs/library.md), `.tir` book format.
+  `src/serverLibrary.js` / `src/serverShelf.js` — the Server hub.
+- `src/vocabSync.js` — offline-first vocabulary sync (outbox push, incremental pull).
+- `src/dashboard.js` (+ `stats.js`, `charts.js`, `kbDetails.js`) — Dictionary &
+  Progress hubs. `src/deck.js` / `src/swiper.js` — Word Swiper.
+- `src/settings.js` — native language, default reading language, runtime **active**
+  reading language (the open book's, read via `getReadingLang()`), home-server URL,
+  profile, AI model override, reading mode/font, read-aloud voice + speed, shelf sort.
+- `src/main.js` — view switching (`shelf | server | dictionary | progress | reader |
+  swiper`) and wiring.
+- `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,
+  aiDefine), `generate/` (refine + explain pipelines, book CLI), `ingest/` (Kaikki),
+  `db.js` / `library-db.js` (schemas), `lemma.js` (formOf/verbForms grounding).
 
-### Core data lifecycle
+Per-feature docs: [docs/design.md](docs/design.md) (core reader),
+[docs/library.md](docs/library.md), [docs/home-server.md](docs/home-server.md),
+[docs/dictionary-progress.md](docs/dictionary-progress.md),
+[docs/word-swiper.md](docs/word-swiper.md) · Future: [docs/vision.md](docs/vision.md).
 
-Upload file (txt/md/pdf) → extract & normalize to clean text → tokenize → cross-reference each unique word against the store for its state → render the eReader with the color code → on interaction, fetch an explanation via the definition layer → show it → on user action, update the word's state in the store.
+## Invariants (do not break)
 
-## Planned architecture
-
-The design specifies a two-phase build. **Default to Phase 1 unless told otherwise.**
-
-**Phase 1 — Local monolith (MVP):**
-
-- Frontend: pure JavaScript, HTML5, CSS (no framework). Handles tokenization, coloring, and interaction.
-- Storage: SQLite compiled to WebAssembly, running in the browser — full relational SQL with no backend server.
-- LLM ("the brain"): frontend makes HTTP requests directly to a local **Ollama** instance at `http://localhost:11434`, passing the text segment to generate contextual definitions.
-
-**Phase 2 — Client/server (future):**
-
-- Frontend: a JS framework (React/Vue) or native mobile app; adds voice reading via Edge/Web Speech.
-- Backend: **Rust** — orchestrates requests, cross-references the user DB, and brokers calls to Ollama.
-- Database: centralized PostgreSQL (or SQLite).
-- AI engine: an Ollama cluster (Llama 3 / Phi-3).
-
-Phase 1 deliberately keeps everything client-side to enable fast iteration with zero server cost; the split into client/server only happens to support multi-device sync or multiple users.
+- The red-sea default: unseen words are Unknown; no automatic state changes ever
+  (frequency-list seeding, if ever built, is opt-in — see vision).
+- Word keys: `<lang>:<normalized>` everywhere (vocabulary, caches, KB); client and
+  server must share `normalize()` — never fork it.
+- Contractions are never stored/counted as vocabulary words.
+- The definition layer only *informs*; it never changes a word's state.
+- The server stays thin: ingestion/tokenization happen on the client; books arrive
+  as processed `.tir` archives.

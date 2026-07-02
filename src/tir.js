@@ -14,7 +14,7 @@
 //
 // Reading position and vocabulary are deliberately NOT embedded: vocabulary is
 // global (shared across books) and progress is per-device, so the file stays
-// portable and shareable. See docs/library-design.md §5.
+// portable and shareable. See docs/library.md §3.
 
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { getBook, getBookContent, addBook } from './library.js';

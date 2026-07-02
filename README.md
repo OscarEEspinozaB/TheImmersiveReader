@@ -1,74 +1,100 @@
 # The Immersive Reader
 
-A reading tool for learning English by immersion. Load a book and every word is
-color-coded by how well you know it. As you read and mark words, the page shifts from
-a "red sea" of unknown words toward calm, known text — making your vocabulary growth
-literally visible.
+A reading tool for learning a language by immersion. Load a book and every word
+is color-coded by how well you know it. As you read and mark words, the page
+shifts from a "red sea" of unknown words toward calm, known text — making your
+vocabulary growth literally visible.
 
-> Phase 1 MVP — a fully client-side app (no backend). See [docs/](docs/) for the
-> design documents.
+Two pieces: a **client** (vanilla JS, works fully offline on its own) and an
+optional **home server** (Node + SQLite on your LAN) that gives every device the
+same dictionary, book library, and synced progress. See [docs/](docs/) for the
+per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
 
 ## Features
 
-- **Library**: keep many books on a shelf (grid/list), with cover, editable title,
-  per-book reading position, and sorting (last read / title / added).
-- **Ingest** `.txt`, `.md`, `.pdf`, and `.epub`. PDF/EPUB text is reconstructed into
-  clean paragraphs (PDF from page geometry; EPUB in spine order) and embedded
-  illustrations are shown inline.
-- **Word states**: Unknown (red) → Learning (gold) → Known (blends in). The default
-  is Unknown — you grow your vocabulary by marking words; state is **never** changed
-  automatically. Keyed by the **normalized word per language** (`<lang>:<word>`), so
-  marking one occurrence recolors every occurrence across books in that language and
-  persists, while the same spelling in another language stays independent.
-- **Per-book language**: each book has its own reading language (asked when you add a
-  book, editable from the library card or the reader menu). When a book is in your
-  native language the "red sea" is suppressed — you already know those words.
-- **Reading modes**: a virtualized **paginated** eReader (only the current page is in
-  the DOM, so huge books don't freeze) with swipe / arrows / buttons, and a windowed
-  **continuous** scroll mode (so external read-aloud can see the text).
-- **Definitions** on tap: dictionary (local cache → free API) plus, if available, a
-  local **Ollama** model for context-aware explanations in simple English — including
-  part of speech and verb forms/tenses — kept as a per-context history. An on-demand
-  "explain in my language" rescue, and web-dictionary links (Cambridge, Oxford, …)
-  when nothing else has an answer.
-- **Vocabulary dashboard**: a Stats tab (known/learning counts, a growth chart, and a
-  per-book breakdown) and a Dictionary tab (search/filter/sort your words with their
-  dictionary + AI meanings; the list is windowed for large vocabularies).
-- **Word Swiper**: a Tinder-style game per book to triage/reinforce words fast —
-  swipe up = known, down = unknown, left = learning, right = skip.
-- Selectable **color themes** (dark + light), themed scrollbars, an auto-hiding
-  minimal UI, in-app dialogs, **vocabulary export/import** to a JSON file, and a
-  **reset** action that clears the vocabulary + learned dictionary (books are kept).
-- Configurable **Ollama URL + model**, a **native language**, and a **default reading
-  language** for new books (each book then keeps its own).
-- Saved locally: vocabulary and definitions cache in localStorage; books (text +
-  images) and reading positions in IndexedDB.
+- **Library**: keep many books on a shelf (grid/list), with cover, editable
+  title, per-book reading position and language, and sorting. Export/import any
+  book as a portable **`.tir`** file. Each card shows a **readability badge** —
+  "You can read N%": the share of the book's sentences where you know every
+  word, so you pick material at your real level.
+- **Ingest** `.txt`, `.md`, `.pdf`, and `.epub` client-side. PDF/EPUB text is
+  reconstructed into clean paragraphs and embedded illustrations show inline.
+- **Word states**: Unknown (red) → Learning (gold) → Known (blends in). The
+  default is Unknown; state is **never** changed automatically. Keyed per
+  language (`<lang>:<word>`), so marking one occurrence recolors every occurrence
+  across books in that language, while the same spelling in another language
+  stays independent. Books in your native language suppress the red sea.
+- **Reading modes**: a virtualized **paged** eReader with live-drag page turns
+  (tap the margins to turn, buttons/arrows animate the same slide) and a
+  windowed **continuous** scroll mode. Selectable themes and reader typefaces
+  (bundled Literata + system fonts).
+- **Speech-bubble interaction**: tap an unknown or learning word and a bubble
+  pops up next to it — definition, 🔊 (the word, then its meaning), state chips
+  to mark it, and `⋯` for the full panel (AI contexts, explain-in-my-language).
+  Hold works on any word (the better you know it, the longer the hold);
+  double-tap opens the paragraph bubble: **read the paragraph aloud**, copy it,
+  or copy the word. A floating `⏹ Stop reading` pill shows while audio plays.
+- **Read-aloud** with the browser's built-in voices (offline, no server):
+  words, meanings and paragraphs, with selectable **voice and speed** in the
+  menu.
+- **Definitions**: an offline **dictionary knowledge base** on the home server
+  (seeded from a Wiktextract dump, AI-refined into simple English, with part of
+  speech, verb tenses, synonyms/antonyms and lemma links) → free dictionary API
+  fallback → context-aware **AI explanations** brokered and cached by the server
+  (generated once, shared by every device), including an "explain in my
+  language" rescue and web-dictionary links as a last resort.
+- **Home library server**: upload processed books from one device, browse and
+  download them on another; per-profile **vocabulary sync** (offline-first,
+  last-write-wins) so progress follows you and survives a wiped browser.
+- **Dictionary & Progress hubs**: bottom navigation with a searchable personal
+  dictionary (per language, windowed for large vocabularies, with the growing
+  server-built dictionary and a data stats card) and a Progress view (counts,
+  donut, growth chart, per-book breakdown).
+- **Word Swiper**: a per-book swipe game built for **reinforcement** — the deck
+  leads with the words you're learning (least-recently touched first), then new
+  words by frequency. Up = known, down = unknown, left = learning, right = skip.
+- **Vocabulary export/import** to JSON, and a reset action (books are kept).
 
 ## Run
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173 (also exposed on your local network)
-npm run build    # production build into dist/
-npm run preview  # serve the production build
+npm run dev        # client · http://localhost:5173 (also exposed on your LAN)
+npm run build      # production build into dist/
+npm run preview    # serve the production build
 ```
 
-### Optional: AI definitions with Ollama
-
-Install [Ollama](https://ollama.com), pull a small model (e.g. `ollama pull
-gemma3:4b`), and it will be used automatically. To reach it from other devices on
-your network (e.g. a phone), run it exposed:
+### Home server (optional, recommended)
 
 ```bash
-OLLAMA_HOST=0.0.0.0 OLLAMA_ORIGINS=* ollama serve
+npm run server     # Express + SQLite · http://<machine-ip>:4321
 ```
+
+Point Settings → "Home server" at that URL (default `http://192.168.100.6:4321`).
+Data lives in `data/` (gitignored): two SQLite files + a book blob dir — backup
+is copying that folder.
+
+- **Dictionary data**: download an English Kaikki.org (Wiktextract) dump to
+  `data/kaikki-en.jsonl`, then `npm run ingest:en` (minutes, no LLM).
+- **AI (optional)**: install [Ollama](https://ollama.com) on the server machine
+  and pull a small model (default `gemma4:e2b`; override with
+  `KB_EXPLAIN_MODEL`/`KB_REFINE_MODEL`). Clients never talk to Ollama directly —
+  the server generates once and caches for everyone.
+- **Pre-build a book's dictionary**:
+  `npm run build:book -- "My Book.pdf" --batch 500` (resumable; re-run for the
+  next batch; `--model X --force` re-refines with a stronger model).
+
+If another device can't reach the app: same WiFi, router client-isolation off,
+and open ports 5173/4321 in the host firewall. Find the machine's IP with
+`hostname -I`.
 
 ## Tech
 
-Vanilla JavaScript + HTML + CSS, built with [Vite](https://vitejs.dev). PDF text and
-images are extracted client-side with [pdf.js](https://mozilla.github.io/pdf.js/);
-EPUB is unzipped with [fflate](https://github.com/101arrowz/fflate). No framework, no
-backend.
+Vanilla JavaScript + HTML + CSS, built with [Vite](https://vitejs.dev). PDF via
+[pdf.js](https://mozilla.github.io/pdf.js/), EPUB/zip via
+[fflate](https://github.com/101arrowz/fflate). Server: Node +
+[Express](https://expressjs.com) + [better-sqlite3](https://github.com/WiseLibs/better-sqlite3).
+No framework.
 
 ## License
 
