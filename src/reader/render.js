@@ -21,6 +21,16 @@ export function makeNode(item) {
     img.alt = '';
     return img;
   }
+  // A URL/e-mail token: a quietly-marked tappable span (marking.js opens the link
+  // bubble on tap — visible Open/Copy buttons, never direct navigation). It has no
+  // vocabulary key and no learning state.
+  if (item.isLink) {
+    const span = document.createElement('span');
+    span.className = 'link';
+    span.tabIndex = 0;
+    span.textContent = item.text;
+    return span;
+  }
   if (item.isWord) {
     const span = document.createElement('span');
     span.className = 'word';

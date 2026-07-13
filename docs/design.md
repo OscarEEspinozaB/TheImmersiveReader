@@ -54,6 +54,13 @@ lowercase + NFC, curly→straight apostrophes, trim non-letter edges, strip a
 trailing possessive `'s` (`Dursley's` → `dursley`). `src/words.js` shares the
 segmentation rules the same way (hyphenated compounds split, pure numbers and
 standalone possessives drop out, contractions stay whole as surface forms).
+URLs and e-mail addresses (`scheme://…`, `www.…`, `user@host.tld`) are detected
+before segmentation and kept whole as single non-word tokens — the segmenter
+would otherwise shred `http://programmer-avec-ocaml.lri.fr/` into five fake
+words. They never enter the vocabulary; in the reader they render as quietly
+underlined tappable spans (see the link bubble in §5). Trailing sentence
+punctuation stays outside the link; bare domains without a scheme or `www.` are
+left as ordinary text.
 
 **Contractions** (`src/contractions.js`) are shorthand for two real words, so
 they are never stored or counted as vocabulary. `didn't` maps to `[did, not]`:
@@ -104,6 +111,10 @@ becomes another hidden gesture:
   fallback for non-HTTPS LAN contexts, `src/copy.js`). While any read-aloud is
   playing, a fixed **`⏹ Stop reading` pill** shows at the bottom — the playback
   indicator and stop control that survives the bubble's auto-hide.
+- **Tap on a link** (a URL/e-mail token, §4) opens the **link bubble**: the
+  link's text plus `Open in new tab ↗` (scheme-less `www.` links get `https://`,
+  e-mail addresses open as `mailto:`) and `Copy link`. The tap itself never
+  navigates — the reader is never navigated away from.
 - Popup/bubble state buttons and keys `1`/`2`/`3` set Known / Learning /
   Unknown; every occurrence recolors immediately (`reader/render.js`).
 - Top/bottom chrome auto-hides and only reveals near the screen edges.

@@ -23,7 +23,7 @@ import {
   aggregateStates as aggregateContraction,
 } from './contractions.js';
 import { getLanguage } from './settings.js';
-import { showGloss, showParagraphActions, hideGloss } from './gloss.js';
+import { showGloss, showParagraphActions, showLinkActions, hideGloss } from './gloss.js';
 import {
   getCached,
   cacheDictionary,
@@ -453,7 +453,23 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
     clearHold();
   });
 
+  // Links (URL/e-mail tokens, see tokenizer.js): a tap opens the LINK BUBBLE with
+  // visible Open / Copy buttons — same rule as everything else, tapping never
+  // navigates by itself. Links have no hold / double-tap semantics, so a plain
+  // click (which never fires when the hold gesture consumed the press on a word)
+  // is enough.
+  flow.addEventListener('click', (e) => {
+    const link = e.target.closest('.link');
+    if (link && flow.contains(link)) showLinkActions(link, { url: link.textContent });
+  });
+
   flow.addEventListener('keydown', (e) => {
+    const link = e.target.closest('.link');
+    if (link && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      showLinkActions(link, { url: link.textContent });
+      return;
+    }
     const span = e.target.closest('.word');
     if (!span) return;
     const state = KEY_TO_STATE[e.key];

@@ -9,6 +9,8 @@
 //    the popup, and ⋯ to expand into the full popup.
 //  • Paragraph bubble — visible actions on the tapped word's paragraph:
 //    read aloud (toggle), copy paragraph, copy word.
+//  • Link bubble — a URL/e-mail token was tapped: open it (new tab) or copy it.
+//    Navigation only ever happens from the visible button, never from the tap.
 //
 // The bubble only INFORMS and marks on explicit button press — same invariant
 // as the popup. It points at its anchor with a tail and auto-hides when idle.
@@ -262,6 +264,49 @@ export function showParagraphActions(span, { surface, paragraph }) {
   }));
 
   el.append(head, actions);
+  position(span);
+}
+
+/**
+ * Link bubble: a URL / e-mail token was tapped. Shows the link and two visible
+ * actions — open in a NEW tab (the reader never navigates away) and copy.
+ * @param {HTMLElement} span the link element (anchor)
+ * @param {{ url: string }} opts the link exactly as printed in the book
+ */
+export function showLinkActions(span, { url }) {
+  show(span);
+
+  // What the Open button will actually load: the text as-is when it already has a
+  // scheme, mailto: for e-mail addresses, https:// for scheme-less www. links.
+  const href = /^[a-z][a-z0-9+.-]*:\/\//i.test(url)
+    ? url
+    : url.includes('@')
+      ? `mailto:${url}`
+      : `https://${url}`;
+
+  const head = document.createElement('div');
+  head.className = 'gloss__head';
+  const title = document.createElement('span');
+  title.className = 'gloss__title';
+  title.textContent = 'Link';
+  head.appendChild(title);
+
+  const target = document.createElement('p');
+  target.className = 'gloss__url';
+  target.textContent = url;
+
+  const actions = document.createElement('div');
+  actions.className = 'gloss__actions';
+  actions.appendChild(actionButton('Open in new tab ↗', () => {
+    hideGloss();
+    window.open(href, '_blank', 'noopener');
+  }));
+  actions.appendChild(actionButton('Copy link', () => {
+    hideGloss();
+    copyWithToast(url, 'Link');
+  }));
+
+  el.append(head, target, actions);
   position(span);
 }
 

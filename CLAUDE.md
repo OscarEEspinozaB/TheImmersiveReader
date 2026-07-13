@@ -86,7 +86,8 @@ KB/sync/AI features) and the in-app "Load sample" button.
   **gestures only open bubbles; actions are visible buttons inside** (never add
   a new hidden gesture). Tap on unknown/learning (or hold on any word) → the
   word bubble (definition, 🔊, state chips, ⋯ → full popup); double tap → the
-  paragraph bubble (read aloud / copy). `src/speech.js` — Web Speech TTS.
+  paragraph bubble (read aloud / copy); tap on a URL/e-mail token → the link
+  bubble (open in new tab / copy). `src/speech.js` — Web Speech TTS.
 - `src/definitions/` — provider chain: `localDict` → `kbApi` (home-server KB) →
   `dictionaryApi` (dictionaryapi.dev); `serverAi` (server-brokered explanations);
   `ollama.js` only decomposes contractions. `src/definitionsCache.js` caches per

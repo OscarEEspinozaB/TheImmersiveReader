@@ -25,8 +25,9 @@ function uuid() {
 // so stale lists are recomputed. v2: contractions are expanded into their
 // component lemmas (so "didn't" counts as "did" + "not"), not stored whole.
 // v3: added per-lemma occurrence counts. v4: adds per-sentence word indexes
-// (the shelf's "you can read N%" readability badge).
-const WORDS_VERSION = 4;
+// (the shelf's "you can read N%" readability badge). v5: URLs/e-mail addresses
+// are no longer shredded into fake words (tokenizer treats links as non-words).
+const WORDS_VERSION = 5;
 
 export async function addBook({ id, title, text, images = [], cover = null, wordData = null, lang, addedAt }) {
   // `id`/`addedAt` may be supplied when importing a `.tir` so the book keeps its
