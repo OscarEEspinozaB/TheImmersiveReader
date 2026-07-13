@@ -19,8 +19,12 @@ per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
   word, so you pick material at your real level.
 - **Ingest** `.txt`, `.md`, `.pdf`, and `.epub` client-side. PDF/EPUB text is
   reconstructed into clean paragraphs and embedded illustrations show inline.
-- **Word states**: Unknown (red) → Learning (gold) → Known (blends in). The
-  default is Unknown; state is **never** changed automatically. Keyed per
+- **Word states**: Unknown (red) → Learning (gold) → Known (blends in), plus a
+  manual-only **Discarded** state (recessive slate-blue) that sets non-vocabulary
+  tokens aside — proper nouns, code identifiers, Roman numerals — out of the
+  totals and the study deck, counted as known for readability, and reversible
+  from the Dictionary hub. The default is Unknown; state is **never** changed
+  automatically. Keyed per
   language (`<lang>:<word>`), so marking one occurrence recolors every occurrence
   across books in that language, while the same spelling in another language
   stays independent. Books in your native language suppress the red sea.
@@ -34,6 +38,9 @@ per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
   Hold works on any word (the better you know it, the longer the hold);
   double-tap opens the paragraph bubble: **read the paragraph aloud**, copy it,
   or copy the word. A floating `⏹ Stop reading` pill shows while audio plays.
+  URLs and e-mail addresses stay whole as quietly-underlined link tokens (never
+  vocabulary); tapping one opens the **link bubble** — open in a new tab or copy
+  — instead of navigating away from the book.
 - **Read-aloud** with the browser's built-in voices (offline, no server):
   words, meanings and paragraphs, with selectable **voice and speed** in the
   menu.

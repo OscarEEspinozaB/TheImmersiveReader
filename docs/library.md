@@ -52,7 +52,7 @@ badge says 0%, exactly like the first page feels, and it rises as words are
 marked. The tooltip gives the raw counts (`N of M sentences`). Colors: calm ≥
 90%, gold 50–89%, red < 50%. Books in the user's native language show no badge
 (no red sea). The per-sentence word indexes are precomputed with the book's
-word list (v4) so the shelf only re-checks states; legacy books are tokenized
+word list (v5) so the shelf only re-checks states; legacy books are tokenized
 once in a background queue and cached.
 
 ## 3. The `.tir` file format

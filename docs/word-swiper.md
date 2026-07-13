@@ -32,7 +32,8 @@ Built from the book's unique normalized words, **reinforcement first**:
 Pools fill from each other when one runs short, so a fresh book (no learning
 words yet) still deals a full deck of new words. Cards are tagged `reinforce` /
 `new` / `review` accordingly. Contractions expand to their component lemmas and
-numbers drop out (same lemma rules as everywhere else). No new storage: marking
+numbers drop out (same lemma rules as everywhere else); **discarded (exempt)
+words never enter the deck** — they are not study material. No new storage: marking
 writes the global vocabulary store (with timestamps), so marked words naturally
 move pools on the next build and show up in the Progress hub.
 

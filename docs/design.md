@@ -113,9 +113,9 @@ becomes another hidden gesture:
   wrong discard).
 - **Press-and-hold** any word (including known) opens the same bubble, with a
   light counterweight that grows with how well the word is known: unknown
-  250 ms (the double-tap window), learning 500 ms, known 1 s — the slower two
-  show a fill animation. It signals intent without the old heavy gate (2 s
-  holds made sense when they guarded the full popup; the bubble is a light
+  250 ms (the double-tap window), learning 500 ms, known or discarded 1 s — the
+  slower holds show a fill animation. It signals intent without the old heavy
+  gate (2 s holds made sense when they guarded the full popup; the bubble is a light
   glance). The full popup only ever opens **from** the bubble.
 - **Double tap** opens the **paragraph bubble**: read the paragraph aloud
   (toggle stop), copy the paragraph, copy the word (clipboard with a legacy
