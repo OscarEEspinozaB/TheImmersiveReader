@@ -8,15 +8,20 @@ built**; anything not yet built lives only in [vision.md](vision.md).
 
 The user loads a real text and reads it in a distraction-free eReader where every
 word is color-coded by how well they know it: **Unknown** (vibrant red),
-**Learning** (gold/orange), **Known** (blends into the background). The default
-state is **Unknown** — the "red sea" — on purpose: the page visibly calms down as
-knowledge grows. State is **never changed automatically**.
+**Learning** (gold/orange), **Known** (blends into the background). A fourth,
+opt-in state — **Discarded** (recessive slate-blue) — sets a word *aside* as not
+learnable vocabulary of this language (proper nouns, code identifiers, Roman
+numerals, stray letters). The default state is **Unknown** — the "red sea" — on
+purpose: the page visibly calms down as knowledge grows. State is **never changed
+automatically** (Discarded included — it is only ever a deliberate user action, and
+is never inferred from a missing dictionary entry).
 
 ## 2. Key decisions (all in effect)
 
 | Decision | Choice |
 | --- | --- |
 | Default word state | **Unknown ("red sea")**; any frequency-list seeding is future and opt-in only |
+| Discarded (exempt) | A manual-only 4th state for tokens that aren't learnable vocabulary (proper nouns, code, Roman numerals…): recessive slate-blue, out of the known/learning totals and the study deck, **counts as known for readability**, reversible from the Dictionary hub. Never auto-applied |
 | State key | `<lang>:<normalized word>` — one vocabulary **per language**; marking a word recolors every occurrence in that language across all books, while the same spelling in another language stays independent |
 | Reading language | **Per book** (asked on add, editable later); a persisted *default* seeds new books; when a book's language equals the user's native language the red sea is suppressed |
 | Tokenizer | `Intl.Segmenter` (native), preserving whitespace/punctuation for exact re-render; curly apostrophes normalized to straight |
@@ -94,12 +99,18 @@ becomes another hidden gesture:
 
 - **Single tap on an unknown or learning word** opens its **word bubble**
   (`src/gloss.js`): a speech bubble with a tail pointing at the word, visually
-  distinct from the book text. It holds the word (state-colored) + part of
-  speech, a 🔊 that pronounces the word and then its definition (`src/speech.js`,
-  Web Speech), a two-line definition, **state chips** to mark without opening
-  the popup, and `⋯` to expand into the full popup. Contractions gloss instantly
-  as their decomposition ("didn't = did + not"). Tapping a **known** word does
-  nothing — fluent reading is never interrupted.
+  distinct from the book text. It holds the word (state-colored) with a small
+  **legend naming its current state** beside it, part of speech, a 🔊 that
+  pronounces the word and then its definition (`src/speech.js`, Web Speech), a
+  two-line definition, **three state chips** to mark without opening the popup,
+  and `⋯` to expand into the full popup. The chips are always the **three states
+  the word is *not* in** (fixed order `Discarded · Unknown · Known · Learning`
+  minus the current one) — the current state is the colored word + legend, never a
+  redundant button. Contractions gloss instantly
+  as their decomposition ("didn't = did + not"). Tapping a **known** or
+  **discarded** word does nothing — both are resolved, and fluent reading is never
+  interrupted (a deliberate press-and-hold still opens the bubble to reverse a
+  wrong discard).
 - **Press-and-hold** any word (including known) opens the same bubble, with a
   light counterweight that grows with how well the word is known: unknown
   250 ms (the double-tap window), learning 500 ms, known 1 s — the slower two
@@ -115,8 +126,10 @@ becomes another hidden gesture:
   link's text plus `Open in new tab ↗` (scheme-less `www.` links get `https://`,
   e-mail addresses open as `mailto:`) and `Copy link`. The tap itself never
   navigates — the reader is never navigated away from.
-- Popup/bubble state buttons and keys `1`/`2`/`3` set Known / Learning /
-  Unknown; every occurrence recolors immediately (`reader/render.js`).
+- Both the bubble chips and the full popup's list offer only the **three states
+  the word is not in** (the popup also colors the word and shows the same state
+  legend); keys `1`/`2`/`3`/`4` set Known / Learning / Unknown / Discarded
+  regardless of position. Every occurrence recolors immediately (`reader/render.js`).
 - Top/bottom chrome auto-hides and only reveals near the screen edges.
 
 Themes (dark + light variants) via `reader/theme.js`; a selectable reader

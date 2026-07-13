@@ -15,7 +15,7 @@ import { getLibraryDb } from '../library-db.js';
 
 export const vocabRouter = Router();
 
-const STATES = new Set(['unknown', 'learning', 'known']);
+const STATES = new Set(['unknown', 'learning', 'known', 'discarded']);
 
 // Upsert one change, last-write-wins. Returns true if it was applied (newer).
 function upsert(db, user, e) {

@@ -6,10 +6,17 @@ import { buildExternalLinks } from './externalLookup.js';
 import { renderKbDetails } from './kbDetails.js';
 import { getKbUrl } from './settings.js';
 
+// Listed in MARK_ORDER (see vocabulary.js): the word's current state is hidden at
+// show() time, so only the other three buttons appear. Keys stay bound to their
+// state (1/2/3/4 in marking.js) regardless of position; they live in each button's
+// tooltip rather than its label to keep the list clean. Discarded is the exempt
+// state — not learnable vocabulary (proper nouns, code, Roman numerals…), manual
+// only, reversible from here or the Dictionary hub.
 const STATE_LABELS = [
+  { state: 'discarded', label: 'Discarded', key: '4' },
+  { state: 'unknown', label: 'Unknown', key: '3' },
   { state: 'known', label: 'Known', key: '1' },
   { state: 'learning', label: 'Learning', key: '2' },
-  { state: 'unknown', label: 'Unknown', key: '3' },
 ];
 
 // Host[:port] of a URL, for a compact source label (e.g. "192.168.100.6:4321").
@@ -46,9 +53,16 @@ export class WordPopup {
     this.el.className = 'popup';
     this.el.hidden = true;
 
-    this.title = document.createElement('div');
+    // Header: the word (colored by its current state) + a legend naming that state,
+    // so the buttons below can omit it (only the other three are offered).
+    this.head = document.createElement('div');
+    this.head.className = 'popup__head';
+    this.title = document.createElement('span');
     this.title.className = 'popup__word';
-    this.el.appendChild(this.title);
+    this.stateTag = document.createElement('span');
+    this.stateTag.className = 'popup__state-tag';
+    this.head.append(this.title, this.stateTag);
+    this.el.appendChild(this.head);
 
     // Contraction breakdown: shows "didn't = did + not" with each component's
     // current state as a colored chip. Hidden for ordinary words.
@@ -64,7 +78,8 @@ export class WordPopup {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.dataset.state = state;
-      btn.textContent = `${label} (${key})`;
+      btn.textContent = label;
+      btn.title = `Mark as ${label} (key ${key})`;
       btn.addEventListener('click', () => this._choose(state));
       buttons.appendChild(btn);
       this._buttons[state] = btn;
@@ -135,10 +150,15 @@ export class WordPopup {
     this._anchor = anchor;
     this._onChoose = onChoose;
     this.title.textContent = anchor.textContent;
+    this.title.dataset.state = currentState; // color the word like the reader
+    this.stateTag.textContent = currentState[0].toUpperCase() + currentState.slice(1);
+    this.stateTag.dataset.state = currentState;
     this.breakdown.hidden = true;
     this.breakdown.textContent = '';
     for (const [state, btn] of Object.entries(this._buttons)) {
-      btn.setAttribute('aria-current', String(state === currentState));
+      // The current state is conveyed by the word's color + legend, never a button,
+      // so only the other three are offered.
+      btn.hidden = state === currentState;
     }
 
     this.definition.hidden = true;

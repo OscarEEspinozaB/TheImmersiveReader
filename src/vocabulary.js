@@ -9,7 +9,18 @@
 // Each entry stores { state, at } where `at` is the last-change timestamp (epoch
 // ms), which powers the growth charts in the vocabulary dashboard.
 
-/** @typedef {"known" | "learning" | "unknown"} WordState */
+/**
+ * @typedef {"known" | "learning" | "unknown" | "discarded"} WordState
+ *
+ * "discarded" is the exempt state: tokens that are word-shaped but are not
+ * learnable vocabulary of the reading language — proper nouns/surnames
+ * (`Frédéric`), code identifiers (`ocamlopt`), stray letters, etc. It is applied
+ * ONLY by an explicit user action (never automatically, and never inferred from a
+ * missing dictionary entry — the definition layer only informs). A discarded word
+ * is set aside: it is painted in a recessive slate-blue, it never counts toward the
+ * known/learning totals, it does NOT block a sentence from being "readable", and it
+ * is excluded from the study deck. It is fully reversible from the Dictionary hub.
+ */
 
 import { getReadingLang } from './settings.js';
 // normalize()/normalizeSurface() live in a dependency-free module so the Node
@@ -18,8 +29,14 @@ import { getReadingLang } from './settings.js';
 export { normalize, normalizeSurface } from './normalize.js';
 import { normalize } from './normalize.js';
 
-export const STATES = /** @type {const} */ (['unknown', 'learning', 'known']);
+export const STATES = /** @type {const} */ (['unknown', 'learning', 'known', 'discarded']);
 export const DEFAULT_STATE = 'unknown';
+
+// Order the marking UI (bubble chips + popup list) lists states in. The word's
+// CURRENT state is never offered as a button — the word's own color plus a small
+// legend beside it convey it — so exactly THREE buttons show: this fixed order
+// minus the current state.
+export const MARK_ORDER = /** @type {const} */ (['discarded', 'unknown', 'known', 'learning']);
 
 // v2 keys entries by language ("<lang>:<normalized>", e.g. "en:harry") so the
 // same spelling in two languages ("no", "son", "casa") never collide. The old
@@ -153,19 +170,23 @@ export function listEntries(lang) {
 }
 
 /**
- * Known/learning/total counts, optionally scoped to a single reading language.
+ * Known/learning/discarded/total counts, optionally scoped to a single reading
+ * language. `total` is the learned vocabulary (known + learning) only; discarded
+ * words are exempt and counted separately, never folded into the total.
  * @param {string} [lang]
- * @returns {{ known: number, learning: number, total: number }}
+ * @returns {{ known: number, learning: number, discarded: number, total: number }}
  */
 export function counts(lang) {
   let known = 0;
   let learning = 0;
+  let discarded = 0;
   for (const [key, e] of entries) {
     if (lang && splitKey(key).lang !== lang) continue;
     if (e.state === 'known') known += 1;
     else if (e.state === 'learning') learning += 1;
+    else if (e.state === 'discarded') discarded += 1;
   }
-  return { known, learning, total: known + learning };
+  return { known, learning, discarded, total: known + learning };
 }
 
 /** Reading-language codes that currently have at least one marked word. */

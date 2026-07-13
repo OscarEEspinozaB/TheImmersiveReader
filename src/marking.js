@@ -34,7 +34,7 @@ import {
   cacheLang,
 } from './definitionsCache.js';
 
-const KEY_TO_STATE = { 1: 'known', 2: 'learning', 3: 'unknown' };
+const KEY_TO_STATE = { 1: 'known', 2: 'learning', 3: 'unknown', 4: 'discarded' };
 
 // How long the pointer must be held on a word before its BUBBLE opens, by state.
 // A light counterweight that grows with how well the word is known — enough to
@@ -42,8 +42,10 @@ const KEY_TO_STATE = { 1: 'known', 2: 'learning', 3: 'unknown' };
 // (the bubble is a light glance). Unknown opens at once (250 ms is the
 // double-tap detection window, not a gate); learning asks for a minimal beat;
 // known asks for a deliberate 1 s so accidental touches never interrupt
-// fluent reading.
-const OPEN_HOLD_MS = { unknown: 250, learning: 500, known: 1000 };
+// fluent reading. Discarded (exempt) is a resolved word like known, so it gets
+// the same deliberate hold — accidental taps never reopen it (reversing a wrong
+// discard is a hold here, or the Dictionary hub).
+const OPEN_HOLD_MS = { unknown: 250, learning: 500, known: 1000, discarded: 1000 };
 
 // MULTI_TAP_MS is the window to wait for a second tap (and so the delay before a
 // single tap opens the word bubble). A double tap opens the paragraph bubble.
@@ -282,9 +284,10 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
     // contexts now and, when reachable, a button to look up the current one.
     setupAi(word, surface, sentence, bookCtx, active);
 
-    if (state === 'known') {
-      // Known: never auto-fetch the dictionary either. Offer a button to look it
-      // up if the user wants (instant from cache). State is NOT changed.
+    if (state === 'known' || state === 'discarded') {
+      // Known/discarded (resolved words): never auto-fetch the dictionary either.
+      // Offer a button to look it up if the user wants (instant from cache). State
+      // is NOT changed.
       popup.showLookupButton(() => {
         popup.hideLookupButton();
         loadDictionary(word, sentence, active);
@@ -300,8 +303,8 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
   // Interaction model — gestures only open BUBBLES; actions are visible buttons
   // inside them (gloss.js), so new features never become new hidden gestures:
   //  • Single tap on an UNKNOWN or LEARNING word → its word bubble (definition,
-  //    🔊, state chips, ⋯ → full popup). Tapping a KNOWN word does nothing —
-  //    fluent reading must not be interrupted.
+  //    🔊, state chips, ⋯ → full popup). Tapping a KNOWN or DISCARDED word does
+  //    nothing — both are resolved; fluent reading must not be interrupted.
   //  • Press-and-HOLD any word (incl. known) → the same word bubble; the required
   //    hold grows with how well the word is known (OPEN_HOLD_MS) and a fill shows
   //    the time remaining. The full popup only ever opens FROM the bubble.
@@ -368,7 +371,9 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
         surface: span.textContent,
         paragraph: getParagraph(Number(span.dataset.i)),
       });
-    } else if (span.dataset.state !== 'known') {
+    } else if (span.dataset.state !== 'known' && span.dataset.state !== 'discarded') {
+      // Known and discarded are "resolved": a single tap never interrupts reading.
+      // (A deliberate hold still opens the bubble to reverse a wrong discard.)
       showGlossFor(span);
     }
   };

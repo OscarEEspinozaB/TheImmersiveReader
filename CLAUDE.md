@@ -26,9 +26,14 @@ the app tokenizes it into words and colors each word by learning state:
 - **Known** — white / light gray (blends into the background, zero friction)
 - **Learning** — metallic orange / gold (subtly draws attention)
 - **Unknown** — vibrant red (stands out as an alert)
+- **Discarded** — recessive slate-blue (exempt: set *aside* as not learnable
+  vocabulary of this language — proper nouns, code identifiers, Roman numerals,
+  stray letters). Manual-only; kept out of totals/deck; counts as known for
+  readability; reversible from the Dictionary hub.
 
 **Default state is "Unknown" (the "red sea")** — every previously-unseen word starts
-red on purpose, and state is **never changed automatically**. Vocabulary is keyed by
+red on purpose, and state is **never changed automatically** (Discarded included: it
+is only ever an explicit user action, never inferred from a missing dictionary entry). Vocabulary is keyed by
 **normalized word scoped to the book's language** (`<lang>:<word>`), not by position:
 marking one occurrence recolors every occurrence in that language across all books,
 while the same spelling in another language stays independent. Each book carries its

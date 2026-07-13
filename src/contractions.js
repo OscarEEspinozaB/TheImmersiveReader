@@ -224,7 +224,7 @@ export function learnContraction(word, lemmas, note) {
   save();
 }
 
-const RANK = { unknown: 0, learning: 1, known: 2 };
+const RANK = { unknown: 0, learning: 1, known: 2, discarded: 3 };
 
 /**
  * One-time migration: any vocabulary entry whose key is actually a contraction

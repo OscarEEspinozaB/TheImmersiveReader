@@ -42,7 +42,9 @@ prompts to add the first book.
 
 Each card shows a **readability badge**: `You can read N%` — the share of the
 book's **sentences** that are fully readable right now, where a sentence counts
-only when **every word in it is marked known**. It is measured in units of
+only when **every word in it is marked known** (words marked **discarded/exempt**
+— proper nouns, code… — count as known here, so a cast of character names never
+keeps a sentence unreadable). It is measured in units of
 reading, not word statistics: three word-based framings ("% known",
 token-weighted "new words", unique-word "new words") were rejected because none
 matched the lived reality of opening the book — with a fresh vocabulary this

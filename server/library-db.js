@@ -35,14 +35,14 @@ CREATE TABLE IF NOT EXISTS books (
 );
 
 -- Per-user vocabulary progress (the core sync). 'user' is a lightweight profile
--- name (no password yet — trusted LAN). 'state' is learning|known; an 'unknown'
--- row is a tombstone (a word reverted to the default) so the revert propagates to
--- other devices. Last-write-wins by updated_at.
+-- name (no password yet — trusted LAN). 'state' is learning|known|discarded; an
+-- 'unknown' row is a tombstone (a word reverted to the default) so the revert
+-- propagates to other devices. Last-write-wins by updated_at.
 CREATE TABLE IF NOT EXISTS vocabulary (
   user        TEXT NOT NULL,
   lang        TEXT NOT NULL,          -- learning language; scopes the word
   word        TEXT NOT NULL,          -- normalized (lowercased, punctuation stripped)
-  state       TEXT NOT NULL,          -- unknown | learning | known
+  state       TEXT NOT NULL,          -- unknown | learning | known | discarded
   updated_at  INTEGER NOT NULL,
   PRIMARY KEY (user, lang, word)
 );

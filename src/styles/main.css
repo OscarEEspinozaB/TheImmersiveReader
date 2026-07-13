@@ -35,6 +35,7 @@
   --word-known: #cfcfcf;
   --word-learning: #e8a33d;
   --word-unknown: #e23b3b;
+  --word-discarded: #7d8ba1;
 }
 
 [data-theme='slate'] {
@@ -45,6 +46,7 @@
   --word-known: #aab4bf;
   --word-learning: #e3b341;
   --word-unknown: #f76d6d;
+  --word-discarded: #6f8199;
 }
 
 [data-theme='ocean'] {
@@ -55,6 +57,7 @@
   --word-known: #a6c0c3;
   --word-learning: #ffd166;
   --word-unknown: #ff6b6b;
+  --word-discarded: #6f8aa3;
 }
 
 /* --- Light palettes --- */
@@ -66,6 +69,7 @@
   --word-known: #353535;
   --word-learning: #b9740b;
   --word-unknown: #c62828;
+  --word-discarded: #5a6b82;
 }
 
 [data-theme='sepia'] {
@@ -76,6 +80,7 @@
   --word-known: #4a3f30;
   --word-learning: #a96a08;
   --word-unknown: #b3271e;
+  --word-discarded: #556680;
 }
 
 [data-theme='mint'] {
@@ -86,6 +91,7 @@
   --word-known: #2f3a33;
   --word-learning: #936700;
   --word-unknown: #bf3326;
+  --word-discarded: #4f6480;
 }
 
 * {
@@ -412,6 +418,11 @@ body {
 .word[data-state='unknown'] {
   color: var(--word-unknown);
 }
+/* Discarded (exempt): proper nouns, code tokens, Roman numerals… — set aside in a
+   recessive slate-blue so they read as "not part of the learning", not as an alert. */
+.word[data-state='discarded'] {
+  color: var(--word-discarded);
+}
 
 /* Red-sea suppression: when the book is in the reader's native language, unknown
    words are not painted red (they already know the language). Marking still works. */
@@ -580,10 +591,28 @@ body.nav-hidden .primary-nav {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
+.popup__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  margin-bottom: 0.5rem;
+}
+
 .popup__word {
   font-weight: 600;
-  margin-bottom: 0.5rem;
   font-family: var(--font-reading);
+}
+.popup__word[data-state='unknown'] {
+  color: var(--word-unknown);
+}
+.popup__word[data-state='learning'] {
+  color: var(--word-learning);
+}
+.popup__word[data-state='known'] {
+  color: var(--word-known);
+}
+.popup__word[data-state='discarded'] {
+  color: var(--word-discarded);
 }
 
 /* Contraction breakdown: "didn't = did + not", each part colored by its state. */
@@ -647,10 +676,8 @@ body.nav-hidden .primary-nav {
 .popup__buttons button[data-state='unknown'] {
   color: var(--word-unknown);
 }
-
-.popup__buttons button[aria-current='true'] {
-  border-color: var(--text);
-  font-weight: 600;
+.popup__buttons button[data-state='discarded'] {
+  color: var(--word-discarded);
 }
 
 .popup__definition {
@@ -1862,6 +1889,34 @@ body.nav-hidden .primary-nav {
   font-size: 1.02rem; /* state color comes from the shared .word[data-state] rules */
 }
 
+/* Current-state legend beside the word (bubble + popup), colored like the word so
+   the marking buttons below can drop the current state and only offer the rest. */
+.gloss__state-tag,
+.popup__state-tag {
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+.gloss__state-tag[data-state='unknown'],
+.popup__state-tag[data-state='unknown'] {
+  color: var(--word-unknown);
+}
+.gloss__state-tag[data-state='learning'],
+.popup__state-tag[data-state='learning'] {
+  color: var(--word-learning);
+}
+.gloss__state-tag[data-state='known'],
+.popup__state-tag[data-state='known'] {
+  color: var(--word-known);
+}
+.gloss__state-tag[data-state='discarded'],
+.popup__state-tag[data-state='discarded'] {
+  color: var(--word-discarded);
+}
+
 .gloss__pos {
   opacity: 0.6;
   font-size: 0.8rem;
@@ -1903,7 +1958,7 @@ body.nav-hidden .primary-nav {
 }
 
 .gloss__chip {
-  flex: 1;
+  flex: 1; /* three "switch to" states share the row (the current one is the legend) */
   background: none;
   border: 1px solid var(--gloss-border);
   border-radius: 999px;
@@ -1922,10 +1977,8 @@ body.nav-hidden .primary-nav {
 .gloss__chip[data-state='unknown'] {
   color: var(--word-unknown);
 }
-
-.gloss__chip[aria-current='true'] {
-  border-color: currentColor;
-  background: color-mix(in srgb, currentColor 12%, transparent);
+.gloss__chip[data-state='discarded'] {
+  color: var(--word-discarded);
 }
 
 /* Link-bubble URL line: like a definition line but never clickable, and URLs

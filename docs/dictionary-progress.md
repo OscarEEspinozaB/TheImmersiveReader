@@ -29,18 +29,21 @@ language.
 
 ## 3. Progress hub
 
-- Summary cards: Known, Learning, total engaged, % known. The **Known and
-  Learning cards are real buttons** that deep-link into the Dictionary
-  pre-filtered (the two surfaces agree by construction).
+- Summary cards: Known, Learning, total engaged, % known — plus a **Discarded**
+  card that appears only once some words are exempt (proper nouns, code…), since
+  discarded words are excluded from the total and the donut. The **Known,
+  Learning and Discarded cards are real buttons** that deep-link into the
+  Dictionary pre-filtered (the surfaces agree by construction).
 - A known-vs-learning donut and a cumulative **growth line chart** (inline SVG,
   no chart dependency), derived by bucketing each word's `at`.
 - Per-book breakdown of marked words.
 
 ## 4. Dictionary hub
 
-- Search box, filter chips **All / Known / Learning / Built** (`aria-pressed`),
-  and a Recent ⇆ A–Z sort toggle. Search/sort/filter persist across hub
-  switches.
+- Search box, filter chips **All / Known / Learning / Discarded / Built**
+  (`aria-pressed`), and a Recent ⇆ A–Z sort toggle. Search/sort/filter persist
+  across hub switches. The **Discarded** filter browses exempt words so a wrong
+  mark can be moved back to known/learning via each row's state selector.
 - The **Built** filter browses the home server's refined dictionary as it grows
   (`/words`), independent of what the user has marked.
 - A **dictionary-data stats card** (`/stats`): words built, with

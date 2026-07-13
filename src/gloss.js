@@ -19,7 +19,7 @@ import { getQuickDefinition } from './definitions/index.js';
 import { getReadingLang } from './settings.js';
 import { canSpeak, speak, isSpeaking, stopSpeaking } from './speech.js';
 import { copyWithToast } from './copy.js';
-import { STATES } from './vocabulary.js';
+import { MARK_ORDER } from './vocabulary.js';
 
 const AUTO_HIDE_MS = 8000; // idle timeout; any interaction inside restarts it
 
@@ -146,6 +146,14 @@ export function showGloss(span, { surface, word, sentence, parts = null, onExpan
   title.dataset.state = span.dataset.state;
   title.textContent = surface;
 
+  // Current-state legend: the word already carries the state's color; this names
+  // it, so the marking chips below can omit the current state (only the OTHER
+  // three are offered).
+  const stateTag = document.createElement('span');
+  stateTag.className = 'gloss__state-tag';
+  stateTag.dataset.state = span.dataset.state;
+  stateTag.textContent = span.dataset.state[0].toUpperCase() + span.dataset.state.slice(1);
+
   const pos = document.createElement('span');
   pos.className = 'gloss__pos';
 
@@ -168,7 +176,7 @@ export function showGloss(span, { surface, word, sentence, parts = null, onExpan
     onExpand();
   });
 
-  head.append(title, pos, ...(speakBtn ? [speakBtn] : []), more);
+  head.append(title, stateTag, pos, ...(speakBtn ? [speakBtn] : []), more);
 
   // Definition: max two lines (CSS clamp); tapping it also expands.
   const def = document.createElement('p');
@@ -196,16 +204,18 @@ export function showGloss(span, { surface, word, sentence, parts = null, onExpan
       });
   }
 
-  // State chips: mark without opening the popup. The recolor is the feedback.
+  // State chips: mark without opening the popup (the recolor is the feedback).
+  // Always three — the word's current state is the legend above, not a button, so
+  // every chip is a real "switch to" action (fixed order, minus the current state).
   const states = document.createElement('div');
   states.className = 'gloss__states';
-  for (const s of STATES) {
+  for (const s of MARK_ORDER) {
+    if (s === span.dataset.state) continue;
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'gloss__chip';
     chip.dataset.state = s;
     chip.textContent = s[0].toUpperCase() + s.slice(1);
-    chip.setAttribute('aria-current', String(s === span.dataset.state));
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
       hideGloss();

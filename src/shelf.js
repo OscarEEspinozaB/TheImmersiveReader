@@ -231,7 +231,8 @@ function bookCard(book, container, opts) {
 // --- Readability badge ------------------------------------------------------------
 // "How much of this BOOK can I actually read?" — measured in units of READING,
 // not word statistics: a sentence is readable only when EVERY word in it is
-// marked known, and the badge is the share of the book's sentences that pass.
+// marked known (discarded/exempt words — proper nouns, code… — count as known),
+// and the badge is the share of the book's sentences that pass.
 // Word-based framings were tried and rejected three times ("% known",
 // token-weighted "new", unique-word "new") — all disagreed with the owner's
 // lived reality of opening the book. This is the hard truth by construction:
@@ -271,7 +272,11 @@ async function fillCoverage(book, badge) {
   for (const sentence of rec.sentences) {
     let ok = true;
     for (const wi of sentence) {
-      if (state.get(rec.words[wi]) !== 'known') {
+      // Discarded words are exempt (proper nouns, code…): they never count against
+      // readability, otherwise a book full of character names could never read as
+      // "readable" even once you understand the language.
+      const st = state.get(rec.words[wi]);
+      if (st !== 'known' && st !== 'discarded') {
         ok = false;
         break;
       }

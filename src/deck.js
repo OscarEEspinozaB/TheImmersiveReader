@@ -111,9 +111,11 @@ export function buildDeck(text, { limit = 50 } = {}) {
     }
   }
 
-  const stats = { total: info.size, known: 0, learning: 0, unknown: 0 };
+  const stats = { total: 0, known: 0, learning: 0, unknown: 0 };
   const pools = { unknown: [], learning: [], known: [] };
   for (const [word, e] of info) {
+    if (e.state === 'discarded') continue; // exempt words are never study material
+    stats.total += 1;
     stats[e.state] += 1;
     pools[e.state].push({ word, count: e.count, sentence: getSentence(e.firstWordIndex), state: e.state, at: e.at });
   }

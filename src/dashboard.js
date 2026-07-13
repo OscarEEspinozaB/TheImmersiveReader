@@ -105,6 +105,13 @@ export function renderProgress(root, { onOpenDictionary } = {}) {
     statCard('Total', s.total),
     statCard('This week', `+${r.known + r.learning}`),
   );
+  // Discarded (exempt) words are not learned vocabulary, so they stay out of the
+  // Total/donut; surface a card only once some exist, deep-linking to their filter.
+  if (s.discarded) {
+    cards.append(
+      statCard('Discarded', s.discarded, onOpenDictionary && (() => onOpenDictionary('discarded'))),
+    );
+  }
 
   const split = document.createElement('div');
   split.className = 'stat-split';
@@ -159,9 +166,10 @@ async function renderPerBook(container, lang) {
         setBookWords(book.id, data);
       }
     }
-    const c = { known: 0, learning: 0, unknown: 0 };
+    const c = { known: 0, learning: 0, unknown: 0, discarded: 0 };
     for (const w of words || []) c[getState(w)] += 1;
-    const total = (words || []).length || 1;
+    // Discarded words are exempt, so they leave the learnable denominator.
+    const total = ((words || []).length - c.discarded) || 1;
 
     const row = document.createElement('div');
     row.className = 'perbook-row';
@@ -332,12 +340,14 @@ export function renderDictionary(root, { filter } = {}) {
   top.className = 'dict-controls__top';
   top.append(search, sortToggle);
 
-  // Filter chips (All / Known / Learning) replacing the old <select>; the active
-  // one is filled. Seeded from state.filter so a deep-link lands already filtered.
+  // Filter chips (All / Known / Learning / Discarded / Built) replacing the old
+  // <select>; the active one is filled. Seeded from state.filter so a deep-link
+  // lands already filtered. "Discarded" browses the exempt words so a wrong mark
+  // can be moved back to known/learning via each row's state selector.
   const chips = document.createElement('div');
   chips.className = 'dict-chips';
   const chipButtons = {};
-  for (const f of ['all', 'known', 'learning', 'built']) {
+  for (const f of ['all', 'known', 'learning', 'discarded', 'built']) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'chip';
