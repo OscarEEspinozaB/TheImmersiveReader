@@ -34,9 +34,66 @@ settled the old open question:
   real verification, not an increment.
 - **Ingestion stays on the client.** The server receives processed `.tir` books,
   never raw PDFs/EPUBs. This keeps it thin and format-agnostic.
-- **Packaging:** PWA remains the target for "install on a phone"; Tauri 2 (native
-  desktop/mobile shell over the same web codebase) is the fallback if PWA-on-LAN
-  keeps not holding up. Both reuse the codebase as-is.
+- **Packaging:** the decided path for a phone install is a **native Android app
+  built with Capacitor** (see §2a) — a signed, sideloadable APK, not only a PWA.
+  Capacitor wraps the exact Vite build in a WebView shell, so the codebase is
+  reused as-is. PWA (§3) stays the zero-install option for desktop and
+  non-Android devices; Tauri 2 remains a theoretical desktop fallback but is not
+  being pursued while Capacitor covers the concrete need (Android on the home LAN).
+
+### 2a. Android app (Capacitor)
+
+Goal: a real installable Android app (`.apk` for sideload), not a browser tab.
+**Capacitor** is chosen over Tauri and a bare PWA because it reuses the current
+static Vite output unchanged, ships a mature Android WebView toolchain, and has a
+plugin for each native gap below.
+
+- **Identity & build pipeline.** App id `com.immersivereader.app`, display name
+  "The Immersive Reader". The build is `vite build` → `npx cap sync android` →
+  Gradle `assembleRelease`, producing a signed APK. `base: './'` in
+  `vite.config.js` already emits the relative asset paths Capacitor's local
+  scheme needs; the pdf.js worker is bundled through a Vite `?url` import
+  (`src/ingest/pdf.js`), so nothing loads from a CDN and the reader works offline
+  in the WebView. `localStorage` + IndexedDB persist in the WebView.
+- **The LAN-over-HTTP resolution (the one real obstacle).** The home server is
+  plain `http://…:4321`; Android blocks cleartext by default, and blocks mixed
+  content when the app itself runs on `https://localhost`. The decided fix: set
+  `server.androidScheme: "http"` in `capacitor.config` so the app runs at
+  `http://localhost` — the same scheme as the server, so fetches to
+  `http://<lan-ip>:4321` are no longer mixed content — and ship a
+  `network_security_config.xml` permitting cleartext to the LAN with
+  `android:usesCleartextTraffic="true"`. Everything server-facing
+  (`src/definitions/kbApi.js`, `src/definitions/serverAi.js`, `src/vocabSync.js`,
+  `src/serverLibrary.js`) then works unchanged, and away from the LAN the calls
+  still fail soft into the offline behavior.
+- **Native gaps → plugins & shims** (each small, behind an existing abstraction):
+  - *External links.* `window.open("_blank")` does nothing useful in a WebView.
+    A tiny `openExternal()` shim routes through `@capacitor/browser` when native
+    (and falls back to `window.open` on the web). Callers: the link bubble
+    (`src/gloss.js`) and the web-dictionary links (`src/popup.js`,
+    `src/dashboard.js`).
+  - *Hardware back button.* An `@capacitor/app` `backButton` handler maps to
+    in-app navigation — close an open bubble/popup → return to the shelf → then
+    allow exit — wired near the view switching in `src/main.js`.
+  - *Text-to-speech.* Web Speech (`src/speech.js`) works on modern Android
+    WebViews (it drives the system TTS engine), so it stays the default.
+    `speech.js` already hides the API behind its own surface, so
+    `@capacitor-community/text-to-speech` is a drop-in fallback if specific
+    devices return no voices — adopted lazily, only if a device misbehaves.
+  - *Clipboard.* `src/copy.js`'s existing `execCommand` fallback already covers
+    the non-secure `http://localhost` context; `@capacitor/clipboard` is optional
+    hardening, not required.
+  - *Chrome.* `@capacitor/status-bar` (dark) + `@capacitor/splash-screen`; the
+    layout already honors `env(safe-area-inset-*)`.
+- **Signing & distribution.** A release keystore signs the APK; the keystore and
+  its passwords are **gitignored** (never committed) and referenced from
+  `android/app/build.gradle` `signingConfigs` via a local, untracked properties
+  file. Distribution is sideload (APK), not the Play Store, so no AAB / Play
+  signing. The generated `android/` project is committed for a reproducible
+  build; `android/app/build/`, `.gradle/`, and secrets stay ignored.
+- **Out of scope for the first APK:** Play Store publishing, push notifications,
+  deep links, and any change to the offline-first data model — it is the same web
+  client in a native shell.
 
 ## 3. Reader
 
@@ -54,6 +111,8 @@ settled the old open question:
   locally-trusted certificate per device and the result didn't behave like a real
   installable app. Revisit with a concrete plan (likely: serve the client over
   HTTPS from the home server with a self-signed CA installed once per device).
+  For Android specifically, the install story is now the Capacitor app (§2a); a
+  PWA revisit would target desktop and non-Android devices.
 
 ## 4. Dictionary knowledge base (server)
 
