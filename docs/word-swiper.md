@@ -45,3 +45,10 @@ dictionary/KB → AI, respecting availability) so the deck stays fast and doesn'
 bias the self-check. A live per-book stats header, progress indicator, and an
 end-of-session summary (how many marked Known / Learning / Unknown) close the
 loop.
+
+The revealed meaning also carries the word's **family card** (see
+[design.md §6a](design.md)): the paradigm, each form in the color of its own state.
+A form the deck also holds is a **button that jumps the deck to that card** — study
+`was`, then step straight to `be` — because a paradigm is learned by walking it, not
+by meeting its forms 30 cards apart. A form the deck does not hold stays a plain
+chip. Jumping only moves the deck: a card is still only decided by swiping it.

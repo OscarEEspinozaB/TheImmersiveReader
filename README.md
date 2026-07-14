@@ -46,7 +46,7 @@ per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
   menu.
 - **Definitions**: an offline **dictionary knowledge base** on the home server
   (seeded from a Wiktextract dump, AI-refined into simple English, with part of
-  speech, verb tenses, synonyms/antonyms and lemma links) → free dictionary API
+  speech, word families, synonyms/antonyms and lemma links) → free dictionary API
   fallback → context-aware **AI explanations** brokered and cached by the server
   (generated once, shared by every device), including an "explain in my
   language" rescue and web-dictionary links as a last resort.

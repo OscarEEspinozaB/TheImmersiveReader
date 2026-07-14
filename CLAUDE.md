@@ -69,6 +69,10 @@ Two pieces:
 - `npm run build` / `npm run preview` — production build / serve it.
 - `npm run server` — the home server (`http://<ip>:4321`; data in `data/`, gitignored).
 - `npm run ingest:en` — load `data/kaikki-en.jsonl` into the dictionary KB.
+- `npm run ingest:forms` — rebuild only the KB's inflections table (~1 min).
+- `npm run kb:audit [-- --fix --batch N --model M]` — find (and repair) refined
+  entries that are wrong: stale contract, refined on an inflected form, "Plural of
+  X." non-definitions, dirty POS. Re-run after every ingest.
 - `npm run build:book -- "<file>" --batch N` — batch-refine a book's words
   (resumable; `--model M --force` re-refines with a stronger model).
 
@@ -97,6 +101,11 @@ KB/sync/AI features) and the in-app "Load sample" button.
   `dictionaryApi` (dictionaryapi.dev); `serverAi` (server-brokered explanations);
   `ollama.js` only decomposes contractions. `src/definitionsCache.js` caches per
   `<lang>:<word>`.
+- `src/kbDetails.js` — the **family card**: a word is never shown loose when the KB
+  knows its paradigm (bubble strip + full card in popup/Dictionary). It renders each
+  form in the color of the state THAT form has, and never marks anything.
+- `src/cover.js` — book covers: an uploaded one (scaled in-browser) vs the
+  document's own opening image; anchored at offset 0 so the book opens with it.
 - `src/library.js` / `src/shelf.js` / `src/tir.js` — IndexedDB library, shelf UI
   (incl. the readability badge: % of sentences whose every word is known —
   never word statistics; see docs/library.md), `.tir` book format.
@@ -110,8 +119,9 @@ KB/sync/AI features) and the in-app "Load sample" button.
 - `src/main.js` — view switching (`shelf | server | dictionary | progress | reader |
   swiper`) and wiring.
 - `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,
-  aiDefine), `generate/` (refine + explain pipelines, book CLI), `ingest/` (Kaikki),
-  `db.js` / `library-db.js` (schemas), `lemma.js` (formOf/verbForms grounding).
+  aiDefine), `generate/` (refine + explain pipelines, book CLI), `ingest/` (Kaikki
+  + `forms.js`), `db.js` / `library-db.js` (schemas), `lemma.js` (the lemma layer:
+  formOf / family / verbForms grounding), `paradigms.js` (hand-curated paradigms).
 
 Per-feature docs: [docs/design.md](docs/design.md) (core reader),
 [docs/library.md](docs/library.md), [docs/home-server.md](docs/home-server.md),
@@ -125,6 +135,13 @@ Per-feature docs: [docs/design.md](docs/design.md) (core reader),
 - Word keys: `<lang>:<normalized>` everywhere (vocabulary, caches, KB); client and
   server must share `normalize()` — never fork it.
 - Contractions are never stored/counted as vocabulary words.
+- Families (N tokens → 1 lemma) group for LOOKUP and COUNTING only — marking never
+  propagates across a family, and inflections carry their part of speech (a plural
+  noun is never labelled a verb form). They are the mirror of contractions (1 token
+  → N lemmas), where marking DOES propagate; never merge the two mechanisms.
+- Meaning is stored per LEMMA: an inflected form has no refined entry of its own, it
+  is served its lemma's (the family card's banner states the link). Word STATE stays
+  per surface form — that is the red sea, and it is untouched by this.
 - The definition layer only *informs*; it never changes a word's state.
 - The server stays thin: ingestion/tokenization happen on the client; books arrive
   as processed `.tir` archives.

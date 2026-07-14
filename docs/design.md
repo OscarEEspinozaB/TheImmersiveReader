@@ -102,8 +102,9 @@ becomes another hidden gesture:
   distinct from the book text. It holds the word (state-colored) with a small
   **legend naming its current state** beside it, part of speech, a 🔊 that
   pronounces the word and then its definition (`src/speech.js`, Web Speech), a
-  two-line definition, **three state chips** to mark without opening the popup,
-  and `⋯` to expand into the full popup. The chips are always the **three states
+  two-line definition, **the word's family** (§6a — the paradigm, each form in the
+  color of the state IT has), **three state chips** to mark without opening the
+  popup, and `⋯` to expand into the full popup. The chips are always the **three states
   the word is *not* in** (fixed order `Discarded · Unknown · Known · Learning`
   minus the current one) — the current state is the colored word + legend, never a
   redundant button. Contractions gloss instantly
@@ -144,7 +145,7 @@ change without touching the UI (`src/definitions/index.js`).
 
 - **Quick chain** (fast, auto-fetched for unknown/learning words):
   `localDict` → **KB** (`kbApi.js`, the home server's offline dictionary; carries
-  part of speech, verb tenses, synonyms/antonyms, lemma links) →
+  part of speech, the word's family, synonyms/antonyms, lemma links) →
   `dictionaryapi.dev` (free, keyless). A raw (un-refined) KB hit triggers a
   background server build so the next lookup is the refined one.
 - **AI explanations** (always on demand, per context): brokered and cached by
@@ -162,6 +163,44 @@ change without touching the UI (`src/definitions/index.js`).
   definition; **known** words never auto-fetch (a "Look it up" button shows it on
   demand). The popup never changes a word's state.
 
+### 6a. Word families
+
+A word is never shown as a loose word when the KB knows what it is a form of.
+`/define` returns the token's **family** — its lemma, how this word relates to it,
+and every form the lemma inflects into — and `kbDetails.js` renders it:
+
+- In the **bubble**, a compact strip: `go · went · gone · going · goes`, each form
+  painted with the state *it* has, the current one outlined. Seeing a white `go`
+  next to a red `gone` is the point: the learner reads the relationship instead of
+  five unrelated words.
+- In the **popup and the Dictionary hub**, the full card: a banner naming the link
+  ("Past tense of **go** · verb"), the paradigm with each form's grammatical tag,
+  and a score — *1 of 5 forms known*.
+- **Where there is somewhere to go, a form is a button.** In the Dictionary hub it
+  filters to that word, scrolls to it and flashes its row (a form the user has never
+  marked has no row — the red sea stores no entry for it — so it arrives as the
+  "look it up" card, which is the right destination for it). In the Word Swiper it
+  jumps the deck to that form's card. A form the destination cannot reach stays a
+  plain chip rather than a button that lies. Navigating never marks.
+
+Three rules keep it honest:
+
+- **It shows; it never marks.** Each form is still met and marked on its own — the
+  red sea is untouched, and knowing `go` says nothing about `went`. The forms in
+  the card are not buttons.
+- **The meaning belongs to the lemma.** Looking up `aimed` shows aim's definition
+  under the banner (see [home-server.md §2b](home-server.md)); only the word's STATE
+  is per surface form.
+- **A form is not counted twice.** `walked` is the past *and* the past participle
+  of walk: one chip, two tags, one word to learn. `sheep` comes back as a single
+  chip tagged *base · plural*, which is exactly the lesson.
+- **Pronouns group but are never scored.** `I/me/my/mine/myself` show as one
+  family (they are one system of cases), but no fraction is offered: for a learner
+  they are five things to learn, not "4/5 of one word".
+
+The data behind it (part-of-speech-aware inflections, curated closed-class
+paradigms) is the server's — see [home-server.md §2a](home-server.md).
+
 ## 7. Module map
 
 ```text
@@ -176,7 +215,7 @@ src/
   sentences.js       sentence + paragraph lookup per word index
   reader/            render, paginator, scroller, pageTurn, theme
   marking.js         hold/tap gestures, popup wiring   popup.js  the word popup
-  gloss.js           the word/paragraph speech bubble
+  gloss.js           the word/paragraph speech bubble (incl. the family strip)
   speech.js          Web Speech: word, word+definition, paragraph read-aloud
                      (user-set voice + speed; sentence-chunked; a settle delay
                      after cancel avoids the engines' first-words clipping)
@@ -186,7 +225,8 @@ src/
   library.js/shelf.js/tir.js        local library, shelf UI, .tir format  → docs/library.md
   serverLibrary.js/serverShelf.js   server catalog + Server hub           → docs/home-server.md
   vocabSync.js                      offline-first vocabulary sync         → docs/home-server.md
-  dashboard.js/stats.js/charts.js/kbDetails.js  Dictionary & Progress hubs → docs/dictionary-progress.md
+  kbDetails.js       KB detail rendering: the family card, POS, synonyms/antonyms
+  dashboard.js/stats.js/charts.js  Dictionary & Progress hubs → docs/dictionary-progress.md
   deck.js/swiper.js                 Word Swiper                           → docs/word-swiper.md
   settings.js        native language, default reading language, active (per-book)
                      reading language, home-server URL, profile, AI model,

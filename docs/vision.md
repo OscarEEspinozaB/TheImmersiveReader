@@ -214,3 +214,41 @@ cache (see [home-server.md](home-server.md)). Still pending from the design:
 An optional "mark the N most frequent words as Known" bootstrap for users who
 already have a base. The red-sea default (every unseen word starts Unknown) is a
 product invariant — this feature must never become automatic.
+
+## 9. Word families — what is left
+
+The lemma layer is built and visible (part-of-speech-aware inflections, curated
+closed-class paradigms, the family card in the bubble / popup / Dictionary — see
+[home-server.md §2a](home-server.md) and [design.md §6a](design.md)). What it does
+not do yet:
+
+- **"Real words" in Progress.** Today the hub counts surface forms: `go`, `goes`,
+  `went`, `gone` are four. The honest second metric is *lemmas* — "312 forms · 201
+  real words" — with a lemma counted as known only when **every form of it the user
+  has actually met** is known (a partial 4/5 is itself the useful signal: it names
+  the irregular form still missing). Pronouns group in the card but are never rolled
+  into that fraction — I/me/my/mine are five things to learn, not 4/5 of one.
+  Needs a bulk `POST /forms` (vocabulary keys → `{lemma, pos, tag}`), cached on the
+  client so the metric degrades to forms-only when the server is away.
+- **One card per family in the Word Swiper.** The deck already shows the family on
+  each card and lets you jump between its forms, but it still *draws* one card per
+  surface form. The open question is whether a lemma should instead deal a single
+  card ("GO — you know 3 of 5; here are the other 2").
+- **Homographs need the sentence.** `wound` resolves to *wind* (past) regardless of
+  whether the sentence means an injury; `left` is never linked to *leave*. This is
+  the one place the AI genuinely helps: resolve it once per book occurrence with the
+  sentence as context (same cascade as sense disambiguation), never per token at
+  runtime, and route low-confidence answers to a review queue instead of writing
+  them into the KB. The prompt must be scoped to INFLECTION only — a false "singer
+  is a form of sing" corrupts the entry a learner reads, so "not sure" must be the
+  cheap answer.
+- **A gold-standard test set** before any AI is allowed to write to the KB:
+  regular/irregular verbs, plurals, degrees, plus the two traps that matter —
+  derivation (`singer`, `happiness`, `building`-as-noun must say *not a form*) and
+  false affixes (`corner`, `ring`, `under`). Measure per category; iterate the
+  prompt, not the architecture.
+- **A manual fix in the Dictionary hub.** A wrong grouping should be correctable by
+  hand and locked (the same `locked` provenance guard as §4).
+- **Spanish.** Verb conjugation is a far larger paradigm (regular -ar/-er/-ir plus a
+  sizeable irregular table); the schema already carries `pos` and `lang`, so this is
+  a data problem, not a design one.

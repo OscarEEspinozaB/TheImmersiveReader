@@ -11,7 +11,8 @@ also the wire format for the home server's book store
 
 ```text
 IndexedDB "immersive-reader"
-  store "books"      BookMeta = { id, title, addedAt, lang, cover?, progressWordIndex,
+  store "books"      BookMeta = { id, title, addedAt, lang, cover?, coverSource?,
+                                  coverWidth?, coverHeight?, progressWordIndex,
                                   lastOpenedAt?, … }        (metadata, small)
   store "content"    { text, images: [{ start, width, height, blob }] }  (heavy, by id)
   store "bookwords"  per-book unique lemmas + occurrence counts (versioned;
@@ -34,11 +35,32 @@ IndexedDB "immersive-reader"
 
 ## 2. Shelf UI
 
-Grid/list toggle, cover (first extracted image), editable title, sorting (last
-read / title / date added), per-book actions: open, practice (swiper), export
+Grid/list toggle, cover, editable title, sorting (last read / title / date
+added), per-book actions: open, practice (swiper), **cover image**, export
 `.tir`, upload to the home server (☁), change language, rename, delete. Opening
 a book restores its saved position; a back-to-shelf control returns. Empty state
 prompts to add the first book.
+
+### 2a. The cover
+
+A cover has an **origin** (`src/cover.js`), and that is what makes it replaceable:
+
+- `document` — the image the file itself opens with (an image anchored within the
+  first ~200 characters). The default, and what every book had before covers were a
+  concept of their own.
+- `uploaded` — one chosen from the ⋮ menu. It replaces the cover on the shelf **and
+  the book now opens with it**: it is anchored at offset 0, so the reader's existing
+  image anchoring paints it before the first word — no special case in the reader.
+
+One cover per book, always: choosing another replaces it. The document's own images
+are never modified, so *Remove the uploaded cover* puts the original back (or leaves
+the generated text cover, for a book that never had an image). An illustration deeper
+in the text is **not** a cover and is never taken out of the book by an upload — only
+an opening image steps aside.
+
+Uploads are scaled in the browser before they are stored (longest side ≤ 1200 px,
+WebP): a phone photo is several MB and would otherwise be carried at full size inside
+every `.tir` the book is exported or uploaded as.
 
 Each card shows a **readability badge**: `You can read N%` — the share of the
 book's **sentences** that are fully readable right now, where a sentence counts
@@ -64,10 +86,13 @@ re-running extraction:
 ```text
 book.tir  (zip)
   manifest.json   { format: "tir", version: 1, id, title, addedAt, lang,
-                    cover, coverMime, images: [{ file, mime, start, width, height }] }
+                    cover, coverMime, coverSource, coverWidth, coverHeight,
+                    images: [{ file, mime, start, width, height }] }
   text.txt        the clean reading text
   images/0.png …  illustration blobs (zip-stored, level 0 — already compressed)
-  cover.png       optional shelf thumbnail
+  cover.png       optional cover (shelf thumbnail + the book's opening image when
+                  `coverSource` is "uploaded"; without that field the file would
+                  forget that its cover can be taken back)
 ```
 
 - `manifest.id` is the book's **stable identity**: importing a `.tir` already in

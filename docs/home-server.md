@@ -19,12 +19,17 @@ server/
   index.js          Express app: mounts all routers, opens both DBs
   db.js             dictionary KB SQLite (data/dictionary.sqlite) + schema
   library-db.js     library SQLite (data/library.sqlite) + schema + books blob dir
-  lemma.js          formOf() (inflected form → lemma) and verbForms() (tense paradigm)
+  lemma.js          the lemma layer: formOf() (inflected form → lemma), family()
+                    (the whole paradigm), verbForms() (tense grounding for the AI)
+  paradigms.js      hand-curated paradigms: pronouns, BE/HAVE/DO, modals,
+                    demonstratives, irregular degrees (good/better/best)
   log.js            colored per-request console log (HIT/MISS/BUILDING/BUILT…)
   routes/           define, build, words, stats, books, vocab, aiDefine
   generate/         ollama.js (refine), build.js (refine-and-store pipeline),
-                    explain.js (context AI), book.js (batch CLI), run.js (text CLI)
-  ingest/           kaikki.js (Wiktextract JSONL → KB), pdfText.js, run.js (CLI)
+                    explain.js (context AI), book.js (batch CLI), run.js (text CLI),
+                    audit.js (find + repair wrong entries)
+  ingest/           kaikki.js (Wiktextract JSONL → KB), pdfText.js, run.js (CLI),
+                    forms.js (rebuild only the inflections table)
 data/               gitignored: dictionary.sqlite, library.sqlite, books/ (blobs),
                     kaikki-<lang>.jsonl (user-dropped dump)
 ```
@@ -44,20 +49,34 @@ The KB holds deterministic linguistic data seeded from a **Kaikki.org /
 Wiktextract** dump, plus an AI-**refined** layer built on top of it.
 
 - **Schema** (`db.js`): `entries` (id `<lang>:<word>`, POS), `senses` (glosses,
-  deduped per word), `inflections` (verb-tense forms; archaic/obsolete/dialectal
-  qualifiers rejected at ingest), `relations` (synonym/antonym graph),
-  `refined` (one simple-English definition + curated synonyms/antonyms + model),
+  deduped per word), `inflections` (one row per form, **carrying its part of
+  speech** plus a `curated` flag; archaic/obsolete/dialectal qualifiers rejected
+  at ingest), `relations` (synonym/antonym graph),
+  `refined` (one simple-English definition + curated synonyms/antonyms + model +
+  the contract `rev` it was written under — keyed by LEMMA),
   `provenance` (per-field source stamping with a `locked` guard), and
   `translations`/`generation_progress` (created, not yet populated — see vision).
 - **Ingest** (`npm run ingest:en`): streams the JSONL line-by-line, batched
   transactions, merges POS across a word's split entries, skips multi-word
-  phrases. Runs in minutes, zero LLM.
+  phrases. Runs in minutes, zero LLM. `npm run ingest:forms` re-does **only** the
+  inflections table (~1 min) without touching senses, relations or refined
+  entries — run it after any change to the form-labelling rules.
 - **Refinement** (`generate/ollama.js` + `build.js`): Ollama (`format: "json"`)
   condenses a word's raw senses into ONE clear, simple-English definition plus at
   most 6 synonyms/antonyms. It never overwrites the raw data, so re-running with
-  a stronger model (`--model … --force`) is safe. Inflected forms are linked to
-  their lemma (`formOf`) and the definition must open with that link
-  ("Past tense of 'come': …").
+  a stronger model (`--model … --force`) is safe. **A build always targets the
+  lemma**: asking to build "aimed" builds "aim" (see §2b).
+- **Audit** (`npm run kb:audit [--fix --batch N --model M]`): the KB's own quality
+  gate. It walks every refined row and sorts it by verdict — a row that belongs to
+  an inflected form (unreachable now that forms serve their lemma's entry), one
+  written under an older contract (`rev < REFINE_REV`), a definition that only
+  points at another word ("Plural of mouse."), dump noise, an empty definition —
+  reports the counts, and with `--fix` repairs them: deleting what should not
+  exist and re-generating the rest with the local model, a batch at a time
+  (resumable — a repaired row is stamped with the current rev). It also strips the
+  incidental parts of speech (`name`, `character`) the dump merges into common
+  words, which is why a verb used to introduce itself as "name · noun · verb".
+  **Re-run it after every ingest**, which re-merges them.
 - **Read-through**: a `/define` miss on the refined layer can be followed by a
   client-triggered `POST /build` that refines and stores the word in the
   background; the next lookup is prebuilt. Words truly absent from the dump
@@ -66,6 +85,47 @@ Wiktextract** dump, plus an AI-**refined** layer built on top of it.
   book's unique words **in reading order** (or `--by-frequency`) and refines the
   next N pending ones per run; resumable because every entry commits
   immediately. `--model`/`--force` re-refines with a stronger model.
+
+### 2b. Meaning lives on the lemma
+
+An inflected form is not a word of its own: `/define?word=aimed` returns **aim's**
+entry (definition, synonyms, senses, part of speech) with the grammar that explains
+the link (`formOf`, `family`), and `word` stays what was asked for so the client
+keeps caching and coloring per surface form.
+
+Refining each form separately was the mistake this replaces: it produced five
+mediocre entries where one good one was needed (the synonyms stored for "aimed" —
+*shot, hit, struck* — were plainly worse than aim's *goal, target, purpose*) and
+multiplied the LLM cost by the size of every paradigm. Roughly 40% of the refined
+rows in the first build were forms; `kb:audit --fix` deletes them.
+
+### 2a. The lemma layer (word families)
+
+`lemma.js` answers two questions about any token, deterministically and with no
+LLM: **what is this a form of** (`formOf`) and **what is the whole family it
+belongs to** (`family`). `/define` returns both, and the reader turns them into
+the family card (see [design.md §7](design.md)).
+
+- **A form only means something with its part of speech.** `cats` is the plural of
+  the noun *cat* and the third-person singular of the verb *to cat*; the
+  `inflections` rows carry `pos` so the reader is never told the false one. When a
+  word could belong to two paradigms, the best-attested lemma wins (sense count),
+  then noun › verb › adjective › adverb.
+- **A form is never a link to itself.** A word that has its own well-attested entry
+  is only called a form of something else when that lemma is better attested — the
+  guard that keeps `run` a verb of its own instead of "past participle of the
+  dialectal *rin*".
+- **Curated paradigms beat the dump** (`paradigms.js`). The pronouns, BE/HAVE/DO,
+  the modals, the demonstratives and the irregular degrees are hand-written: a
+  fixed set of ~90 forms, the words a learner meets on every line, and the ones the
+  dump gets wrong (its BE table has no *am*; its *it* lists *they*/*them* as forms;
+  it files *better* under *well*, never *good*). The ingest skips those lemmas
+  entirely and `seedCurated()` writes them instead.
+- **Families group; they never mark.** The layer exists for looking up and (later)
+  counting. Knowing `go` says nothing about `went` — each form is still met and
+  marked on its own. This is the exact mirror of contractions, which decompose ONE
+  token into lemmas and *do* propagate marking; a family gathers N tokens into one
+  lemma and never does.
 
 ## 3. Book library
 
@@ -108,7 +168,7 @@ feeds the Settings model picker from the server's installed Ollama models.
 
 ```text
 GET    /health                          liveness
-GET    /define?word=&lang=              KB entry (refined + raw senses + formOf); 404 on miss
+GET    /define?word=&lang=              KB entry (refined + raw senses + formOf + family); 404 on miss
 POST   /build   {words|text, lang, force}   refine-and-store (read-through)
 GET    /words?lang=&q=&sort=&limit=     built (refined) words, for the Dictionary hub
 GET    /stats?lang=                     dictionary-data stats card

@@ -53,8 +53,10 @@ language.
   Speech, voiced in the hub's language — hearing the word is part of knowing
   it), a state chip colored like the reader, its dictionary definition, and the
   expandable **AI context history** (each explanation with its sentence).
-  KB-backed rows surface part of speech, verb tenses, synonyms/antonyms and
-  lemma links (`kbDetails.js`). Rows without a cached meaning offer an on-demand
+  KB-backed rows surface the word's **family card** (its paradigm, each form in
+  the color of its own state, with a "N of M forms known" score), part of speech
+  and synonyms/antonyms (`kbDetails.js`). Tapping another form in the card **walks
+  the hub to that word**: it filters to it, scrolls to it and flashes its row. Rows without a cached meaning offer an on-demand
   look-up. Changing a word's state here updates it everywhere (same global
   store).
 - The list is **windowed** (IntersectionObserver chunk load/unload) so large
