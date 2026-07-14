@@ -5,7 +5,8 @@
 //   # re-refine everything with a stronger model:
 //   npm run build:book -- "Book 1 - The Philosopher's Stone.pdf" --model gemma4:e4b --force
 //
-// Extracts the book's text (PDF via pdfjs, or plain .txt/.md) and refines + stores
+// Extracts the book's text (PDF via pdfjs, EPUB via its spine, or plain .txt/.md)
+// and refines + stores
 // each unique word IN READING ORDER (the order it first appears in the book) — a
 // book is read front to back, so the dictionary is built the same way you'll meet
 // the words. Words are collapsed to their LEMMA first (aim/aimed/aiming/aims are
@@ -25,6 +26,7 @@ import { getDb } from '../db.js';
 import { refineWords, refineTarget } from './build.js';
 import { REFINE_REV } from './ollama.js';
 import { extractPdfText } from '../ingest/pdfText.js';
+import { extractEpubText } from '../ingest/epubText.js';
 
 function parseArgs(argv) {
   const opts = { lang: 'en', file: null, batch: 0, limit: 0, minCount: 1, force: false, byFrequency: false, model: '' };
@@ -43,9 +45,10 @@ function parseArgs(argv) {
 }
 
 async function loadText(file) {
-  return extname(file).toLowerCase() === '.pdf'
-    ? extractPdfText(file)
-    : readFileSync(file, 'utf8');
+  const ext = extname(file).toLowerCase();
+  if (ext === '.pdf') return extractPdfText(file);
+  if (ext === '.epub') return extractEpubText(file);
+  return readFileSync(file, 'utf8');
 }
 
 // Unique words in READING ORDER (first appearance) by default, or by descending
