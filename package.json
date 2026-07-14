@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "server": "node server/index.js",
     "ingest:en": "node server/ingest/run.js en",
-    "build:book": "node server/generate/book.js"
+    "ingest:forms": "node server/ingest/forms.js en",
+    "build:book": "node server/generate/book.js",
+    "kb:audit": "node server/generate/audit.js"
   },
   "dependencies": {
     "@fontsource-variable/literata": "^5.2.8",

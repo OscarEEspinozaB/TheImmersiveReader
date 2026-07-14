@@ -6,10 +6,17 @@
 // Refinement reads the raw Kaikki data the KB already holds and condenses it into
 // one simple-English definition (see generate/ollama.js); it does not touch the
 // raw senses/inflections, so it is safe to re-run with a better model later.
+//
+// REFINED ENTRIES ARE KEYED BY LEMMA. Asking to build "aimed" builds "aim": an
+// inflected form is not a word of its own, it is a form of one, and /define serves
+// it the lemma's entry under a banner ("Past tense of aim"). Refining each form
+// separately produced five mediocre definitions where one good one was needed —
+// the synonyms of "aimed" (shot, hit, struck) were visibly worse than those of
+// "aim" — and multiplied the LLM cost by the size of the paradigm.
 
 import { normalize } from '../../src/normalize.js';
 import { formOf } from '../lemma.js';
-import { refineEntry, REFINE_MODEL } from './ollama.js';
+import { refineEntry, REFINE_MODEL, REFINE_REV } from './ollama.js';
 
 // Pull the raw data the refiner needs for one entry, or null if the word is not
 // in the KB at all (a true miss — nothing to refine from yet).
@@ -34,9 +41,16 @@ function readRaw(db, lang, word) {
     definitions: senses.slice(0, 8).map((s) => s.definition),
     synonyms: [...synonyms].slice(0, 20),
     antonyms: [...antonyms].slice(0, 20),
-    // "came" → { lemma: "come", tags: ["past", ...] } so the prompt keeps the link.
-    formOf: formOf(db, lang, word),
   };
+}
+
+/**
+ * The entry a word's meaning lives under: itself, or its lemma when it is an
+ * inflected form. The one place that decides "what do we actually refine".
+ * @returns {string} normalized lemma
+ */
+export function refineTarget(db, lang, word) {
+  return formOf(db, lang, word)?.lemma || word;
 }
 
 /**
@@ -52,13 +66,14 @@ function readRaw(db, lang, word) {
  * @returns {Promise<{ word: string, status: string, definition?: string }[]>}
  */
 export async function refineWords({ db, lang, words, force = false, model = REFINE_MODEL, onStart, onResult }) {
-  const hasRefined = db.prepare('SELECT 1 FROM refined WHERE entry_id = ?');
+  const hasRefined = db.prepare('SELECT 1 FROM refined WHERE entry_id = ? AND rev >= ?');
   const upsertRefined = db.prepare(`
-    INSERT INTO refined (entry_id, definition, synonyms, antonyms, model, generated_at)
-    VALUES (@id, @definition, @synonyms, @antonyms, @model, @at)
+    INSERT INTO refined (entry_id, definition, synonyms, antonyms, model, rev, generated_at)
+    VALUES (@id, @definition, @synonyms, @antonyms, @model, @rev, @at)
     ON CONFLICT(entry_id) DO UPDATE SET
       definition = excluded.definition, synonyms = excluded.synonyms,
-      antonyms = excluded.antonyms, model = excluded.model, generated_at = excluded.generated_at
+      antonyms = excluded.antonyms, model = excluded.model, rev = excluded.rev,
+      generated_at = excluded.generated_at
   `);
   const stampProv = db.prepare(`
     INSERT INTO provenance (entry_id, field_path, source, source_name, generated_at, locked)
@@ -71,12 +86,16 @@ export async function refineWords({ db, lang, words, force = false, model = REFI
   const seen = new Set();
   const results = [];
   for (const surface of words) {
-    const word = normalize(surface);
-    if (!word || seen.has(word)) continue;
+    const asked = normalize(surface);
+    if (!asked) continue;
+    // "aimed" and "aiming" both resolve to "aim": one build, one entry, one good
+    // definition — and the dedupe below then skips the rest of the paradigm.
+    const word = refineTarget(db, lang, asked);
+    if (seen.has(word)) continue;
     seen.add(word);
     const id = `${lang}:${word}`;
 
-    if (!force && hasRefined.get(id)) {
+    if (!force && hasRefined.get(id, REFINE_REV)) {
       const r = { word, status: 'skipped' };
       results.push(r); onResult?.(r);
       continue;
@@ -102,6 +121,7 @@ export async function refineWords({ db, lang, words, force = false, model = REFI
         synonyms: JSON.stringify(refined.synonyms),
         antonyms: JSON.stringify(refined.antonyms),
         model,
+        rev: REFINE_REV,
         at,
       });
       stampProv.run(id, model, at);

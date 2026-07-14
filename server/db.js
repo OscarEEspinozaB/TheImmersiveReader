@@ -31,12 +31,25 @@ CREATE TABLE IF NOT EXISTS entries (
 );
 CREATE INDEX IF NOT EXISTS idx_entries_lang ON entries(lang);
 
+-- One row per inflected form of an entry. The part of speech is what makes a form
+-- MEAN something: "cats" is the plural of the NOUN cat and the third-person
+-- singular of the VERB cat, and without it the dump's verb paradigm gets pinned on
+-- the noun's plural (the reader then reads "cats: third-person singular of cat",
+-- which is simply false).
+-- The curated flag marks a hand-written row from server/paradigms.js: the ~90
+-- forms of the pronouns, BE/HAVE/DO and the modals. They are the highest-frequency
+-- words a learner meets, the dump gets them wrong (its BE table omits "am" and
+-- offers "wast"/"weren"; its "it" lists "they"/"them" as forms of it), and a
+-- curated row always wins over a dumped one.
 CREATE TABLE IF NOT EXISTS inflections (
   entry_id TEXT NOT NULL REFERENCES entries(id),
-  tag      TEXT NOT NULL,          -- "past" | "past participle" | "present participle" | ...
-  form     TEXT NOT NULL,          -- "ran", "running", ...
-  PRIMARY KEY (entry_id, tag, form)
+  pos      TEXT NOT NULL,          -- "verb" | "noun" | "adj" | "adv" | "pron" | "det"
+  tag      TEXT NOT NULL,          -- "past" | "past participle" | "plural" | "comparative" | ...
+  form     TEXT NOT NULL,          -- "ran", "running", "mice", "better", ...
+  curated  INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (entry_id, pos, tag, form)
 );
+CREATE INDEX IF NOT EXISTS idx_inflections_form ON inflections(form);
 
 CREATE TABLE IF NOT EXISTS senses (
   id        INTEGER PRIMARY KEY,
@@ -85,18 +98,43 @@ CREATE TABLE IF NOT EXISTS generation_progress (
 -- single simple-English definition plus curated synonyms/antonyms. Stored beside
 -- (not over) the raw senses so a re-refine can replace it without losing the
 -- offline source, and /define serves it as the primary definition when present.
+-- Refined rows are keyed by LEMMA: an inflected form has no entry of its own, it
+-- is served its lemma's (see generate/build.js). The rev column is the contract the
+-- row was written under (generate/ollama.js#REFINE_REV) — it is what lets the
+-- kb:audit script tell an entry that is merely OLD from one that is WRONG.
 CREATE TABLE IF NOT EXISTS refined (
   entry_id     TEXT PRIMARY KEY REFERENCES entries(id),
   definition   TEXT NOT NULL,
   synonyms     TEXT NOT NULL DEFAULT '[]',  -- JSON array
   antonyms     TEXT NOT NULL DEFAULT '[]',  -- JSON array
   model        TEXT,
+  rev          INTEGER NOT NULL DEFAULT 1,
   generated_at INTEGER NOT NULL
 );
 `;
 
 /** The KB schema version stamped on each entry (for later batch migrations). */
 export const KB_SCHEMA_VERSION = 1;
+
+// The first `inflections` table had no `pos` column and only ever held the four
+// verb-tense tags, so every plural/comparative was missing and every noun plural
+// was mislabelled as a verb form. The data is fully re-derivable from the dump
+// (`npm run ingest:forms`), and the old rows are wrong, so the migration drops
+// them rather than trying to guess a part of speech for each one.
+function migrate(conn) {
+  const cols = conn.prepare("SELECT name FROM pragma_table_info('inflections')").all();
+  if (cols.length && !cols.some((c) => c.name === 'pos')) {
+    conn.exec('DROP TABLE inflections');
+    console.warn('KB: dropped the pre-POS inflections table — run `npm run ingest:forms` to rebuild it.');
+  }
+  // Existing refined rows predate the contract stamp: they are rev 1 by definition,
+  // which is exactly what the DEFAULT says, so adding the column is the whole
+  // migration — `kb:audit` picks them up from there.
+  const refinedCols = conn.prepare("SELECT name FROM pragma_table_info('refined')").all();
+  if (refinedCols.length && !refinedCols.some((c) => c.name === 'rev')) {
+    conn.exec('ALTER TABLE refined ADD COLUMN rev INTEGER NOT NULL DEFAULT 1');
+  }
+}
 
 let db = null;
 
@@ -109,6 +147,7 @@ export function getDb() {
   // Let the batch builder and the server share the file: wait (don't error) up to
   // 5s if the other process holds the write lock for a moment.
   db.pragma('busy_timeout = 5000');
+  migrate(db);
   db.exec(SCHEMA);
   return db;
 }

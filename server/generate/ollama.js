@@ -13,6 +13,18 @@
 const OLLAMA_URL = process.env.KB_OLLAMA_URL || 'http://localhost:11434';
 export const REFINE_MODEL = process.env.KB_REFINE_MODEL || 'gemma4:e2b';
 
+// The CONTRACT a stored `refined` row was written under. Bump it whenever the
+// prompt or the shape of a good entry changes, and `npm run kb:audit --fix`
+// re-generates every row written under an older one. Without it there is no way to
+// tell a fine entry from one produced by rules we have since abandoned.
+//
+//   rev 1 — one definition + synonyms/antonyms, refined PER SURFACE FORM, and an
+//           inflected form's definition had to open with "Past tense of 'x': …".
+//   rev 2 — refined per LEMMA only (forms serve their lemma's entry, and the UI
+//           states the link in the family card's banner, so the definition is free
+//           to just define the word).
+export const REFINE_REV = 2;
+
 const TIMEOUT = 120000; // ms — CPU inference is slow; one word can take 10–25s
 
 async function fetchWithTimeout(url, options, timeout) {
@@ -25,30 +37,19 @@ async function fetchWithTimeout(url, options, timeout) {
   }
 }
 
-// Phrase the inflection link for the prompt, e.g. "past tense / past participle".
-const FORM_WORDS = {
-  past: 'past tense',
-  'past participle': 'past participle',
-  'present participle': 'present participle',
-  'third-person singular': 'third-person singular',
-};
-
-function buildPrompt({ word, pos, definitions, synonyms, antonyms, formOf }) {
+// The word handed to this prompt is always a LEMMA (build.js resolves forms first),
+// so it never has to describe an inflection — the reader's family card names the
+// link ("Past tense of aim · verb") right above the definition. The prompt's one
+// job is to define the word well.
+function buildPrompt({ word, pos, definitions, synonyms, antonyms }) {
   const posLine = pos.length ? `Part of speech: ${pos.join(', ')}.` : '';
   const defList = definitions.map((d, i) => `${i + 1}. ${d}`).join('\n');
   const synLine = synonyms.length ? `Known synonyms: ${synonyms.join(', ')}.` : '';
   const antLine = antonyms.length ? `Known antonyms: ${antonyms.join(', ')}.` : '';
-  // The single most important fact for an inflected form — keep it in the definition.
-  const formLine = formOf?.lemma
-    ? `IMPORTANT: "${word}" is the ${(formOf.tags || []).map((t) => FORM_WORDS[t] || t).join(' / ')} ` +
-      `of the verb "${formOf.lemma}". The definition MUST start by saying so, e.g. ` +
-      `"${(FORM_WORDS[formOf.tags?.[0]] || 'form').replace(/^./, (c) => c.toUpperCase())} of '${formOf.lemma}': …".`
-    : '';
   return [
     `You are writing a learner's dictionary for someone learning English.`,
     `Refine the dictionary data below for the word "${word}" into ONE clear definition.`,
     posLine,
-    formLine,
     `Source definitions (may be archaic, noisy, or list several senses):`,
     defList,
     synLine,
@@ -58,6 +59,9 @@ function buildPrompt({ word, pos, definitions, synonyms, antonyms, formOf }) {
     `- Write the definition in SIMPLE, BASIC English (short, common words).`,
     `- Choose the most common everyday meaning; ignore rare, archaic or joke senses.`,
     `- One or two short sentences, no example.`,
+    `- Define the word itself. Do NOT write "form of", "plural of" or "past tense of" —`,
+    `  the app shows the grammar separately; a definition that only points at another`,
+    `  word teaches nothing.`,
     `- synonyms/antonyms: at most 6 each, common single words only, [] if none fit.`,
     ``,
     `Reply with ONLY a JSON object of this exact shape:`,
@@ -80,7 +84,7 @@ function cleanList(value) {
 
 /**
  * Refine one entry's raw data into a clean simple-English definition.
- * @param {{ word: string, pos: string[], definitions: string[], synonyms: string[], antonyms: string[], formOf?: { lemma: string, tags: string[] } }} raw
+ * @param {{ word: string, pos: string[], definitions: string[], synonyms: string[], antonyms: string[] }} raw a LEMMA's raw data
  * @param {string} [model] Ollama model to use (default REFINE_MODEL)
  * @returns {Promise<{ definition: string, synonyms: string[], antonyms: string[] } | null>}
  */

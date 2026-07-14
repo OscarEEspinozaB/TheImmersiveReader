@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { getDb } from '../db.js';
 import { ingestKaikki } from './kaikki.js';
+import { seedCurated } from '../paradigms.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -30,6 +31,9 @@ const stats = await ingestKaikki({
   db,
   onProgress: (n) => process.stdout.write(`\r  ${n.toLocaleString()} lines`),
 });
+// The hand-written paradigms overwrite whatever the dump left on the pronouns,
+// BE/HAVE/DO and the modals — they are the words a wrong grouping would hurt most.
+const seeded = seedCurated(db, lang);
 const secs = ((Date.now() - started) / 1000).toFixed(1);
-console.log(`\nDone in ${secs}s:`, stats);
+console.log(`\nDone in ${secs}s:`, { ...stats, curatedForms: seeded.forms });
 db.close();

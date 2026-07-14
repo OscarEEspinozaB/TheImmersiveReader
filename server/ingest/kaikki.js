@@ -7,7 +7,9 @@
 // Per object we populate, deterministically and with zero LLM:
 //   entries      one row per `${lang}:${normalize(word)}` (POS merged across lines)
 //   senses       one row per gloss
-//   inflections  verb-tense forms from forms[] (past / past participle / …)
+//   inflections  the line's forms[], labelled by ITS part of speech (verb tenses,
+//                noun plurals, adjective/adverb degrees) — closed-class paradigms
+//                are skipped here and seeded from paradigms.js instead
 //   relations    synonyms + antonyms (top-level + per-sense), as a relation graph
 //
 // Provenance for everything here is "offline-dataset" — stamped in a later pass /
@@ -17,6 +19,7 @@ import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { normalize } from '../../src/normalize.js';
 import { KB_SCHEMA_VERSION } from '../db.js';
+import { curatedLemmas } from '../paradigms.js';
 
 // Wiktextract also emits archaic/obsolete/dialectal/nonstandard conjugations
 // under the SAME tag as the modern one (e.g. "go" past: went, but also the
@@ -25,18 +28,64 @@ import { KB_SCHEMA_VERSION } from '../db.js';
 // collapses to the one standard form.
 const EXCLUDED_QUALIFIERS = ['archaic', 'obsolete', 'dialectal', 'nonstandard', 'dated', 'rare', 'colloquial'];
 
-// Map a Wiktextract form's tag set to one canonical verb-tense label, or null if
-// the form isn't a tense we surface. Wiktextract splits tags into arrays like
-// ["past"], ["past","participle"], ["present","participle"], ["third-person",
-// "singular","present"].
-function tenseLabel(tags = []) {
+// The parts of speech that inflect and that we take from the dump. `pron` and
+// `det` are deliberately absent: their paradigms are curated (paradigms.js),
+// and the dump's are wrong. Proper nouns (`name`) and letters (`character`) are
+// not vocabulary to conjugate.
+const INFLECTING_POS = new Set(['verb', 'noun', 'adj', 'adv']);
+
+// Map a Wiktextract form's tag set to one canonical label FOR ITS PART OF SPEECH,
+// or null if it isn't an inflection we surface. The part of speech is what makes
+// the label true: ["plural"] on a noun is a plural, while the identical surface
+// "cats" under the verb entry is a third-person singular. Wiktextract splits tags
+// into arrays like ["past","participle"] or ["third-person","singular","present"].
+function formLabel(tags = [], pos) {
   const t = new Set(tags);
   if (EXCLUDED_QUALIFIERS.some((q) => t.has(q))) return null;
-  if (t.has('past') && t.has('participle')) return 'past participle';
-  if (t.has('present') && t.has('participle')) return 'present participle';
-  if (t.has('past')) return 'past';
-  if (t.has('third-person') && t.has('singular')) return 'third-person singular';
+  // Spelling variants and the conjugation-table scaffolding rows are not forms.
+  if (t.has('alternative') || t.has('table-tags') || t.has('inflection-template')) return null;
+
+  if (pos === 'verb') {
+    if (t.has('past') && t.has('participle')) return 'past participle';
+    if (t.has('present') && t.has('participle')) return 'present participle';
+    if (t.has('past')) return 'past';
+    if (t.has('third-person') && t.has('singular')) return 'third-person singular';
+    return null;
+  }
+  if (pos === 'noun') return t.has('plural') ? 'plural' : null;
+  if (pos === 'adj' || pos === 'adv') {
+    if (t.has('comparative')) return 'comparative';
+    if (t.has('superlative')) return 'superlative';
+    return null;
+  }
   return null;
+}
+
+/**
+ * The inflected forms one dump line contributes: `[{ pos, tag, form }]`, all
+ * normalized, all belonging to the line's own part of speech. Empty for a line
+ * whose lemma is curated (paradigms.js owns it) or whose POS doesn't inflect.
+ * Shared by the full ingest and the forms-only re-ingest.
+ * @param {object} obj one parsed dump line
+ * @param {Set<string>} curated lemmas whose paradigm is hand-written
+ * @param {string} [word] the line's normalized headword (recomputed if absent)
+ * @returns {{ pos: string, tag: string, form: string }[]}
+ */
+export function inflectionsOf(obj, curated, word = normalize(obj?.word || '')) {
+  const pos = obj?.pos;
+  if (!INFLECTING_POS.has(pos) || !word || curated.has(word)) return [];
+  const out = [];
+  for (const f of obj.forms || []) {
+    const tag = formLabel(f.tags, pos);
+    if (!tag || typeof f.form !== 'string' || /\s/.test(f.form)) continue;
+    const form = normalize(f.form);
+    if (!form) continue; // placeholder forms like "-" normalize to nothing
+    // A form equal to the headword is kept on purpose ("sheep" plural sheep,
+    // "cost" past cost): "this word does not change" is real information for a
+    // learner, and `formOf` never turns it into a self-referencing link.
+    out.push({ pos, tag, form });
+  }
+  return out;
 }
 
 /**
@@ -62,7 +111,10 @@ export async function ingestKaikki({ lang, file, db, onProgress }) {
   const senseOrd = db.prepare('SELECT COALESCE(MAX(ord), -1) + 1 AS next FROM senses WHERE entry_id = ?');
   const insertSense = db.prepare('INSERT OR IGNORE INTO senses (entry_id, definition, example, ord) VALUES (?, ?, ?, ?)');
   const getSenseId = db.prepare('SELECT id FROM senses WHERE entry_id = ? AND definition = ?');
-  const insertInflection = db.prepare('INSERT OR IGNORE INTO inflections (entry_id, tag, form) VALUES (?, ?, ?)');
+  const insertInflection = db.prepare(
+    'INSERT OR IGNORE INTO inflections (entry_id, pos, tag, form, curated) VALUES (?, ?, ?, ?, 0)',
+  );
+  const curated = curatedLemmas(lang);
   const insertRelation = db.prepare('INSERT OR IGNORE INTO relations (from_sense, to_word, type) VALUES (?, ?, ?)');
 
   const stats = { lines: 0, entries: 0, senses: 0, inflections: 0, relations: 0 };
@@ -83,13 +135,9 @@ export async function ingestKaikki({ lang, file, db, onProgress }) {
       sv: KB_SCHEMA_VERSION,
     });
 
-    // Inflections (verb tenses) from forms[].
-    for (const f of obj.forms || []) {
-      const label = tenseLabel(f.tags);
-      if (!label || typeof f.form !== 'string' || /\s/.test(f.form)) continue;
-      const form = normalize(f.form);
-      if (!form) continue; // skip placeholder forms like "-" that normalize to ""
-      const r = insertInflection.run(id, label, form);
+    // Inflections from forms[], labelled by the line's part of speech.
+    for (const { pos, tag, form } of inflectionsOf(obj, curated)) {
+      const r = insertInflection.run(id, pos, tag, form);
       if (r.changes) stats.inflections += 1;
     }
 
