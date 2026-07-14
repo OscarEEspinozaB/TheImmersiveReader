@@ -19,6 +19,7 @@ import { recolorWord } from './reader/render.js';
 import { renderProgress, renderDictionary } from './dashboard.js';
 import { buildDeck, bookWordData } from './deck.js';
 import { importTir } from './tir.js';
+import { prepareCover, documentCover, imagesWithCover } from './cover.js';
 import { renderSwiper } from './swiper.js';
 import { alertDialog, confirmDialog, selectDialog } from './dialog.js';
 import { listAiModels } from './definitions/index.js';
@@ -232,7 +233,12 @@ async function openBook(id) {
   readingLangSelect.value = lang;
   currentBookId = id;
   setView('reader');
-  showDocument(content, { restoreIndex: book?.progressWordIndex || 0 });
+  // An uploaded cover is rendered as the book's first image (cover.js anchors it at
+  // offset 0), so the book opens with it exactly as it looks on the shelf.
+  showDocument(
+    { text: content.text, images: imagesWithCover(book, content.images) },
+    { restoreIndex: book?.progressWordIndex || 0 },
+  );
   touchOpened(id);
 }
 
@@ -263,7 +269,9 @@ async function addBookFromFile(file) {
   reader.innerHTML = '<p class="reader__placeholder">Loading…</p>';
   try {
     const { text, images } = await ingest(file);
-    const cover = images[0]?.blob || null;
+    // The document's own cover: the image it opens with, if it has one. An
+    // illustration deep in the text is not a cover (see cover.js).
+    const cover = documentCover(images)?.blob || null;
     const title = file.name.replace(/\.[^.]+$/, '');
     const id = await addBook({ title, text, images, cover, lang, wordData: bookWordData(text) });
     await openBook(id);

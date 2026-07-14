@@ -7,10 +7,15 @@
 //
 //   book.tir  (zip)
 //     manifest.json   { format, version, title, addedAt, lang, cover, coverMime,
+//                       coverSource, coverWidth, coverHeight,
 //                       images: [{ file, mime, start, width, height }] }
 //     text.txt        the clean reading text
 //     images/0.png …  the illustration blobs (one file per anchored image)
-//     cover.png       optional shelf thumbnail
+//     cover.png       optional cover: the shelf thumbnail, and (when uploaded) the
+//                     image the book opens with. `coverSource` says whether it is
+//                     the document's own opening image or one the reader chose —
+//                     without it, a book that travels as a .tir would forget that
+//                     its cover can be taken back.
 //
 // Reading position and vocabulary are deliberately NOT embedded: vocabulary is
 // global (shared across books) and progress is per-device, so the file stays
@@ -79,6 +84,9 @@ export async function exportBookToBlob(id) {
     lang: meta.lang,
     cover,
     coverMime,
+    coverSource: meta.coverSource,
+    coverWidth: meta.coverWidth,
+    coverHeight: meta.coverHeight,
     images: manifestImages,
   };
   files['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2));
@@ -154,6 +162,11 @@ export async function importTir(file) {
     text,
     images,
     cover,
+    // Legacy files (and books whose cover came from the file itself) have no
+    // coverSource: addBook then defaults it to 'document', which is what they are.
+    coverSource: manifest.coverSource,
+    coverWidth: manifest.coverWidth,
+    coverHeight: manifest.coverHeight,
     lang: manifest.lang,
     addedAt: manifest.addedAt,
   });

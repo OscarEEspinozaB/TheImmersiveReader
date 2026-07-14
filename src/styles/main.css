@@ -366,6 +366,12 @@ body {
   display: block;
   max-width: 100%;
   max-height: 70vh;
+  /* BOTH must be auto. The <img> carries width/height attributes (they give the
+     aspect ratio and let the paginator estimate space), but a used width fixed by
+     the attribute means max-height shrinks the height alone — a portrait cover
+     comes out squashed. With both auto, the browser fits the image inside the two
+     maxima proportionally. */
+  width: auto;
   height: auto;
   margin: 1rem auto;
   border-radius: 4px;

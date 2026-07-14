@@ -5,9 +5,10 @@
 // at the right level: extensive reading is comfortable under ~5% new words.
 
 import {
-  listBooks, renameBook, deleteBook, setBookLang,
+  listBooks, renameBook, deleteBook, setBookLang, setCover, restoreDocumentCover,
   getBookWordData, setBookWords, getBookContent,
 } from './library.js';
+import { prepareCover } from './cover.js';
 import { confirmDialog, promptDialog, selectDialog, alertDialog } from './dialog.js';
 import {
   READING_LANGUAGES, readingLangName,
@@ -157,6 +158,44 @@ function bookCard(book, container, opts) {
     }
   });
 
+  // Cover: one per book, always. Choosing a new image replaces whatever is there,
+  // and the book then OPENS with it (cover.js anchors it before the first word) as
+  // well as showing it on the shelf. The document's own images are never touched,
+  // which is what makes "remove" below able to give the original back.
+  const coverBtn = iconButton(
+    book.coverSource === 'uploaded' ? 'Change the cover image' : 'Add a cover image',
+    'M3 5h18v14H3z M3 15l5-5 4 4 3-3 6 6 M8.5 9.5a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3',
+  );
+  const picker = document.createElement('input');
+  picker.type = 'file';
+  picker.accept = 'image/*';
+  picker.hidden = true;
+  picker.addEventListener('change', async () => {
+    const file = picker.files?.[0];
+    picker.value = ''; // so picking the same file twice still fires
+    if (!file) return;
+    coverBtn.disabled = true;
+    try {
+      await setCover(book.id, await prepareCover(file));
+      reRender();
+    } catch (err) {
+      console.error(err);
+      await alertDialog(`Could not use that image: ${err.message}`);
+    } finally {
+      coverBtn.disabled = false;
+    }
+  });
+  coverBtn.addEventListener('click', () => picker.click());
+
+  // Only offered once there IS an upload to undo — it puts the document's own
+  // opening image back (or leaves the generated text cover, for a book that never
+  // had one).
+  const clearCover = iconButton('Remove the uploaded cover', 'M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6');
+  clearCover.addEventListener('click', async () => {
+    await restoreDocumentCover(book.id);
+    reRender();
+  });
+
   const rename = iconButton('Rename', 'M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z');
   rename.addEventListener('click', async () => {
     const name = await promptDialog('Book title:', book.title);
@@ -179,14 +218,18 @@ function bookCard(book, container, opts) {
   });
 
   // Keep the card uncluttered: only "Read" is always visible; everything else
-  // (practice, language, export, upload, rename, delete) lives behind a "⋮" menu.
+  // (practice, language, cover, export, upload, rename, delete) lives behind "⋮".
   const read = iconButton('Read', 'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z');
   read.addEventListener('click', () => onOpen(book.id));
 
   const more = document.createElement('div');
   more.className = 'book__more';
   more.hidden = true;
-  more.append(practice, lang, exportBtn, upload, rename, del);
+  more.append(
+    practice, lang, coverBtn,
+    ...(book.coverSource === 'uploaded' ? [clearCover] : []),
+    exportBtn, upload, rename, del, picker,
+  );
 
   const moreWrap = document.createElement('div');
   moreWrap.className = 'book__more-wrap';
