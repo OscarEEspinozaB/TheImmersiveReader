@@ -232,8 +232,12 @@ booksRouter.delete('/books/:id', (req, res) => {
   const db = getLibraryDb();
   const row = db.prepare('SELECT id FROM books WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
-  db.prepare('DELETE FROM books WHERE id = ?').run(req.params.id);
-  db.prepare('DELETE FROM book_lemmas WHERE book_id = ?').run(req.params.id); // its cache
+  // The lemma cache references the book, so it goes FIRST — the other order trips
+  // the foreign key and the delete fails outright.
+  db.transaction(() => {
+    db.prepare('DELETE FROM book_lemmas WHERE book_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM books WHERE id = ?').run(req.params.id);
+  })();
   for (const p of [tirPath(req.params.id), coverPath(req.params.id)]) {
     if (existsSync(p)) unlinkSync(p);
   }
