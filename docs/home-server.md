@@ -82,8 +82,11 @@ Wiktextract** dump, plus an AI-**refined** layer built on top of it.
   background; the next lookup is prebuilt. Words truly absent from the dump
   report `absent` and stay on the on-demand chain.
 - **Batch CLI** (`npm run build:book -- "<file>" --batch 500`): extracts a whole
-  book's unique words **in reading order** (or `--by-frequency`) and refines the
-  next N pending ones per run; resumable because every entry commits
+  book's unique words **in reading order** (or `--by-frequency`), collapses them to
+  their **lemmas** (aim/aimed/aiming/aims are one entry to build) and refines the
+  next N pending ones per run. "Pending" means not built under the current contract
+  (`rev`), so a batch is never spent on words that would only be skipped, and books
+  that share vocabulary never pay for it twice. Resumable — every entry commits
   immediately. `--model`/`--force` re-refines with a stronger model.
 
 ### 2b. Meaning lives on the lemma

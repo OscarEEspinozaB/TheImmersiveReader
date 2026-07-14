@@ -8,8 +8,10 @@
 // Extracts the book's text (PDF via pdfjs, or plain .txt/.md) and refines + stores
 // each unique word IN READING ORDER (the order it first appears in the book) — a
 // book is read front to back, so the dictionary is built the same way you'll meet
-// the words. The job is resumable: already-refined words are dropped before
-// processing, so each run works on PENDING words only.
+// the words. Words are collapsed to their LEMMA first (aim/aimed/aiming/aims are
+// one entry to build), and the job is resumable: entries already built under the
+// current contract are dropped before processing, so each run works on PENDING
+// lemmas only and two books that share vocabulary never pay for it twice.
 //
 // --batch N is the key knob: send the next N PENDING (not-yet-refined) words to
 // process, regardless of how many are already done. Re-running grabs the next N.
@@ -20,7 +22,8 @@ import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { extractWords } from '../../src/words.js';
 import { getDb } from '../db.js';
-import { refineWords } from './build.js';
+import { refineWords, refineTarget } from './build.js';
+import { REFINE_REV } from './ollama.js';
 import { extractPdfText } from '../ingest/pdfText.js';
 
 function parseArgs(argv) {
@@ -79,17 +82,33 @@ const db = getDb();
 const text = await loadText(opts.file);
 const { words, totalUnique } = orderWords(text, opts);
 
-// Drop already-refined words BEFORE the batch cap, so --batch counts PENDING words
-// to process — not how many get skipped. With --force, everything is a candidate.
-const hasRefined = db.prepare('SELECT 1 FROM refined WHERE entry_id = ?');
+// What a book actually costs is its LEMMAS, not its words: "aim", "aimed",
+// "aiming" and "aims" are one entry to build (see build.js#refineTarget), so they
+// are collapsed here — before the batch cap — and a form whose lemma is already
+// built is not pending at all. Without this, every inflected form in the book would
+// look pending forever (forms have no refined row of their own any more) and a
+// --batch of 200 could be spent entirely on words that end up skipped.
+//
+// "Already refined" means refined UNDER THE CURRENT CONTRACT (rev): an entry
+// written under older rules is pending again, the same way `npm run kb:audit` sees
+// it. With --force, everything is a candidate.
+const isBuilt = db.prepare('SELECT 1 FROM refined WHERE entry_id = ? AND rev >= ?');
+const lemmas = [];
+const seen = new Set();
+for (const w of words) {
+  const lemma = refineTarget(db, opts.lang, w);
+  if (seen.has(lemma)) continue;
+  seen.add(lemma);
+  lemmas.push(lemma);
+}
 const pendingAll = opts.force
-  ? words
-  : words.filter((w) => !hasRefined.get(`${opts.lang}:${w}`));
+  ? lemmas
+  : lemmas.filter((w) => !isBuilt.get(`${opts.lang}:${w}`, REFINE_REV));
 const toProcess = opts.batch > 0 ? pendingAll.slice(0, opts.batch) : pendingAll;
 
 console.log(
-  `${totalUnique.toLocaleString()} unique words · ` +
-    `${(words.length - pendingAll.length).toLocaleString()} already refined · ` +
+  `${totalUnique.toLocaleString()} unique words · ${lemmas.length.toLocaleString()} lemmas · ` +
+    `${(lemmas.length - pendingAll.length).toLocaleString()} already refined · ` +
     `${pendingAll.length.toLocaleString()} pending → processing ${toProcess.length.toLocaleString()} this run ` +
     `(order=${opts.byFrequency ? 'frequency' : 'reading'}, lang=${opts.lang}, min-count=${opts.minCount}` +
     `${opts.limit ? `, limit=${opts.limit}` : ''}${opts.batch ? `, batch=${opts.batch}` : ''}` +

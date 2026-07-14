@@ -74,7 +74,7 @@ Two pieces:
   entries that are wrong: stale contract, refined on an inflected form, "Plural of
   X." non-definitions, dirty POS. Re-run after every ingest.
 - `npm run build:book -- "<file>" --batch N` — batch-refine a book's words
-  (resumable; `--model M --force` re-refines with a stronger model).
+  (collapsed to lemmas; resumable; `--model M --force` re-refines with a stronger model).
 
 No test runner. Verify with `npm run dev` (plus `npm run server` for
 KB/sync/AI features) and the in-app "Load sample" button.
