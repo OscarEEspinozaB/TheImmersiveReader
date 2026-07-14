@@ -95,6 +95,26 @@ export function getBook(id) {
   return idbGet('books', id);
 }
 
+/** Titles compare as a reader reads them: case and stray spacing are not identity. */
+const titleKey = (title) => (title || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * A book already on the shelf with this title, if any.
+ *
+ * The stable id from the `.tir` manifest is the FIRST test for "do I already have
+ * this" — but it only catches copies that descend from the same original. The same
+ * book ingested from the PDF on one device and downloaded from the server on
+ * another are two different ids and, to the shelf, two books with the same name.
+ * The title is what the reader sees, so it is what identity has to fall back on.
+ * @param {string} title
+ * @returns {Promise<BookMeta | undefined>}
+ */
+export async function findBookByTitle(title) {
+  const key = titleKey(title);
+  if (!key) return undefined;
+  return (await idbGetAll('books')).find((b) => titleKey(b.title) === key);
+}
+
 /** @returns {Promise<{ text: string, images: any[] } | undefined>} */
 export function getBookContent(id) {
   return idbGet('content', id);

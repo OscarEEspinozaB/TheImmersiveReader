@@ -28,6 +28,7 @@ import {
   addBook,
   getBook,
   getBookContent,
+  findBookByTitle,
   setBookLang,
   setProgress,
   touchOpened,
@@ -261,6 +262,21 @@ async function addBookFromFile(file) {
       reader.innerHTML = `<p class="reader__placeholder">Could not import this .tir: ${err.message}</p>`;
     }
     return;
+  }
+
+  // The same file added twice is the other way a shelf ends up with two copies of
+  // one book. Extraction is the expensive step and re-doing it is pure waste, so ask
+  // BEFORE it: keeping the copy you have is almost always what was meant.
+  const existing = await findBookByTitle(file.name.replace(/\.[^.]+$/, ''));
+  if (existing) {
+    const again = await confirmDialog(
+      `“${existing.title}” is already in your library. Add a second copy?`,
+      { confirmLabel: 'Add a copy' },
+    );
+    if (!again) {
+      await openBook(existing.id);
+      return;
+    }
   }
 
   const lang = (await pickReadingLang('What language is this book in?', getDefaultReadingLang())) || getDefaultReadingLang();

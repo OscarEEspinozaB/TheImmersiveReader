@@ -22,7 +22,7 @@
 // portable and shareable. See docs/library.md §3.
 
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
-import { getBook, getBookContent, addBook } from './library.js';
+import { getBook, getBookContent, addBook, findBookByTitle } from './library.js';
 
 const FORMAT = 'tir';
 const VERSION = 1;
@@ -99,10 +99,19 @@ export async function exportBookToBlob(id) {
 }
 
 /**
- * Read a `.tir` archive and add it to the library. The book keeps the stable id
- * from its manifest, so importing a book already in the library is a no-op
- * (`duplicate: true`) instead of creating a second copy. Words are recomputed on
- * open (tokenization is language-dependent); vocabulary / progress are not in the file.
+ * Read a `.tir` archive and add it to the library. Importing a book already on the
+ * shelf is a no-op (`duplicate: true`) instead of creating a second copy. Words are
+ * recomputed on open (tokenization is language-dependent); vocabulary / progress are
+ * not in the file.
+ *
+ * "Already on the shelf" is tested twice, because one test is not enough: the
+ * manifest's stable id catches copies that descend from the same original, but the
+ * SAME book ingested from its PDF on one device and downloaded from the server on
+ * another has two different ids — and the shelf then shows the book twice, which is
+ * the bug a reader actually sees. So the title is the fallback: if a book with that
+ * name is already there, this one is a copy of it. A different cover or a renamed
+ * title is a library matter (edit the book you have); it is never a reason to end up
+ * with two.
  * @param {File|Blob} file
  * @returns {Promise<{ id: string, title: string, duplicate: boolean }>}
  */
@@ -132,9 +141,13 @@ export async function importTir(file) {
 
   const title = manifest.title || 'Untitled';
 
-  // Already in the library (same stable id)? Don't create a second copy.
+  // Already in the library — same stable id, or simply the same title.
   if (manifest.id && (await getBook(manifest.id))) {
     return { id: manifest.id, title, duplicate: true };
+  }
+  const sameTitle = await findBookByTitle(title);
+  if (sameTitle) {
+    return { id: sameTitle.id, title: sameTitle.title, duplicate: true };
   }
 
   const text = files['text.txt'] ? strFromU8(files['text.txt']) : '';

@@ -95,6 +95,13 @@ book.tir  (zip)
                   forget that its cover can be taken back)
 ```
 
+- A book already on the shelf is never added twice. Identity is tested by the
+  manifest's **stable id** first and by **title** second: the same book ingested
+  from its PDF on one device and downloaded from the server on another carries two
+  different ids, and only the title catches that. A different cover or a renamed
+  title is a library matter (edit the copy you have) — never a reason to hold two.
+  Adding the same file from disk asks first, since re-extracting it is the expensive
+  step.
 - `manifest.id` is the book's **stable identity**: importing a `.tir` already in
   the library is a duplicate no-op instead of a second copy; the server dedupes
   uploads by the same id.
