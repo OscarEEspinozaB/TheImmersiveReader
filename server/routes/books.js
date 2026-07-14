@@ -63,6 +63,17 @@ booksRouter.get('/books', (req, res) => {
 
 // Raw upload: the body IS the .tir archive. Mounted only on this route so the
 // global express.json() parser is untouched.
+// A title is the same title whatever its case or spacing — that is how a reader
+// reads it, and identity here is about what the reader sees.
+function findByTitle(db, title) {
+  const key = String(title || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!key) return undefined;
+  return db
+    .prepare("SELECT id, title FROM books WHERE lower(trim(title)) = ?")
+    .all(key)
+    .find((row) => row.title.trim().replace(/\s+/g, ' ').toLowerCase() === key);
+}
+
 booksRouter.post(
   '/books',
   express.raw({ type: () => true, limit: '300mb' }),
@@ -88,11 +99,20 @@ booksRouter.post(
     const sha = createHash('sha256').update(buf).digest('hex');
     const bookUid = typeof manifest.id === 'string' ? manifest.id : null;
 
-    // Dedup by the book's stable id (so a re-export with different bytes is still
-    // the same book); fall back to the content hash for legacy files without an id.
-    const existing = bookUid
-      ? db.prepare('SELECT id, title FROM books WHERE book_uid = ?').get(bookUid)
-      : db.prepare('SELECT id, title FROM books WHERE sha = ?').get(sha);
+    // Is this book already here? Three tests, weakest identity last:
+    //   1. the stable id from the manifest — a re-export with different bytes (a new
+    //      cover, a rename) is still the same book;
+    //   2. the content hash — legacy files, exported before ids existed;
+    //   3. the TITLE — the one that catches what the others cannot. The same book
+    //      ingested from its PDF on one device and on another carries two different
+    //      ids and two different hashes, and the catalog would show it twice under
+    //      the same name. What a reader sees is the title, so that is where identity
+    //      has to end. (A better cover or a fixed title is an edit to the book that
+    //      is here, never a second row.)
+    const existing =
+      (bookUid && db.prepare('SELECT id, title FROM books WHERE book_uid = ?').get(bookUid)) ||
+      db.prepare('SELECT id, title FROM books WHERE sha = ?').get(sha) ||
+      findByTitle(db, manifest.title);
     if (existing) {
       return res.json({ id: existing.id, title: existing.title, duplicate: true });
     }

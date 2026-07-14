@@ -162,9 +162,13 @@ the archive was produced by the client, so the invariant holds.
 `.tir` archives (built client-side by `src/tir.js`) are POSTed raw; the server
 reads title/lang/cover from the archive's own `manifest.json` (fflate) — no
 separate metadata payload. Metadata lives in the `books` table; payloads and
-covers live as plain files under `data/books/`. Books are immutable; re-uploads
-dedupe by the manifest's stable book id (sha256 of the bytes as fallback for
-legacy files). Downloads stream the `.tir` back with a proper filename.
+covers live as plain files under `data/books/`. Books are immutable; a re-upload
+dedupes by three identities, weakest last: the manifest's **stable book id**, the
+**sha256** of the bytes (legacy files exported before ids existed), and finally the
+**title** — the same book ingested from its PDF on two devices has neither the same
+id nor the same bytes, and only the title stops the catalog from listing it twice
+under one name. A better cover or a fixed title is an edit to the book that is
+there, never a second row. Downloads stream the `.tir` back with a proper filename.
 
 ## 4. Vocabulary sync
 
