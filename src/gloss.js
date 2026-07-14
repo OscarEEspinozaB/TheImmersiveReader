@@ -5,8 +5,10 @@
 //
 // Two modes share one element:
 //  • Word bubble — word (state-colored) + part of speech, 🔊 (word, then its
-//    definition once loaded), a 2-line definition, state chips to mark without
-//    the popup, and ⋯ to expand into the full popup.
+//    definition once loaded), a 2-line definition, the word's FAMILY (its
+//    paradigm, each form in its own state's color — so a red "gone" is seen next
+//    to a white "go" the reader already knows), state chips to mark without the
+//    popup, and ⋯ to expand into the full popup.
 //  • Paragraph bubble — visible actions on the tapped word's paragraph:
 //    read aloud (toggle), copy paragraph, copy word.
 //  • Link bubble — a URL/e-mail token was tapped: open it (new tab) or copy it.
@@ -16,6 +18,7 @@
 // as the popup. It points at its anchor with a tail and auto-hides when idle.
 
 import { getQuickDefinition } from './definitions/index.js';
+import { renderFamilyStrip, posSummary } from './kbDetails.js';
 import { getReadingLang } from './settings.js';
 import { canSpeak, speak, isSpeaking, stopSpeaking } from './speech.js';
 import { copyWithToast } from './copy.js';
@@ -186,6 +189,11 @@ export function showGloss(span, { surface, word, sentence, parts = null, onExpan
     onExpand();
   });
 
+  // The word's family (go · goes · going · went · gone), each form in the color of
+  // the state IT has: the word being read is never a loose word, it is one form of
+  // something the reader may already half-know. Filled in with the definition.
+  const family = document.createElement('div');
+
   if (defText) {
     def.textContent = defText;
   } else {
@@ -195,8 +203,10 @@ export function showGloss(span, { surface, word, sentence, parts = null, onExpan
         if (myShow !== showId || el.hidden) return;
         defText = d?.explanation || '';
         def.textContent = defText || 'No definition — ⋯ has more options.';
-        const p = (d?.kb?.pos || []).join(' · ');
+        const p = posSummary(d?.kb?.pos);
         if (p) pos.textContent = p;
+        const strip = renderFamilyStrip(d?.kb, word);
+        if (strip) family.appendChild(strip);
         position(span); // the real content changes the size
       })
       .catch(() => {
@@ -224,7 +234,7 @@ export function showGloss(span, { surface, word, sentence, parts = null, onExpan
     states.appendChild(chip);
   }
 
-  el.append(head, def, states);
+  el.append(head, def, family, states);
   position(span);
 }
 

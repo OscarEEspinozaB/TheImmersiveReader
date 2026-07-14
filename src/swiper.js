@@ -7,6 +7,7 @@
 
 import { setState } from './vocabulary.js';
 import { getQuickDefinition, getAiDefinition } from './definitions/index.js';
+import { renderKbDetails } from './kbDetails.js';
 
 const THRESHOLD = 90; // px for a decisive swipe
 const FLY = 600; // px to fling a card off-screen
@@ -84,6 +85,19 @@ export function renderSwiper(root, { deck, stats, onExit }) {
     stage.appendChild(buildCard(deck[index]));
   }
 
+  // Walk the deck to another form of the same word (tapped in the family card):
+  // "went" and "gone" belong together, so studying one and then jumping straight to
+  // the other is how a paradigm is actually learned. Deciding a card still only
+  // happens by swiping it — this only moves the deck, it never marks.
+  const cardIndexOf = (form) => deck.findIndex((c) => c.word === form);
+  const inDeck = (form) => cardIndexOf(form) !== -1;
+  const jumpTo = (form) => {
+    const i = cardIndexOf(form);
+    if (i === -1 || i === index) return;
+    index = i;
+    showCard();
+  };
+
   function decide(action, animated = true) {
     if (index >= deck.length) return;
     const card = deck[index];
@@ -160,7 +174,7 @@ export function renderSwiper(root, { deck, stats, onExit }) {
     const badge = card.querySelector('.swipe-card__badge');
     card.querySelector('.swipe-card__reveal').addEventListener('click', (e) => {
       e.stopPropagation();
-      revealMeaning(card, cardData);
+      revealMeaning(card, cardData, { onForm: jumpTo, canGo: inDeck });
     });
 
     let startX = 0;
@@ -201,7 +215,7 @@ export function renderSwiper(root, { deck, stats, onExit }) {
   }
 }
 
-function revealMeaning(card, cardData) {
+function revealMeaning(card, cardData, nav) {
   const box = card.querySelector('.swipe-card__meaning');
   const btn = card.querySelector('.swipe-card__reveal');
   btn.disabled = true;
@@ -218,6 +232,9 @@ function revealMeaning(card, cardData) {
     if (dict) box.appendChild(line(dict.explanation, 'dictionary'));
     if (aiDef) box.appendChild(line(aiDef.explanation, aiDef.source));
     if (!dict && !aiDef) box.textContent = 'No definition found.';
+    // The word's family, its other forms tappable when the deck holds them.
+    const details = renderKbDetails(dict?.kb, cardData.word, nav);
+    if (details) box.appendChild(details);
     btn.remove();
   });
 }

@@ -252,10 +252,17 @@ export class WordPopup {
     this._fillSlot(this.quickSlot, { state: 'loading', text: 'Looking up…' });
   }
 
-  /** @param {import('./definitions/index.js').Definition | null} def */
-  setQuick(def) {
-    if (def) this._fillSlot(this.quickSlot, { state: 'ready', text: def.explanation, source: def.source, kb: def.kb });
-    else this._hideSlot(this.quickSlot);
+  /**
+   * @param {import('./definitions/index.js').Definition | null} def
+   * @param {string} [word] the normalized word looked up — marked as the current
+   *   one inside its family card.
+   */
+  setQuick(def, word) {
+    if (def) {
+      this._fillSlot(this.quickSlot, { state: 'ready', text: def.explanation, source: def.source, kb: def.kb, word });
+    } else {
+      this._hideSlot(this.quickSlot);
+    }
   }
 
   /**
@@ -418,7 +425,7 @@ export class WordPopup {
     return slot;
   }
 
-  _fillSlot(slot, { state, text, source, kb }) {
+  _fillSlot(slot, { state, text, source, kb, word }) {
     slot.hidden = false;
     slot.dataset.state = state;
     slot.textContent = '';
@@ -426,7 +433,7 @@ export class WordPopup {
     p.className = 'popup__slot-text';
     p.textContent = text;
     slot.appendChild(p);
-    const details = renderKbDetails(kb);
+    const details = renderKbDetails(kb, word);
     if (details) slot.appendChild(details);
     if (source) {
       const s = document.createElement('span');

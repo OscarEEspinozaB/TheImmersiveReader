@@ -761,6 +761,96 @@ body.nav-hidden .primary-nav {
   padding: 0.05rem 0.5rem;
 }
 
+/* The word family: the whole paradigm (go · goes · going · went · gone), each form
+   painted with the state IT has, so the learner sees which ones they already know
+   and which are still red. Showing only — marking a form is still done one word at
+   a time, in the text. */
+.kb-family {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.kb-forms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.kb-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.15rem 0.45rem;
+  cursor: default; /* it informs; it is not a marking button */
+}
+
+.kb-form b {
+  font-weight: 600;
+}
+
+.kb-form i {
+  font-size: 0.7em;
+  font-style: normal;
+  letter-spacing: 0.03em;
+  opacity: 0.55;
+}
+
+/* The form you are actually reading, so the paradigm has a "you are here". */
+.kb-form[data-current='true'] {
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.kb-family__score {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.55;
+}
+
+/* A form that is a button (the Dictionary hub, the Swiper): it goes somewhere. */
+button.kb-form {
+  cursor: pointer;
+  background: none;
+  font: inherit;
+}
+
+button.kb-form:hover,
+button.kb-form:focus-visible {
+  border-color: currentColor;
+}
+
+/* The row you just walked to from a family card. */
+.dict-row.is-target {
+  animation: dict-flash 1.6s ease-out;
+}
+
+@keyframes dict-flash {
+  0%,
+  40% {
+    background: color-mix(in srgb, var(--word-learning) 22%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* The bubble's compact variant: colors at a glance, no tags, one line. */
+.kb-forms--strip {
+  margin: 0.35rem 0 0;
+  gap: 0.25rem;
+}
+
+.kb-forms--strip .kb-form {
+  padding: 0.02rem 0.35rem;
+  font-size: 0.85em;
+  border-radius: 6px;
+}
+
 .popup__links {
   margin: 0.2rem 0 0;
   font-size: 0.85rem;

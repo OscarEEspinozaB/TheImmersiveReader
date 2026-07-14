@@ -30,7 +30,8 @@ function scopedKey(word) {
 
 /**
  * @typedef {{ tag: string, form: string }} Inflection
- * @typedef {{ pos?: string[], formOf?: { lemma: string, tags: string[] }, inflections?: Inflection[], synonyms?: string[], antonyms?: string[] }} KbDetails
+ * @typedef {{ lemma: string, pos: string, tag: string | null, forms: { pos: string, tag: string, form: string }[] }} Family
+ * @typedef {{ pos?: string[], formOf?: { lemma: string, pos: string, tags: string[] }, family?: Family, inflections?: Inflection[], synonyms?: string[], antonyms?: string[] }} KbDetails
  * @typedef {{ explanation: string, source: string, refined?: boolean, kb?: KbDetails }} Definition
  * @typedef {{ sentence: string, explanation: string, source: string }} AiContext
  * @typedef {{

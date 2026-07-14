@@ -27,9 +27,10 @@ async function fetchWithTimeout(url, timeout) {
 
 const MAX_RELATED = 12; // cap synonyms/antonyms so the popup stays compact
 
-// Dedupe, drop the headword itself, and cap a related-words list.
-function relatedList(words, headword) {
-  const seen = new Set([headword]);
+// Dedupe, drop the word itself (and the lemma it was served from — "aim" is not a
+// useful synonym of "aimed"), and cap a related-words list.
+function relatedList(words, ...headwords) {
+  const seen = new Set(headwords.filter(Boolean));
   const out = [];
   for (const w of words) {
     if (typeof w !== 'string') continue;
@@ -65,7 +66,13 @@ export async function lookupKB(word) {
   const senses = Array.isArray(entry.senses) ? entry.senses : [];
   const inflections = Array.isArray(entry.inflections) ? entry.inflections : []; // [{ tag, form }]
   const pos = Array.isArray(entry.pos) ? entry.pos : [];
-  const formOf = entry.formOf || undefined; // { lemma, tags } when an inflected form
+  const formOf = entry.formOf || undefined; // { lemma, pos, tags } when an inflected form
+  // { lemma, pos, tag, forms[] } — the paradigm this word belongs to, so the popup
+  // can show the family (go · goes · went · gone) with each form in ITS own color.
+  const family = entry.family || undefined;
+  // The entry an inflected form was SERVED from: "aimed" carries aim's definition,
+  // so aim must not then show up as one of its synonyms.
+  const lemma = entry.lemma || word;
 
   // Prefer the AI-refined "clean" entry when this word has been built: one
   // simple-English definition plus its curated synonyms/antonyms. Verb tenses
@@ -80,9 +87,10 @@ export async function lookupKB(word) {
       kb: {
         pos,
         formOf,
+        family,
         inflections,
-        synonyms: relatedList(refined.synonyms || [], word),
-        antonyms: relatedList(refined.antonyms || [], word),
+        synonyms: relatedList(refined.synonyms || [], word, lemma),
+        antonyms: relatedList(refined.antonyms || [], word, lemma),
       },
     };
   }
@@ -99,9 +107,10 @@ export async function lookupKB(word) {
     kb: {
       pos,
       formOf,
+      family,
       inflections,
-      synonyms: relatedList(senses.flatMap((s) => s.synonyms || []), word),
-      antonyms: relatedList(senses.flatMap((s) => s.antonyms || []), word),
+      synonyms: relatedList(senses.flatMap((s) => s.synonyms || []), word, lemma),
+      antonyms: relatedList(senses.flatMap((s) => s.antonyms || []), word, lemma),
     },
   };
 }

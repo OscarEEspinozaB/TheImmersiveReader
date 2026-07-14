@@ -373,10 +373,26 @@ export function renderDictionary(root, { filter } = {}) {
   const list = document.createElement('div');
   list.className = 'dict-list';
 
+  // Walk to another word (a form tapped inside a family card). The list is windowed
+  // AND a word the user has never marked has no row at all — an unknown "aiming" is
+  // not in the vocabulary store by design (the red sea keeps no entry). So the way
+  // to always land on a word is the search that already exists: filter down to it,
+  // scroll to the top, and let the row flash. A word with no row of its own arrives
+  // as the "look it up" card instead, which is the right destination for it.
+  const goToWord = (form) => {
+    state.search = form;
+    search.value = form;
+    if (state.filter !== 'built') state.filter = 'all';
+    state._flash = form;
+    updateChips();
+    renderList();
+    scrollRoot.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // Windowed list: chunk rows; render only those near the viewport, collapse the
   // rest to a measured-height spacer so memory stays bounded for huge dictionaries.
-  // `rowFn(item, reRender)` builds one row, so the same machinery serves both the
-  // marked-vocabulary rows and the KB "Built" rows.
+  // `rowFn(item, reRender, goToWord)` builds one row, so the same machinery serves
+  // both the marked-vocabulary rows and the KB "Built" rows.
   const windowInto = (items, rowFn) => {
     const io = new IntersectionObserver(
       (entries) => {
@@ -467,7 +483,7 @@ export function renderDictionary(root, { filter } = {}) {
     if (wrapper._rendered) return;
     const rowFn = wrapper._rowFn || dictRow;
     const frag = document.createDocumentFragment();
-    for (const entry of wrapper._slice) frag.appendChild(rowFn(entry, reRender));
+    for (const entry of wrapper._slice) frag.appendChild(rowFn(entry, reRender, goToWord));
     wrapper.replaceChildren(frag);
     wrapper.style.height = '';
     wrapper._rendered = true;
@@ -490,7 +506,17 @@ export function renderDictionary(root, { filter } = {}) {
   renderList();
 }
 
-function dictRow(entry, reRender) {
+// The row the user just walked to from a family card: flash it and bring it into
+// view, so arriving somewhere never feels like the page merely changed.
+function flashIfTarget(row, word) {
+  if (dictState._flash !== word) return;
+  dictState._flash = null;
+  row.classList.add('is-target');
+  requestAnimationFrame(() => row.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+  setTimeout(() => row.classList.remove('is-target'), 1600);
+}
+
+function dictRow(entry, reRender, goToWord) {
   const row = document.createElement('div');
   row.className = 'dict-row';
 
@@ -521,6 +547,8 @@ function dictRow(entry, reRender) {
   head.append(word, ...(speak ? [speak] : []), stateSel);
   row.appendChild(head);
 
+  flashIfTarget(row, entry.word);
+
   const cached = getCached(entry.word);
   const dict = cached?.dictionary?.explanation;
   const ai = Array.isArray(cached?.ai) ? cached.ai : [];
@@ -531,19 +559,22 @@ function dictRow(entry, reRender) {
     p.textContent = dict;
     row.appendChild(p);
     const detailHost = document.createElement('div');
-    const initial = renderKbDetails(cached?.dictionary?.kb);
+    const initial = renderKbDetails(cached?.dictionary?.kb, entry.word, { onForm: goToWord });
     if (initial) detailHost.appendChild(initial);
     row.appendChild(detailHost);
 
     // A cached KB definition can be stale (the word was rebuilt / re-refined with a
-    // stronger model). Revalidate against the local KB and update in place.
+    // stronger model — or the KB learned to send data the cache predates, like the
+    // word's family). Revalidate against the local KB and update in place. The
+    // DEFINITION TEXT is not the test for staleness: it is the part most likely to
+    // stay identical while everything around it changed.
     if (cached.dictionary.source === 'kb') {
       getQuickDefinition(entry.word, '').then((fresh) => {
-        if (!fresh || fresh.explanation === cached.dictionary.explanation) return;
+        if (!fresh || JSON.stringify(fresh) === JSON.stringify(cached.dictionary)) return;
         cacheDictionary(entry.word, fresh);
         p.textContent = fresh.explanation;
         detailHost.replaceChildren();
-        const refreshed = renderKbDetails(fresh.kb);
+        const refreshed = renderKbDetails(fresh.kb, entry.word, { onForm: goToWord });
         if (refreshed) detailHost.appendChild(refreshed);
       });
     }
@@ -578,7 +609,7 @@ function dictRow(entry, reRender) {
 // marked vocabulary). Collapsed it shows basic info — word, part of speech, the
 // short definition; clicking the head toggles the full KB detail (verb tenses,
 // synonyms, antonyms), fetched lazily via the provider chain (which hits the KB).
-function kbRow(item) {
+function kbRow(item, _reRender, goToWord) {
   const row = document.createElement('div');
   row.className = 'dict-row';
 
@@ -614,6 +645,8 @@ function kbRow(item) {
   detail.hidden = true;
   row.appendChild(detail);
 
+  flashIfTarget(row, item.word);
+
   let loaded = false;
   head.addEventListener('click', async () => {
     detail.hidden = !detail.hidden;
@@ -621,7 +654,7 @@ function kbRow(item) {
     if (loaded || detail.hidden) return;
     loaded = true;
     const full = await getQuickDefinition(item.word, '');
-    const d = renderKbDetails(full?.kb);
+    const d = renderKbDetails(full?.kb, item.word, { onForm: goToWord });
     if (d) detail.appendChild(d);
   });
 

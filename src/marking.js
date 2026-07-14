@@ -147,7 +147,7 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
       getQuickDefinition(word, sentence).then((fresh) => {
         if (!fresh || !active()) return;
         cacheDictionary(word, fresh);
-        popup.setQuick(fresh);
+        popup.setQuick(fresh, word);
       });
     });
   };
@@ -165,12 +165,12 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
     const cached = getCached(word)?.dictionary;
 
     if (cached && cached.source !== 'kb') {
-      popup.setQuick(cached);
+      popup.setQuick(cached, word);
       buildInBackground(word, cached, sentence, active);
       return;
     }
 
-    if (cached) popup.setQuick(cached); // KB cache: show instantly, then revalidate
+    if (cached) popup.setQuick(cached, word); // KB cache: show instantly, then revalidate
     else popup.quickLoading();
 
     getQuickDefinition(word, sentence)
@@ -178,7 +178,7 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
         if (!active()) return;
         if (def) {
           cacheDictionary(word, def);
-          popup.setQuick(def);
+          popup.setQuick(def, word);
           buildInBackground(word, def, sentence, active);
         } else if (!cached) {
           popup.setQuickLinks(word);
