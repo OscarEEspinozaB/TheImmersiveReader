@@ -70,6 +70,19 @@ CREATE TABLE IF NOT EXISTS ai_definitions (
   page        INTEGER,               -- informational word-index hint
   created_at  INTEGER NOT NULL
 );
+
+-- The LEMMAS a book is made of: what it actually costs to build its dictionary.
+-- Derived from the stored .tir's text (same segmenter as the reader, then each word
+-- resolved to its lemma), cached here because unzipping and segmenting a whole book
+-- on every shelf render would be absurd. It is a cache, never a source of truth:
+-- deleting a row only costs one recompute.
+CREATE TABLE IF NOT EXISTS book_lemmas (
+  book_id     TEXT PRIMARY KEY REFERENCES books(id),
+  lang        TEXT NOT NULL,
+  lemmas      TEXT NOT NULL,         -- JSON array, in reading order (first appearance)
+  words       INTEGER NOT NULL,      -- unique surface words, for context in the UI
+  computed_at INTEGER NOT NULL
+);
 `;
 
 // Indexes are created AFTER the migration, since idx_books_uid references a column

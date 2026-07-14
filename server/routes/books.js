@@ -18,6 +18,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, writeFileSync, readFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
+import { coverage, startJob, stopJob, jobStatus } from '../generate/bookJob.js';
 import { getLibraryDb, BOOKS_DIR } from '../library-db.js';
 
 export const booksRouter = Router();
@@ -174,11 +175,45 @@ booksRouter.get('/books/:id/cover', (req, res) => {
   res.send(readFileSync(path));
 });
 
+// --- Building a book's dictionary, from the app ------------------------------
+// The batch CLI can only be run by whoever is sitting at the home machine. These
+// three let any device see what a book costs and ask the server to build it, with
+// the work visible while it happens (see generate/bookJob.js).
+
+// How much of this book's dictionary is already refined.
+booksRouter.get('/books/:id/coverage', (req, res) => {
+  const info = coverage(req.params.id);
+  if (!info) return res.status(404).json({ error: 'Not found' });
+  res.json(info);
+});
+
+// Start (or query) the build. One job at a time on the whole server — the machine
+// has one CPU to inference with, so a second book would only slow the first down.
+booksRouter.post('/books/:id/build', (req, res) => {
+  const model = typeof req.body?.model === 'string' && req.body.model ? req.body.model : undefined;
+  const r = startJob(req.params.id, model ? { model } : {});
+  if (!r.started && r.reason === 'not-found') return res.status(404).json({ error: 'Not found' });
+  if (!r.started && r.reason === 'busy') return res.status(409).json({ error: 'Another book is being built.', ...r });
+  res.json(r);
+});
+
+// What the app polls while a build runs. `null` job = the machine is idle.
+booksRouter.get('/build/status', (_req, res) => {
+  res.json({ job: jobStatus() });
+});
+
+// Stop after the word in flight. Everything already built is kept, and starting
+// again picks up exactly where this left off (progress lives in the KB).
+booksRouter.post('/build/stop', (_req, res) => {
+  res.json({ job: stopJob() });
+});
+
 booksRouter.delete('/books/:id', (req, res) => {
   const db = getLibraryDb();
   const row = db.prepare('SELECT id FROM books WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   db.prepare('DELETE FROM books WHERE id = ?').run(req.params.id);
+  db.prepare('DELETE FROM book_lemmas WHERE book_id = ?').run(req.params.id); // its cache
   for (const p of [tirPath(req.params.id), coverPath(req.params.id)]) {
     if (existsSync(p)) unlinkSync(p);
   }

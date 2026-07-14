@@ -2201,3 +2201,49 @@ button.kb-form:focus-visible {
 .playback-pill:focus-visible {
   background: color-mix(in srgb, var(--text) 10%, var(--surface));
 }
+
+/* Dictionary coverage on a server book: how much of it is already refined, and the
+   button that builds the rest. The bar doubles as the live progress of a running
+   build — one job at a time, so only one card is ever "building". */
+.book__build {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+
+.book__bar {
+  height: 5px;
+  min-width: 0;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.book__bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--word-known);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+/* While the machine is actually working, the bar carries the learning color — the
+   dictionary is being written right now. */
+.book__bar.is-building span {
+  background: var(--word-learning);
+}
+
+.book__build-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  opacity: 0.6;
+}
+
+.book__action.is-stop {
+  color: var(--word-unknown);
+}

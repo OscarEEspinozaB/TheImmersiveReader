@@ -109,7 +109,8 @@ KB/sync/AI features) and the in-app "Load sample" button.
 - `src/library.js` / `src/shelf.js` / `src/tir.js` — IndexedDB library, shelf UI
   (incl. the readability badge: % of sentences whose every word is known —
   never word statistics; see docs/library.md), `.tir` book format.
-  `src/serverLibrary.js` / `src/serverShelf.js` — the Server hub.
+  `src/serverLibrary.js` / `src/serverShelf.js` — the Server hub (incl. per-book
+  dictionary coverage and the "build this book" job, driven from the app).
 - `src/vocabSync.js` — offline-first vocabulary sync (outbox push, incremental pull).
 - `src/dashboard.js` (+ `stats.js`, `charts.js`, `kbDetails.js`) — Dictionary &
   Progress hubs. `src/deck.js` / `src/swiper.js` — Word Swiper.
@@ -119,9 +120,10 @@ KB/sync/AI features) and the in-app "Load sample" button.
 - `src/main.js` — view switching (`shelf | server | dictionary | progress | reader |
   swiper`) and wiring.
 - `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,
-  aiDefine), `generate/` (refine + explain pipelines, book CLI), `ingest/` (Kaikki
-  + `forms.js`), `db.js` / `library-db.js` (schemas), `lemma.js` (the lemma layer:
-  formOf / family / verbForms grounding), `paradigms.js` (hand-curated paradigms).
+  aiDefine), `generate/` (refine + explain pipelines, book CLI, `audit.js`,
+  `bookJob.js` — per-book coverage + the in-app build job), `ingest/` (Kaikki +
+  `forms.js` + `epubText.js`), `db.js` / `library-db.js` (schemas), `lemma.js` (the
+  lemma layer: formOf / family / verbForms grounding), `paradigms.js` (curated).
 
 Per-feature docs: [docs/design.md](docs/design.md) (core reader),
 [docs/library.md](docs/library.md), [docs/home-server.md](docs/home-server.md),

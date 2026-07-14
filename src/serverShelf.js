@@ -1,10 +1,55 @@
-// Server Library view: browse the home server's book catalog and download any
-// book into the local library. Mirrors the local shelf's card layout (reusing the
-// `.book` styles) so the two libraries feel like one place.
+// Server Library view: browse the home server's book catalog, download any book
+// into the local library, and BUILD a book's dictionary. Mirrors the local shelf's
+// card layout (reusing the `.book` styles) so the two libraries feel like one place.
+//
+// Building used to be a terminal job on the home machine, which meant only the
+// person sitting at it could grow the dictionary. Each card now shows how much of
+// its book is already refined — in LEMMAS, the work that is actually left — and a
+// button that asks the server to build the rest. One book at a time, stoppable, and
+// what is built is kept: the server holds the truth, the app just watches.
 
-import { listServerBooks, downloadServerBook, deleteServerBook, serverCoverUrl, isServerAvailable } from './serverLibrary.js';
+import {
+  listServerBooks, downloadServerBook, deleteServerBook, serverCoverUrl, isServerAvailable,
+  bookCoverage, buildServerBook, buildStatus, stopBuild,
+} from './serverLibrary.js';
 import { confirmDialog, alertDialog } from './dialog.js';
 import { readingLangName } from './settings.js';
+
+const POLL_MS = 2000;
+
+// The first coverage request for a book unzips it and segments its whole text, so
+// the cards ask one at a time — a shelf of twenty books must not hit the server
+// with twenty of those at once. (The server caches the result; later renders are
+// instant.)
+let coverageQueue = Promise.resolve();
+function queueCoverage(fn) {
+  coverageQueue = coverageQueue.then(fn).catch((err) => console.warn('coverage failed:', err));
+}
+
+// The cards of the current render, so the poller can find the one that is building.
+let cards = new Map(); // bookId -> { setJob, refresh }
+let poller = null;
+
+function stopPolling() {
+  if (poller) clearInterval(poller);
+  poller = null;
+}
+
+// One poller for the whole view (not one per card): the server builds one book at a
+// time, so there is exactly one thing to watch.
+function startPolling() {
+  stopPolling();
+  poller = setInterval(async () => {
+    const job = await buildStatus();
+    for (const [id, card] of cards) card.setJob(job?.bookId === id ? job : null);
+    // The job just ended: the finished book's coverage is now higher than the bar
+    // says, so ask the server for the real number.
+    if (!job) {
+      stopPolling();
+      for (const card of cards.values()) card.refresh();
+    }
+  }, POLL_MS);
+}
 
 /**
  * @param {HTMLElement} container
@@ -28,8 +73,18 @@ export async function renderServerShelf(container, { onDownloaded } = {}) {
     return;
   }
 
+  stopPolling();
+  cards = new Map();
   for (const book of books) {
     container.appendChild(serverCard(book, container, onDownloaded));
+  }
+
+  // A build may already be running (started from another device, or before this
+  // view was opened) — pick it up instead of pretending the server is idle.
+  const running = await buildStatus();
+  if (running) {
+    for (const [id, card] of cards) card.setJob(running.bookId === id ? running : null);
+    startPolling();
   }
 }
 
@@ -109,7 +164,105 @@ function serverCard(book, container, onDownloaded) {
     }
   });
 
-  actions.append(dl, del);
+  // --- Dictionary coverage + the build button ---
+  const build = document.createElement('div');
+  build.className = 'book__build';
+
+  const bar = document.createElement('div');
+  bar.className = 'book__bar';
+  const fill = document.createElement('span');
+  bar.appendChild(fill);
+
+  const label = document.createElement('span');
+  label.className = 'book__build-label';
+  label.textContent = 'Dictionary …';
+
+  // The button belongs with the other per-book actions (download, remove), not
+  // squeezed beside the bar: a grid card has no room for three things on one line,
+  // and the label ("Dictionary 60% · 1,660 words left") is the part worth reading.
+  const go = iconButton('Build this book\u2019s dictionary', 'M5 3l14 9-14 9z');
+  go.hidden = true;
+
+  build.append(label, bar);
+  meta.appendChild(build);
+
+  let coverageData = null;
+  let jobData = null;
+
+  const paint = () => {
+    if (jobData) {
+      // While it builds, the bar shows THIS job's progress: the words left in it are
+      // the honest measure of the wait, not a percentage that barely moves.
+      const pct = jobData.total ? Math.round((jobData.done / jobData.total) * 100) : 0;
+      fill.style.width = `${pct}%`;
+      bar.classList.add('is-building');
+      // A grid card is narrow: the line has to survive it. The word in flight is
+      // interesting but not worth losing the count and the wait to — it lives in
+      // the tooltip.
+      const eta = jobData.etaMs ? ` · ~${Math.max(1, Math.round(jobData.etaMs / 60000))} min` : '';
+      label.textContent = jobData.stopping
+        ? `Stopping… ${jobData.done}/${jobData.total}`
+        : `Building ${jobData.done.toLocaleString()}/${jobData.total.toLocaleString()}${eta}`;
+      label.title = jobData.current ? `Building “${jobData.current}”…` : 'Building…';
+      go.hidden = false;
+      go.title = 'Stop building';
+      go.classList.add('is-stop');
+      return;
+    }
+    bar.classList.remove('is-building');
+    go.classList.remove('is-stop');
+    if (!coverageData) {
+      fill.style.width = '0%';
+      label.textContent = 'Dictionary —';
+      go.hidden = true;
+      return;
+    }
+    fill.style.width = `${coverageData.pct}%`;
+    const done = coverageData.pending === 0;
+    label.textContent = done
+      ? `Dictionary complete · ${coverageData.total.toLocaleString()} words`
+      : `${coverageData.pct}% · ${coverageData.pending.toLocaleString()} words left`;
+    label.title =
+      `Dictionary: ${coverageData.built.toLocaleString()} of ${coverageData.total.toLocaleString()} words built ` +
+      `(from ${coverageData.words.toLocaleString()} unique words in the book — forms of the same word are one entry).`;
+    go.hidden = done;
+    go.title = `Build the ${coverageData.pending.toLocaleString()} words this book still needs`;
+  };
+
+  const refresh = () =>
+    queueCoverage(async () => {
+      coverageData = await bookCoverage(book.id);
+      paint();
+    });
+
+  go.addEventListener('click', async () => {
+    go.disabled = true;
+    try {
+      if (jobData) {
+        await stopBuild();
+      } else {
+        const r = await buildServerBook(book.id);
+        jobData = r.status;
+        startPolling();
+      }
+      paint();
+    } catch (err) {
+      await alertDialog(err.message);
+    } finally {
+      go.disabled = false;
+    }
+  });
+
+  cards.set(book.id, {
+    setJob: (job) => {
+      jobData = job;
+      paint();
+    },
+    refresh,
+  });
+  refresh();
+
+  actions.append(go, dl, del);
   meta.appendChild(actions);
   card.appendChild(meta);
   return card;

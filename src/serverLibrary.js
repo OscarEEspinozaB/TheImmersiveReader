@@ -113,3 +113,58 @@ export function serverCoverUrl(serverId) {
   const b = base();
   return b ? `${b}/books/${serverId}/cover` : null;
 }
+
+// --- Building a book's dictionary --------------------------------------------
+// Until now the dictionary could only be built from a terminal on the home
+// machine. These let the app ask the server to do it, and watch it happen.
+
+/**
+ * How much of a book's dictionary is already refined. Counted in LEMMAS — "aim",
+ * "aimed" and "aiming" are one entry to build — which is the work that is actually
+ * left, not a flattering word count.
+ * @returns {Promise<{ words:number, total:number, built:number, pending:number, pct:number } | null>}
+ *   null when the server is unreachable, so the UI can stay quiet instead of lying.
+ */
+export async function bookCoverage(serverId) {
+  const b = base();
+  if (!b) return null;
+  try {
+    const res = await fetch(`${b}/books/${serverId}/coverage`);
+    return res.ok ? res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ask the server to build this book's pending words. Rejects if another book is already building. */
+export async function buildServerBook(serverId) {
+  const b = base();
+  if (!b) throw new Error('No home server URL configured (Settings).');
+  const res = await fetch(`${b}/books/${serverId}/build`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 409) throw new Error(`The server is busy building “${data.status?.title || 'another book'}”.`);
+  if (!res.ok) throw new Error(`Could not start the build (${res.status}).`);
+  return data; // { started, reason?, status }
+}
+
+/** The build running on the server right now, or null when it is idle. */
+export async function buildStatus() {
+  const b = base();
+  if (!b) return null;
+  try {
+    const res = await fetch(`${b}/build/status`);
+    if (!res.ok) return null;
+    return (await res.json()).job;
+  } catch {
+    return null;
+  }
+}
+
+/** Stop the running build. What it already built is kept; restarting resumes. */
+export async function stopBuild() {
+  const b = base();
+  if (!b) throw new Error('No home server URL configured (Settings).');
+  const res = await fetch(`${b}/build/stop`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Could not stop the build (${res.status}).`);
+  return (await res.json()).job;
+}

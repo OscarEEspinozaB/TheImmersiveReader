@@ -27,7 +27,8 @@ server/
   routes/           define, build, words, stats, books, vocab, aiDefine
   generate/         ollama.js (refine), build.js (refine-and-store pipeline),
                     explain.js (context AI), book.js (batch CLI), run.js (text CLI),
-                    audit.js (find + repair wrong entries)
+                    audit.js (find + repair wrong entries),
+                    bookJob.js (coverage + the in-app build job)
   ingest/           kaikki.js (Wiktextract JSONL → KB), pdfText.js, run.js (CLI),
                     forms.js (rebuild only the inflections table)
 data/               gitignored: dictionary.sqlite, library.sqlite, books/ (blobs),
@@ -130,6 +131,32 @@ the family card (see [design.md §7](design.md)).
   token into lemmas and *do* propagate marking; a family gathers N tokens into one
   lemma and never does.
 
+### 2c. Building a book's dictionary from the app
+
+The batch CLI can only be run by whoever is sitting at the home machine. A book in
+the server library is already a processed `.tir`, so the server can read its
+`text.txt` with the **same segmenter the reader uses**, ask what it costs, and build
+it on request from any device (`generate/bookJob.js`). Nothing is ingested here —
+the archive was produced by the client, so the invariant holds.
+
+- **Coverage** (`GET /books/:id/coverage`) is counted in **lemmas**: "aim", "aimed"
+  and "aiming" are one entry to build, so that is the work actually left. The book's
+  lemma list is cached in `library.sqlite` (`book_lemmas`) — unzipping and
+  segmenting a whole book on every shelf render would be absurd — and it is only a
+  cache: dropping a row costs one recompute.
+- **One job at a time, server-wide** (`POST /books/:id/build`, 409 while busy). The
+  bottleneck is CPU inference (5-25 s per word); a second book in parallel would not
+  finish sooner, it would only heat the machine and slow the first one down.
+- **Stoppable** (`POST /build/stop`), and stopping is free: every entry commits as it
+  is written, so progress lives in the KB, not in memory. Starting again resumes
+  exactly where it left off — and the count is derived, never remembered.
+- The job refines one word per call so *stop* means the word in flight, not the
+  chunk it is in, and takes a breather every 25 words: this runs on the machine the
+  household is also using.
+- **Progress** (`GET /build/status`) is what the app polls. A build started from one
+  device is picked up by any other — the Server hub shows the live bar wherever it
+  is open.
+
 ## 3. Book library
 
 `.tir` archives (built client-side by `src/tir.js`) are POSTed raw; the server
@@ -177,6 +204,9 @@ GET    /words?lang=&q=&sort=&limit=     built (refined) words, for the Dictionar
 GET    /stats?lang=                     dictionary-data stats card
 GET    /books?lang=&q=                  catalog        POST /books        upload .tir (raw bytes)
 GET    /books/:id | /content | /cover   metadata / download / cover      DELETE /books/:id
+GET    /books/:id/coverage              how much of this book's dictionary is built (lemmas)
+POST   /books/:id/build                 build its pending words (409 if another book is building)
+GET    /build/status · POST /build/stop the running job · stop it (finished words are kept)
 GET    /vocab?user=&since=              pull           PUT /vocab (bulk) · PATCH /vocab (single)
 POST   /ai/define                       explain in reading language (cached)
 POST   /ai/explain                      explain in native language (cached)
