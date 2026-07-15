@@ -15,6 +15,7 @@ import {
   decomposeContraction,
   isAiAvailable,
   requestKbBuild,
+  reRefineWord,
 } from './definitions/index.js';
 import {
   getContraction,
@@ -230,6 +231,32 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
 
     const myRequest = ++requestId;
     const active = () => myRequest === requestId && popup.visible;
+
+    // The two regenerate actions the popup offers a ↻ for — both real LLM calls the
+    // reader triggers when an answer came out wrong. Registered before the slots
+    // load, since the ↻ is decided as each answer is rendered. The `active()` guard
+    // drops a result whose popup was already dismissed or moved to another word.
+    const regenDictionary = async () => {
+      const ok = await reRefineWord(word);
+      if (!ok || !active()) return;
+      const fresh = await getQuickDefinition(word, sentence);
+      if (fresh && active()) {
+        cacheDictionary(word, fresh);
+        popup.setQuick(fresh, word);
+      }
+    };
+    const regenAi = async () => {
+      popup.setAiList(getAiList(word), sentence, true); // "Looking up IA…" row
+      const def = await getAiDefinition(surface, sentence, bookCtx, { force: true });
+      if (!active()) return;
+      if (def) {
+        pushAi(word, sentence, def); // replaces the stored answer for this sentence
+        popup.setAiList(getAiList(word), sentence, false);
+      } else {
+        popup.setAiList(getAiList(word), sentence, false, true);
+      }
+    };
+    popup.setRegenerators({ onRerefine: regenDictionary, onRegenAi: regenAi });
 
     if (isContraction) showBreakdown(span);
 

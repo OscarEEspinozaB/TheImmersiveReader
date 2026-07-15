@@ -58,11 +58,12 @@ export async function getQuickDefinition(word, sentence) {
  * @param {string} word surface form (e.g. "didn't", "Dursley's")
  * @param {string} sentence
  * @param {{ uid?: string, page?: number }} [book] active book context for storage
+ * @param {{ force?: boolean }} [opts] force a regeneration (skip + overwrite cache)
  * @returns {Promise<Definition | null>}
  */
-export async function getAiDefinition(word, sentence, book) {
+export async function getAiDefinition(word, sentence, book, opts) {
   try {
-    return await serverAiDefine(word, sentence, book);
+    return await serverAiDefine(word, sentence, book, opts);
   } catch (err) {
     console.warn('AI provider "serverAiDefine" failed:', err);
     return null;

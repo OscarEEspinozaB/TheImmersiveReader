@@ -710,6 +710,45 @@ body.nav-hidden .primary-nav {
   line-height: 1.4;
 }
 
+/* A definition (or AI explanation) beside its "re-do with AI" ↻ button. */
+.popup__slot-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.popup__slot-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.popup__regen {
+  flex: none;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.15rem 0.35rem;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.popup__regen:hover {
+  opacity: 1;
+  border-color: var(--text);
+}
+
+.popup__regen:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.popup__regen.is-working {
+  animation: rerefine-spin 0.9s linear infinite;
+}
+
 .popup__slot-source {
   font-size: 0.7rem;
   text-transform: uppercase;

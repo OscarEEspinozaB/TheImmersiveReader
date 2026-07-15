@@ -59,6 +59,11 @@ async function handle(req, res, { kind, nativeLang, generate }) {
   const model = String(b.model || '').trim();
   if (!word || !sentence) return res.status(400).json({ error: 'word and sentence required' });
 
+  // The reader can ask to REGENERATE an answer it judged wrong: skip the cache read
+  // and overwrite the stored row, so the new answer replaces the old one for every
+  // device (the shared-cache contract still holds — it is just refreshed).
+  const force = Boolean(b.force);
+
   const db = getLibraryDb();
   const key = keyOf({ bookUid, lang, kind, nativeLang, word, sentence, model });
 
@@ -67,9 +72,9 @@ async function handle(req, res, { kind, nativeLang, generate }) {
   // store/read bug; a differing #key means the client sent different inputs.
   const fp = `${word} #${key.slice(0, 8)} [book=${bookUid || '∅'} lang=${lang} nat=${nativeLang || '∅'} slen=${sentence.length} model=${model || '∅'}]`;
 
-  const hit = db
-    .prepare('SELECT explanation, source, model FROM ai_definitions WHERE key = ?')
-    .get(key);
+  const hit = force
+    ? null
+    : db.prepare('SELECT explanation, source, model FROM ai_definitions WHERE key = ?').get(key);
   if (hit) {
     kbLog(C.green, 'HIT·ai', fp, hit.explanation);
     return res.json({ explanation: hit.explanation, source: hit.source, model: hit.model, cached: true });
@@ -96,10 +101,15 @@ async function handle(req, res, { kind, nativeLang, generate }) {
     const result = await pending.finally(() => inflight.delete(key));
     if (!result) return res.status(503).json({ error: 'ai unavailable' });
 
+    // Upsert on the key: a regeneration REPLACES the stored answer (INSERT OR IGNORE
+    // would have kept the old one). A normal miss inserts as before.
     db.prepare(
-      `INSERT OR IGNORE INTO ai_definitions
+      `INSERT INTO ai_definitions
          (key, book_uid, lang, word, surface, sentence, kind, native_lang, explanation, source, model, page, created_at)
-       VALUES (@key, @bookUid, @lang, @word, @surface, @sentence, @kind, @nativeLang, @explanation, @source, @model, @page, @createdAt)`,
+       VALUES (@key, @bookUid, @lang, @word, @surface, @sentence, @kind, @nativeLang, @explanation, @source, @model, @page, @createdAt)
+       ON CONFLICT(key) DO UPDATE SET
+         explanation = excluded.explanation, source = excluded.source,
+         model = excluded.model, created_at = excluded.created_at`,
     ).run({
       key,
       bookUid,

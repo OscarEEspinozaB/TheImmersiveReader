@@ -54,7 +54,7 @@ async function post(path, body) {
  * @param {{ uid?: string, page?: number }} [book] active book context
  * @returns {Promise<import('./index.js').Definition | null>}
  */
-export function serverAiDefine(word, sentence, book = {}) {
+export function serverAiDefine(word, sentence, book = {}, { force = false } = {}) {
   return post('/ai/define', {
     word,
     sentence,
@@ -63,6 +63,7 @@ export function serverAiDefine(word, sentence, book = {}) {
     lang: getReadingLang(),
     langName: getReadingLangName(),
     model: getAiModel(),
+    force, // regenerate: skip the cache and overwrite the stored answer
   });
 }
 

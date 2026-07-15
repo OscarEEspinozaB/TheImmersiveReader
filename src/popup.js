@@ -171,9 +171,23 @@ export class WordPopup {
     this._onExplain = null;
     this._onLookup = null;
     this._onRefreshAi = null;
+    this._onRerefine = null;
+    this._onRegenAi = null;
 
     this.el.hidden = false;
     this._position(anchor);
+  }
+
+  /**
+   * Register the "regenerate" actions for this word, both real LLM calls the reader
+   * can trigger when an answer came out wrong:
+   *  • `onRerefine()` re-does the DICTIONARY entry (the refined KB definition);
+   *  • `onRegenAi()`  re-does the AI EXPLANATION in the reading language.
+   * A ↻ appears next to each answer only when its handler is set here.
+   */
+  setRegenerators({ onRerefine = null, onRegenAi = null } = {}) {
+    this._onRerefine = onRerefine;
+    this._onRegenAi = onRegenAi;
   }
 
   /**
@@ -259,7 +273,12 @@ export class WordPopup {
    */
   setQuick(def, word) {
     if (def) {
-      this._fillSlot(this.quickSlot, { state: 'ready', text: def.explanation, source: def.source, kb: def.kb, word });
+      // The ↻ is only for an AI-refined KB entry — a raw or online definition is
+      // not the AI's to re-do (same rule as the Dictionary hub).
+      const regen = def.source === 'kb' && def.refined && this._onRerefine ? () => this._onRerefine() : null;
+      this._fillSlot(this.quickSlot, {
+        state: 'ready', text: def.explanation, source: def.source, kb: def.kb, word, regen,
+      });
     } else {
       this._hideSlot(this.quickSlot);
     }
@@ -329,7 +348,16 @@ export class WordPopup {
     const text = document.createElement('p');
     text.className = 'ai-item__text';
     text.textContent = item.explanation;
-    block.appendChild(text);
+    // Only the CURRENT context can be re-done (an old context's sentence is not on
+    // screen to judge it against); the ↻ shares the text's row.
+    if (isCurrent && this._onRegenAi) {
+      const row = document.createElement('div');
+      row.className = 'popup__slot-row';
+      row.append(text, this._regenButton('Re-do this explanation with the AI', () => this._onRegenAi()));
+      block.appendChild(row);
+    } else {
+      block.appendChild(text);
+    }
     const ctx = document.createElement('p');
     ctx.className = 'ai-item__context';
     ctx.textContent = `“${truncate(item.sentence, 70)}”`;
@@ -425,14 +453,47 @@ export class WordPopup {
     return slot;
   }
 
-  _fillSlot(slot, { state, text, source, kb, word }) {
+  // A ↻ button that runs `onClick` (a real LLM call), spinning while it works. The
+  // popup may be dismissed and reused mid-call, so `onClick` is responsible for
+  // ignoring a stale result — the button only manages its own visual state.
+  _regenButton(title, onClick) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'popup__regen';
+    btn.title = title;
+    btn.setAttribute('aria-label', title);
+    btn.textContent = '↻';
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      btn.classList.add('is-working');
+      try {
+        await onClick();
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('is-working');
+      }
+    });
+    return btn;
+  }
+
+  _fillSlot(slot, { state, text, source, kb, word, regen }) {
     slot.hidden = false;
     slot.dataset.state = state;
     slot.textContent = '';
     const p = document.createElement('p');
     p.className = 'popup__slot-text';
     p.textContent = text;
-    slot.appendChild(p);
+    // The definition and its "re-do with AI" button share a row, so the ↻ sits
+    // beside the text it regenerates rather than floating below the whole slot.
+    if (regen) {
+      const row = document.createElement('div');
+      row.className = 'popup__slot-row';
+      row.append(p, this._regenButton('Re-do this definition with the AI', regen));
+      slot.appendChild(row);
+    } else {
+      slot.appendChild(p);
+    }
     const details = renderKbDetails(kb, word);
     if (details) slot.appendChild(details);
     if (source) {

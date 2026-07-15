@@ -151,9 +151,16 @@ change without touching the UI (`src/definitions/index.js`).
 - **AI explanations** (always on demand, per context): brokered and cached by
   the home server (`serverAi.js`) — generated once, shared across devices; the
   "Ask AI" button shows only when the server + Ollama are reachable. Each answer
-  is stored per exact sentence and never regenerated (only failed lookups can be
-  retried). An on-demand **"Explain in &lt;native language&gt;"** rescue works
-  the same way.
+  is stored per exact sentence; a failed lookup can be retried, and a **↻
+  regenerate** button re-does an answer that came out wrong (below).
+  An on-demand **"Explain in &lt;native language&gt;"** rescue works the same way.
+- **Regenerate (↻)** in the full popup: when an AI answer is weak, one press re-does
+  it in place. Two of them — one on the refined **dictionary** definition (re-runs
+  the KB refinement, resolved to the lemma), one on the reading-language **AI
+  explanation** (forces a fresh generation, overwriting the server's shared cache
+  for that sentence so every device gets the better answer). Only AI-produced
+  answers carry the button; a raw or online definition is not the AI's to redo. The
+  same ↻ lives on each refined row in the Dictionary hub.
 - **Web-dictionary links** (`externalLookup.js`): Cambridge/Oxford/etc. links as
   the last resort when nothing else answers.
 - **Caching** (`definitionsCache.js`): per `<lang>:<word>` — dictionary result,
