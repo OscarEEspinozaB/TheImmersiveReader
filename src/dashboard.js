@@ -5,8 +5,9 @@ import { listEntries, setState, STATES, normalize, getState, usedLanguages } fro
 import { summary, growthSeries, recent } from './stats.js';
 import { growthChart, splitDonut } from './charts.js';
 import { getCached, cacheDictionary } from './definitionsCache.js';
-import { getQuickDefinition, listKbWords, getKbStats } from './definitions/index.js';
+import { getQuickDefinition, listKbWords, getKbStats, reRefineWord } from './definitions/index.js';
 import { renderKbDetails } from './kbDetails.js';
+import { alertDialog } from './dialog.js';
 import { buildExternalLinks } from './externalLookup.js';
 import { speakerButton } from './speech.js';
 import { listBooks, getBookWords, setBookWords, getBookContent } from './library.js';
@@ -557,8 +558,23 @@ function dictRow(entry, reRender, goToWord) {
     const p = document.createElement('p');
     p.className = 'dict-row__def';
     p.textContent = dict;
-    row.appendChild(p);
     const detailHost = document.createElement('div');
+    const repaint = (def) => {
+      p.textContent = def.explanation;
+      detailHost.replaceChildren();
+      const d = renderKbDetails(def.kb, entry.word, { onForm: goToWord });
+      if (d) detailHost.appendChild(d);
+    };
+    // A refined (AI-built) entry can be redone when it came out wrong; a raw KB or
+    // online definition is not the AI's to re-refine, so no button there.
+    if (cached.dictionary.source === 'kb' && cached.dictionary.refined) {
+      const defRow = document.createElement('div');
+      defRow.className = 'dict-row__defrow';
+      defRow.append(p, reRefineButton(entry.word, repaint));
+      row.appendChild(defRow);
+    } else {
+      row.appendChild(p);
+    }
     const initial = renderKbDetails(cached?.dictionary?.kb, entry.word, { onForm: goToWord });
     if (initial) detailHost.appendChild(initial);
     row.appendChild(detailHost);
@@ -628,16 +644,27 @@ function kbRow(item, _reRender, goToWord) {
   pos.textContent = (item.pos || []).join(' · ');
 
   head.append(word, pos);
-  // The head is itself a <button> (expand toggle), so the 🔊 lives beside it.
-  const headRow = document.createElement('div');
-  headRow.className = 'dict-row__headrow';
-  const speak = speakerButton(item.word, getReadingLang);
-  headRow.append(head, ...(speak ? [speak] : []));
-  row.appendChild(headRow);
-
   const def = document.createElement('p');
   def.className = 'dict-row__def';
   def.textContent = item.definition;
+
+  // Every "Built" row is an AI-refined entry, so every one can be redone. Repaint
+  // the definition in place, and drop any already-loaded detail so it reloads with
+  // the fresh synonyms/antonyms on the next expand.
+  const repaint = (fresh) => {
+    def.textContent = fresh.explanation || item.definition;
+    loaded = false;
+    detail.replaceChildren();
+    if (!detail.hidden) head.click(); // re-expand to reload if it was open
+  };
+
+  // The head is itself a <button> (expand toggle), so the 🔊 and ↻ live beside it.
+  const headRow = document.createElement('div');
+  headRow.className = 'dict-row__headrow';
+  const speak = speakerButton(item.word, getReadingLang);
+  headRow.append(head, ...(speak ? [speak] : []), reRefineButton(item.word, repaint));
+  row.appendChild(headRow);
+
   row.appendChild(def);
 
   const detail = document.createElement('div');
@@ -666,6 +693,40 @@ async function fetchDictionary(word) {
   const def = await getQuickDefinition(word, '');
   if (def) cacheDictionary(word, def);
   return def;
+}
+
+// "Re-refine": the AI's dictionary entry for this word came out wrong (a bad
+// definition, weak synonyms) — run the model over it again and replace it. An
+// explicit redo, so it forces a rebuild; the server resolves the word to its lemma
+// (re-refining "aimed" re-does "aim"). The fresh entry replaces the cached one and
+// `onUpdated` repaints it in place.
+function reRefineButton(word, onUpdated) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'dict-rerefine-btn';
+  btn.title = 'Re-do this definition with the AI';
+  btn.setAttribute('aria-label', 'Re-refine this definition');
+  btn.textContent = '↻';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.classList.add('is-working');
+    try {
+      const ok = await reRefineWord(word);
+      if (!ok) {
+        await alertDialog('Could not re-refine — is the server (and Ollama) reachable?');
+        return;
+      }
+      const fresh = await getQuickDefinition(word, '');
+      if (fresh) {
+        cacheDictionary(word, fresh);
+        onUpdated(fresh);
+      }
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('is-working');
+    }
+  });
+  return btn;
 }
 
 function lookupButton(word, reRender) {

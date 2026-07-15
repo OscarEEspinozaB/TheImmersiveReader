@@ -194,3 +194,29 @@ export async function requestKbBuild(word) {
     return false;
   }
 }
+
+/**
+ * RE-refine a word that is already built: run the AI over it again and replace the
+ * stored entry. Unlike requestKbBuild this is an explicit user action ("this
+ * definition is wrong, do it over"), so it forces a rebuild and is never
+ * suppressed by the once-per-session guard. The word is resolved to its lemma on
+ * the server, so re-refining "aimed" re-does "aim".
+ * @param {string} word normalized word
+ * @returns {Promise<boolean>} true if a fresh entry was stored
+ */
+export async function reRefineWord(word) {
+  const base = getKbUrl();
+  if (!base || !word) return false;
+  try {
+    const res = await fetch(`${base}/build`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words: [word], lang: getReadingLang(), force: true }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data?.results?.[0]?.status === 'refined';
+  } catch {
+    return false;
+  }
+}

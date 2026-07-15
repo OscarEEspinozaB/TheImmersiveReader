@@ -4,12 +4,12 @@
 // can change without touching the UI.
 
 import { lookupLocal } from './localDict.js';
-import { lookupKB, requestKbBuild, listKbWords, getKbStats } from './kbApi.js';
+import { lookupKB, requestKbBuild, reRefineWord, listKbWords, getKbStats } from './kbApi.js';
 import { lookupDictionaryApi } from './dictionaryApi.js';
 import { decompose } from './ollama.js';
 import { serverAiDefine, serverAiExplain, serverAiAvailable, listAiModels } from './serverAi.js';
 
-export { requestKbBuild, listKbWords, getKbStats, listAiModels };
+export { requestKbBuild, reRefineWord, listKbWords, getKbStats, listAiModels };
 
 /**
  * Whether AI explanations are currently available. Context-aware explanations are

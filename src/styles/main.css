@@ -2156,6 +2156,53 @@ button.kb-form:focus-visible {
   min-width: 0;
 }
 
+/* A definition next to its "re-do with the AI" button (↻). The button is quiet
+   until hovered — it is a repair, not a primary action. */
+.dict-row__defrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.dict-row__defrow .dict-row__def {
+  flex: 1;
+  min-width: 0;
+}
+
+.dict-rerefine-btn {
+  flex: none;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.dict-rerefine-btn:hover {
+  opacity: 1;
+  border-color: var(--text);
+}
+
+.dict-rerefine-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* While it works, the ↻ spins so the wait (a real LLM call) is legible. */
+.dict-rerefine-btn.is-working {
+  animation: rerefine-spin 0.9s linear infinite;
+}
+
+@keyframes rerefine-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* --- Shelf comprehensibility badge: % of the book's running words already
    known. Reuses the app's own color code: calm = comfortable (≥95%), gold =
    challenging (90–94%), red = hard (<90%). */

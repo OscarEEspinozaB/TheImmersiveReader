@@ -56,8 +56,11 @@ language.
   KB-backed rows surface the word's **family card** (its paradigm, each form in
   the color of its own state, with a "N of M forms known" score), part of speech
   and synonyms/antonyms (`kbDetails.js`). Tapping another form in the card **walks
-  the hub to that word**: it filters to it, scrolls to it and flashes its row. Rows without a cached meaning offer an on-demand
-  look-up. Changing a word's state here updates it everywhere (same global
+  the hub to that word**: it filters to it, scrolls to it and flashes its row. An
+  AI-refined definition carries a **↻ re-refine** button: when the entry came out
+  wrong, one press re-runs the model over it (server-side, resolved to the lemma)
+  and repaints the definition in place. Rows without a cached meaning offer an
+  on-demand look-up. Changing a word's state here updates it everywhere (same global
   store).
 - The list is **windowed** (IntersectionObserver chunk load/unload) so large
   vocabularies stay smooth.
