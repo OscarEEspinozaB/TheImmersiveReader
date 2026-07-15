@@ -91,7 +91,21 @@ Two reading modes (menu-selectable, re-rendered in place at the current spot):
   in, releasing past ~20% of the width commits; buttons/arrow keys play the same
   slide; a tap in the outer thirds/margins turns Google-Books style.
 - **Continuous** (`reader/scroller.js`): windowed scroll that keeps the full
-  text available (enables external read-aloud tools).
+  text available (enables external read-aloud tools). Only chunks near the viewport
+  are in the DOM; the rest are spacers of an estimated height. When a chunk **above**
+  the viewport renders to its real height, the scroller compensates `scrollTop` by the
+  difference (native `overflow-anchor` is turned off) so the visible text — and a
+  just-restored reading position — never drifts as the window fills in. Its programmatic
+  scrolls are forced instant (`scroll-behavior: auto`), since the stylesheet's smooth
+  scrolling would animate them and race those measurements.
+
+Both modes report their spot as a **word index**; the reader stores it as a
+**paragraph-anchored position** (`reader/position.js`) — a paragraph index plus the
+Nth word inside it. The paragraph index comes straight from the raw text, so it is
+identical on every device and screen size, which is what lets a book resume where
+you left off after switching devices (synced through the home server, keyed by book
+title — see [home-server.md](home-server.md) §4a). Books saved before this stored a
+bare word index; it is converted to a position the first time they are opened.
 
 Marking (`src/marking.js` + `src/gloss.js`) follows one rule — **gestures only
 open bubbles; actions are visible buttons inside them** — so a new feature never
@@ -155,12 +169,13 @@ change without touching the UI (`src/definitions/index.js`).
   regenerate** button re-does an answer that came out wrong (below).
   An on-demand **"Explain in &lt;native language&gt;"** rescue works the same way.
 - **Regenerate (↻)** in the full popup: when an AI answer is weak, one press re-does
-  it in place. Two of them — one on the refined **dictionary** definition (re-runs
+  it in place. Three of them — one on the refined **dictionary** definition (re-runs
   the KB refinement, resolved to the lemma), one on the reading-language **AI
-  explanation** (forces a fresh generation, overwriting the server's shared cache
-  for that sentence so every device gets the better answer). Only AI-produced
-  answers carry the button; a raw or online definition is not the AI's to redo. The
-  same ↻ lives on each refined row in the Dictionary hub.
+  explanation**, and one on the **native-language explanation** (each forces a fresh
+  generation, overwriting the server's shared cache for that sentence so every device
+  gets the better answer). Only AI-produced answers carry the button; a raw or online
+  definition is not the AI's to redo. The same ↻ lives on each refined row in the
+  Dictionary hub.
 - **Web-dictionary links** (`externalLookup.js`): Cambridge/Oxford/etc. links as
   the last resort when nothing else answers.
 - **Caching** (`definitionsCache.js`): per `<lang>:<word>` — dictionary result,
@@ -220,7 +235,8 @@ src/
   vocabulary.js      <lang>:<word> → {state, at}; onChange/applyRemoteEntry for sync
   contractions.js    registry, color aggregation, AI-grown entries, migrations
   sentences.js       sentence + paragraph lookup per word index
-  reader/            render, paginator, scroller, pageTurn, theme
+  reader/            render, paginator, scroller, pageTurn, theme,
+                     position.js (word index ↔ paragraph-anchored reading position)
   marking.js         hold/tap gestures, popup wiring   popup.js  the word popup
   gloss.js           the word/paragraph speech bubble (incl. the family strip)
   speech.js          Web Speech: word, word+definition, paragraph read-aloud
@@ -232,6 +248,7 @@ src/
   library.js/shelf.js/tir.js        local library, shelf UI, .tir format  → docs/library.md
   serverLibrary.js/serverShelf.js   server catalog + Server hub           → docs/home-server.md
   vocabSync.js                      offline-first vocabulary sync         → docs/home-server.md
+  positionSync.js                   cross-device reading position (by title) → docs/home-server.md
   kbDetails.js       KB detail rendering: the family card, POS, synonyms/antonyms
   dashboard.js/stats.js/charts.js  Dictionary & Progress hubs → docs/dictionary-progress.md
   deck.js/swiper.js                 Word Swiper                           → docs/word-swiper.md

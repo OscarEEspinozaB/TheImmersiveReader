@@ -179,15 +179,17 @@ export class WordPopup {
   }
 
   /**
-   * Register the "regenerate" actions for this word, both real LLM calls the reader
+   * Register the "regenerate" actions for this word, all real LLM calls the reader
    * can trigger when an answer came out wrong:
-   *  • `onRerefine()` re-does the DICTIONARY entry (the refined KB definition);
-   *  • `onRegenAi()`  re-does the AI EXPLANATION in the reading language.
+   *  • `onRerefine()`  re-does the DICTIONARY entry (the refined KB definition);
+   *  • `onRegenAi()`   re-does the AI EXPLANATION in the reading language;
+   *  • `onRegenLang()` re-does the AI EXPLANATION in the reader's native language.
    * A ↻ appears next to each answer only when its handler is set here.
    */
-  setRegenerators({ onRerefine = null, onRegenAi = null } = {}) {
+  setRegenerators({ onRerefine = null, onRegenAi = null, onRegenLang = null } = {}) {
     this._onRerefine = onRerefine;
     this._onRegenAi = onRegenAi;
+    this._onRegenLang = onRegenLang;
   }
 
   /**
@@ -410,7 +412,16 @@ export class WordPopup {
 
   /** @param {import('./definitions/index.js').Definition | null} def */
   setLang(def) {
-    if (def) this._fillSlot(this.langSlot, { state: 'ready', text: def.explanation, source: def.source });
+    if (def)
+      this._fillSlot(this.langSlot, {
+        state: 'ready',
+        text: def.explanation,
+        source: def.source,
+        // Like the reading-language answer, the native explanation is AI-produced, so
+        // it carries a ↻ to re-run the model when the translation came out wrong.
+        regen: this._onRegenLang ? () => this._onRegenLang() : null,
+        regenTitle: 'Re-do this explanation with the AI',
+      });
     else this._fillSlot(this.langSlot, { state: 'error', text: 'Could not get an explanation (is the AI reachable?).' });
   }
 
@@ -481,7 +492,7 @@ export class WordPopup {
     return btn;
   }
 
-  _fillSlot(slot, { state, text, source, kb, word, regen }) {
+  _fillSlot(slot, { state, text, source, kb, word, regen, regenTitle = 'Re-do this definition with the AI' }) {
     slot.hidden = false;
     slot.dataset.state = state;
     slot.textContent = '';
@@ -493,7 +504,7 @@ export class WordPopup {
     if (regen) {
       const row = document.createElement('div');
       row.className = 'popup__slot-row';
-      row.append(p, this._regenButton('Re-do this definition with the AI', regen));
+      row.append(p, this._regenButton(regenTitle, regen));
       slot.appendChild(row);
     } else {
       slot.appendChild(p);

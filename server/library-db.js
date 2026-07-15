@@ -71,6 +71,21 @@ CREATE TABLE IF NOT EXISTS ai_definitions (
   created_at  INTEGER NOT NULL
 );
 
+-- Per-user reading position, so a book resumes at the same spot on another device.
+-- Keyed by the book's TITLE (normalized), not its local id: the id is device-local,
+-- the title is what two devices share (renaming a book is the user's own choice and
+-- deliberately starts a fresh position). The position is paragraph-anchored
+-- (paragraph index + Nth word inside it) — see src/reader/position.js — so it is
+-- independent of screen size, font, and reader mode. Last-write-wins by updated_at.
+CREATE TABLE IF NOT EXISTS reading_position (
+  user       TEXT NOT NULL,
+  book       TEXT NOT NULL,           -- normalized title (the cross-device key)
+  paragraph  INTEGER NOT NULL,
+  word       INTEGER NOT NULL,        -- Nth word inside the paragraph (refinement)
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user, book)
+);
+
 -- The LEMMAS a book is made of: what it actually costs to build its dictionary.
 -- Derived from the stored .tir's text (same segmenter as the reader, then each word
 -- resolved to its lemma), cached here because unzipping and segmenting a whole book
@@ -95,6 +110,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_books_sha ON books(sha);
 CREATE INDEX IF NOT EXISTS idx_books_lang ON books(lang);
 -- Pulling a user's changes since a timestamp is the hot path for sync.
 CREATE INDEX IF NOT EXISTS idx_vocab_pull ON vocabulary(user, updated_at);
+-- Pulling a user's reading positions changed since a timestamp.
+CREATE INDEX IF NOT EXISTS idx_position_pull ON reading_position(user, updated_at);
 -- Browsing a book's stored explanations (e.g. a future per-book glossary view).
 CREATE INDEX IF NOT EXISTS idx_aidef_book ON ai_definitions(book_uid, lang);
 `;

@@ -24,7 +24,7 @@ server/
   paradigms.js      hand-curated paradigms: pronouns, BE/HAVE/DO, modals,
                     demonstratives, irregular degrees (good/better/best)
   log.js            colored per-request console log (HIT/MISS/BUILDING/BUILT…)
-  routes/           define, build, words, stats, books, vocab, aiDefine
+  routes/           define, build, words, stats, books, vocab, position, aiDefine
   generate/         ollama.js (refine), build.js (refine-and-store pipeline),
                     explain.js (context AI), book.js (batch CLI), run.js (text CLI),
                     audit.js (find + repair wrong entries),
@@ -180,6 +180,20 @@ queued (debounced) and pushed; pulls are incremental (`since` timestamp) on
 startup and tab focus. A wiped browser is repopulated from the server on the
 next load.
 
+### 4a. Reading position sync
+
+A book resumes at the same spot when you pick it up on another device. The
+`reading_position` table is keyed `(user, book)` where `book` is the book's
+**normalized title** — deliberately *not* its local id (that is device-specific)
+nor the page number (screen size, font and reader mode all move it). The stored
+position is **paragraph-anchored**: a paragraph index (counted from the raw text,
+so it is identical on every device and engine) plus the Nth word inside it as a
+refinement (`src/reader/position.js`). Conflict resolution is **last-write-wins by
+`updated_at`**, so the device you read on most recently leads. The client
+(`src/positionSync.js`) pulls a title's position when the book opens — jumping to
+it if the server's is newer than this device's — and pushes (debounced) as you
+read. Renaming a book is a deliberate choice that starts a fresh position.
+
 ## 5. Context-aware AI explanations (shared cache)
 
 The reader no longer calls Ollama directly for explanations — it POSTs to the
@@ -212,6 +226,8 @@ GET    /books/:id/coverage              how much of this book's dictionary is bu
 POST   /books/:id/build                 build its pending words (409 if another book is building)
 GET    /build/status · POST /build/stop the running job · stop it (finished words are kept)
 GET    /vocab?user=&since=              pull           PUT /vocab (bulk) · PATCH /vocab (single)
+GET    /position?user=&book=            one book's reading position (or &since= for a pull)
+                                                       PUT /position (bulk, last-write-wins)
 POST   /ai/define                       explain in reading language (cached)
 POST   /ai/explain                      explain in native language (cached)
 GET    /ai/health · /ai/models          Ollama probe · installed models
@@ -227,6 +243,8 @@ GET    /ai/health · /ai/models          Ollama probe · installed models
   ☁ button.
 - `src/vocabSync.js` — vocabulary push/pull, wired through `vocabulary.js`
   (`onChange` / `applyRemoteEntry`).
+- `src/positionSync.js` — reading-position push/pull, keyed by book title; the
+  reader pulls on open and pushes as you read.
 - One setting (`Home server` URL, default `http://192.168.100.6:4321`) turns the
   whole integration on; away from the LAN every call fails soft and the app
   falls back to its local, offline behavior.
@@ -235,8 +253,13 @@ GET    /ai/health · /ai/models          Ollama probe · installed models
 
 ```bash
 npm run server          # http://<machine-ip>:4321 (binds all interfaces)
+npm run server:dev      # same, with auto-restart on server/ changes (node --watch)
 npm run dev             # Vite client, also LAN-exposed (host: true, port 5173)
 ```
+
+Run these in a terminal you can see — the server logs each request (HIT/MISS/…) to
+stdout. `EADDRINUSE: address already in use :::4321` on start means an earlier
+instance is still holding the port; find it with `ss -ltnp | grep 4321` and stop it.
 
 Find the machine's IP with `hostname -I`. If another device can't reach either
 port: same WiFi/LAN, router "client isolation" off, and open the ports in the

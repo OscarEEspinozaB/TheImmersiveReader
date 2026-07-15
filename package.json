@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node server/index.js",
+    "server:dev": "node --watch server/index.js",
     "ingest:en": "node server/ingest/run.js en",
     "ingest:forms": "node server/ingest/forms.js en",
     "build:book": "node server/generate/book.js",

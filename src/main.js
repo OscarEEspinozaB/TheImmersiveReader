@@ -15,6 +15,8 @@ import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
 import { renderServerShelf } from './serverShelf.js';
 import { initVocabSync, syncNow } from './vocabSync.js';
+import { pullPosition, pushPosition } from './positionSync.js';
+import { buildParagraphs, wordStartsOf, wordIndexToPosition, positionToWordIndex } from './reader/position.js';
 import { recolorWord } from './reader/render.js';
 import { renderProgress, renderDictionary } from './dashboard.js';
 import { buildDeck, bookWordData } from './deck.js';
@@ -106,7 +108,13 @@ const themeSwatches = document.getElementById('theme-swatches');
 let paginator = null;
 let pageTurn = null; // live drag page-turn controller (paged mode only)
 let currentBookId = null;
+let currentBookTitle = ''; // cross-device reading-position key (see positionSync.js)
 let currentContent = null; // {text, images} of the open book (to re-render on mode change)
+// Paragraph spans + word offsets of the open book, to translate the reader's word
+// index to/from the stored paragraph-anchored position (src/reader/position.js).
+let currentParagraphs = [];
+let currentWordStarts = [];
+let lastSavedPosKey = ''; // "paragraph:word" last persisted, to skip redundant saves
 let currentView = 'grid';
 
 initTheme();
@@ -199,6 +207,7 @@ function renderLibrary() {
 async function showShelf() {
   setMenuOpen(false);
   currentBookId = null;
+  currentBookTitle = '';
   readingLangSelect.value = getDefaultReadingLang(); // no book open → edits the default
   setView('shelf');
   await renderLibrary();
@@ -233,14 +242,51 @@ async function openBook(id) {
   setActiveReadingLang(lang);
   readingLangSelect.value = lang;
   currentBookId = id;
+  currentBookTitle = book?.title || '';
   setView('reader');
+  // Where this device last left off: the paragraph-anchored position, or (for books
+  // saved before it existed) the legacy word index — passed through as a plain number.
+  const localAt = book?.progressUpdatedAt || 0;
+  const restore =
+    book?.progressParagraph != null
+      ? { paragraph: book.progressParagraph | 0, word: book.progressWord | 0 }
+      : book?.progressWordIndex || 0;
   // An uploaded cover is rendered as the book's first image (cover.js anchors it at
   // offset 0), so the book opens with it exactly as it looks on the shelf.
   showDocument(
     { text: content.text, images: imagesWithCover(book, content.images) },
-    { restoreIndex: book?.progressWordIndex || 0 },
+    { restore },
   );
   touchOpened(id);
+  // If another device left a NEWER spot for this title, jump there once it arrives.
+  resumeFromServer(id, currentBookTitle, localAt);
+}
+
+// Best-effort cross-device resume: pull the server's position for this book's title
+// and, if it is newer than what this device had, jump the open reader to it.
+async function resumeFromServer(id, title, localAt) {
+  const remote = await pullPosition(title);
+  if (!remote) {
+    console.log(`[position] resume title="${title}": no server position → staying at local spot`);
+    return;
+  }
+  if (remote.updatedAt <= localAt) {
+    console.log(
+      `[position] resume title="${title}": local is newer or equal ` +
+        `(local updatedAt=${localAt} ≥ server=${remote.updatedAt}) → not jumping`,
+    );
+    return;
+  }
+  // Still the same book open? (the pull is async; the user may have moved on.)
+  if (currentBookId !== id || readerWrap.hidden || !paginator) return;
+  const targetWordIndex = positionToWordIndex(currentWordStarts, currentParagraphs, remote);
+  console.log(
+    `[position] resume title="${title}": jumping to server spot`,
+    remote,
+    `→ wordIndex ${targetWordIndex}`,
+  );
+  paginator.goToWordIndex(targetWordIndex);
+  setProgress(id, { paragraph: remote.paragraph, word: remote.word }, remote.updatedAt);
 }
 
 async function addBookFromFile(file) {
@@ -374,7 +420,7 @@ readingLangSelect.addEventListener('change', async () => {
     setActiveReadingLang(code);
     if (currentContent) {
       const at = paginator ? paginator.currentFirstWordIndex() : 0;
-      showDocument(currentContent, { restoreIndex: at });
+      showDocument(currentContent, { restore: at });
     }
   } else {
     setDefaultReadingLang(code);
@@ -534,7 +580,7 @@ renderSwatches();
 /**
  * Render a document (text + optional images) in the reader.
  * @param {{ text: string, images?: any[] }} doc
- * @param {{ restoreIndex?: number }} [opts]
+ * @param {{ restore?: number | { paragraph: number, word: number } }} [opts]
  */
 // The "red sea" is suppressed when the open book is written in the user's native
 // language (they already know it): unknown words are no longer painted red. Marking
@@ -552,7 +598,11 @@ function applyReadingFont() {
   root.setProperty('--reader-weight', weight);
 }
 
-function showDocument({ text, images = [] }, { restoreIndex = 0 } = {}) {
+// `restore` is either an exact word index (a number — used when re-rendering the SAME
+// content on this device, e.g. a font/mode change) or a { paragraph, word } position
+// (used when opening a book, possibly from another device). Paragraph-anchored so it
+// lands the right paragraph even if the word segmenter disagrees across engines.
+function showDocument({ text, images = [] }, { restore = 0 } = {}) {
   if (pageTurn) {
     pageTurn.destroy();
     pageTurn = null;
@@ -566,6 +616,9 @@ function showDocument({ text, images = [] }, { restoreIndex = 0 } = {}) {
   pager.hidden = continuous; // no page buttons in continuous mode
 
   const tokens = tokenize(text);
+  currentParagraphs = buildParagraphs(text);
+  currentWordStarts = wordStartsOf(tokens);
+  lastSavedPosKey = '';
   const Reader = continuous ? Scroller : Paginator;
   paginator = new Reader(reader, tokens, images);
   // Listen on the full-width wrap so the empty side margins turn pages too.
@@ -578,15 +631,32 @@ function showDocument({ text, images = [] }, { restoreIndex = 0 } = {}) {
 
   // Restore the saved position BEFORE wiring progress-saving, so the first event
   // reports the restored spot (not the top, which would overwrite it).
-  if (restoreIndex > 0) paginator.goToWordIndex(restoreIndex);
+  const targetWordIndex =
+    typeof restore === 'number'
+      ? restore
+      : positionToWordIndex(currentWordStarts, currentParagraphs, restore);
+  if (targetWordIndex > 0) paginator.goToWordIndex(targetWordIndex);
 
   paginator.onChange(({ pct, atStart, atEnd }) => {
     pageIndicator.textContent = `${pct}%`;
     prevButton.disabled = atStart;
     nextButton.disabled = atEnd;
-    if (currentBookId) setProgress(currentBookId, paginator.currentFirstWordIndex());
+    saveCurrentPosition();
   });
   showChrome();
+}
+
+// Persist (and sync) where the reader is now, as a paragraph-anchored position.
+// Skips the write when the paragraph:word hasn't moved (small scrolls inside a word).
+function saveCurrentPosition() {
+  if (!currentBookId || !paginator) return;
+  const pos = wordIndexToPosition(currentWordStarts, currentParagraphs, paginator.currentFirstWordIndex());
+  const key = `${pos.paragraph}:${pos.word}`;
+  if (key === lastSavedPosKey) return;
+  lastSavedPosKey = key;
+  const now = Date.now();
+  setProgress(currentBookId, pos, now);
+  pushPosition(currentBookTitle, pos, now); // to the home server, keyed by title
 }
 
 // --- Shelf / add-book wiring ---
@@ -641,7 +711,7 @@ readingFontSelect.addEventListener('change', () => {
 function reRenderAtCurrentSpot() {
   if (currentContent && !readerWrap.hidden) {
     const at = paginator ? paginator.currentFirstWordIndex() : 0;
-    showDocument(currentContent, { restoreIndex: at });
+    showDocument(currentContent, { restore: at });
   }
 }
 addBookInput.addEventListener('change', (e) => addBookFromFile(e.target.files[0]));

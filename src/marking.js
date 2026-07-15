@@ -256,7 +256,20 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
         popup.setAiList(getAiList(word), sentence, false, true);
       }
     };
-    popup.setRegenerators({ onRerefine: regenDictionary, onRegenAi: regenAi });
+    // The reader's native language — needed both for the rescue below and for its ↻.
+    const language = getLanguage();
+    const regenLang = async () => {
+      popup.langLoading(`Explaining in ${language}…`); // loading state while it re-runs
+      const def = await getAiDefinitionInLanguage(surface, sentence, language, bookCtx, { force: true });
+      if (!active()) return;
+      if (def) {
+        cacheLang(word, language, sentence, def); // replaces the stored native answer
+        popup.setLang(def);
+      } else {
+        popup.setLang(null);
+      }
+    };
+    popup.setRegenerators({ onRerefine: regenDictionary, onRegenAi: regenAi, onRegenLang: regenLang });
 
     if (isContraction) showBreakdown(span);
 
@@ -264,7 +277,6 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
     // context and then served from the store forever — never re-explained. So if
     // this context already has an explanation, show it directly (no button); only a
     // context without one offers the button, and only when the AI is reachable.
-    const language = getLanguage();
     const cachedLang = getCachedLang(word, language, sentence);
     if (cachedLang) {
       popup.setLang(cachedLang); // already explained for this context — just show it

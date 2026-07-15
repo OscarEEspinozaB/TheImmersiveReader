@@ -19,6 +19,7 @@ import { wordsRouter } from './routes/words.js';
 import { statsRouter } from './routes/stats.js';
 import { booksRouter } from './routes/books.js';
 import { vocabRouter } from './routes/vocab.js';
+import { positionRouter } from './routes/position.js';
 import { aiDefineRouter } from './routes/aiDefine.js';
 import { getLibraryDb } from './library-db.js';
 
@@ -37,6 +38,7 @@ app.use(wordsRouter);
 app.use(statsRouter);
 app.use(booksRouter);
 app.use(vocabRouter);
+app.use(positionRouter);
 app.use(aiDefineRouter);
 
 getDb(); // open the connection + ensure schema before accepting requests

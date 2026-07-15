@@ -26,6 +26,11 @@ export class Scroller {
    */
   constructor(viewport, tokens, images = []) {
     this.viewport = viewport;
+    // Every scrollTop we set (the restore jump AND the per-render compensation below)
+    // must be INSTANT. The stylesheet gives .reader--scroll `scroll-behavior: smooth`,
+    // which animates programmatic scrolls — that animation races our measurements and
+    // makes the position drift. Force instant scrolling for the scroller's lifetime.
+    viewport.style.scrollBehavior = 'auto';
 
     let w = 0;
     for (const t of tokens) {
@@ -41,6 +46,10 @@ export class Scroller {
 
     this.content = document.createElement('div');
     this.content.className = 'reader__flow';
+    // We do our OWN scroll compensation when a windowed chunk grows from its estimated
+    // height to its real one (see `_render`), so the browser's native scroll anchoring
+    // must be off — otherwise the two fight and over-correct.
+    this.content.style.overflowAnchor = 'none';
     viewport.replaceChildren(this.content);
 
     this.chunks = buildChunks(items, this.content);
@@ -101,6 +110,9 @@ export class Scroller {
     return chunk.firstWord;
   }
 
+  // Jump so `index` sits at the viewport top. This holds even though the chunks above
+  // are still estimated spacers at this instant: as the observer later renders them to
+  // their real heights, `_render` compensates scrollTop so the target never drifts.
   goToWordIndex(index) {
     let idx = 0;
     for (let c = 0; c < this.chunks.length; c++) {
@@ -110,11 +122,9 @@ export class Scroller {
     const chunk = this.chunks[idx];
     this._render(chunk);
     const vTop = this.viewport.getBoundingClientRect().top;
-    this.viewport.scrollTop += chunk.wrapper.getBoundingClientRect().top - vTop;
     const el = chunk.wrapper.querySelector(`.word[data-i="${index}"]`);
-    if (el) {
-      this.viewport.scrollTop += el.getBoundingClientRect().top - this.viewport.getBoundingClientRect().top;
-    }
+    const target = el || chunk.wrapper;
+    this.viewport.scrollTop += target.getBoundingClientRect().top - vTop;
   }
 
   /** Re-apply learning states to every rendered word (after a vocabulary import). */
@@ -138,11 +148,25 @@ export class Scroller {
 
   _render(chunk) {
     if (chunk.rendered) return;
+    // If this chunk sits entirely ABOVE the viewport, replacing its estimated-height
+    // spacer with real content would shove everything below (what the reader is
+    // looking at) up or down the page. Measure the height change and cancel it out on
+    // scrollTop, so the visible text — and a just-restored position — never moves.
+    const vTop = this.viewport.getBoundingClientRect().top;
+    const rectBefore = chunk.wrapper.getBoundingClientRect();
+    const above = rectBefore.bottom <= vTop;
+    const beforeH = rectBefore.height;
+
     const frag = document.createDocumentFragment();
     for (const item of chunk.items) frag.appendChild(makeNode(item));
     chunk.wrapper.replaceChildren(frag);
     chunk.wrapper.style.height = ''; // size to content
     chunk.rendered = true;
+
+    if (above) {
+      const afterH = chunk.wrapper.offsetHeight;
+      if (afterH !== beforeH) this.viewport.scrollTop += afterH - beforeH;
+    }
   }
 
   _unload(chunk) {

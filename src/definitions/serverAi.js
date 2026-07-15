@@ -73,9 +73,10 @@ export function serverAiDefine(word, sentence, book = {}, { force = false } = {}
  * @param {string} sentence
  * @param {string} language the user's native language (e.g. "Spanish")
  * @param {{ uid?: string, page?: number }} [book] active book context
+ * @param {{ force?: boolean }} [opts] force a regeneration (skip + overwrite cache)
  * @returns {Promise<import('./index.js').Definition | null>}
  */
-export function serverAiExplain(word, sentence, language, book = {}) {
+export function serverAiExplain(word, sentence, language, book = {}, { force = false } = {}) {
   return post('/ai/explain', {
     word,
     sentence,
@@ -85,6 +86,7 @@ export function serverAiExplain(word, sentence, language, book = {}) {
     lang: getReadingLang(),
     langName: getReadingLangName(),
     model: getAiModel(),
+    force, // regenerate: skip the cache and overwrite the stored answer
   });
 }
 

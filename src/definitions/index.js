@@ -77,11 +77,12 @@ export async function getAiDefinition(word, sentence, book, opts) {
  * @param {string} sentence
  * @param {string} language e.g. "Spanish"
  * @param {{ uid?: string, page?: number }} [book] active book context for storage
+ * @param {{ force?: boolean }} [opts] force a regeneration (skip + overwrite cache)
  * @returns {Promise<Definition | null>}
  */
-export async function getAiDefinitionInLanguage(word, sentence, language, book) {
+export async function getAiDefinitionInLanguage(word, sentence, language, book, opts) {
   try {
-    return await serverAiExplain(word, sentence, language, book);
+    return await serverAiExplain(word, sentence, language, book, opts);
   } catch (err) {
     console.warn('AI native-language explanation failed:', err);
     return null;

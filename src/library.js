@@ -11,8 +11,13 @@ function uuid() {
 
 /**
  * @typedef {{ id: string, title: string, addedAt: number, lastOpenedAt: number,
- *   progressWordIndex: number, cover: Blob | null, coverSource?: 'document'|'uploaded',
+ *   progressParagraph: number, progressWord: number, progressUpdatedAt: number,
+ *   progressWordIndex?: number, cover: Blob | null, coverSource?: 'document'|'uploaded',
  *   coverWidth?: number, coverHeight?: number, lang?: string }} BookMeta
+ *   Reading position is stored PARAGRAPH-anchored (`progressParagraph` +
+ *   `progressWord`, the Nth word inside it) so it survives moving to another device;
+ *   `progressUpdatedAt` drives last-write-wins against the server. `progressWordIndex`
+ *   is the legacy field on books saved before this — converted lazily on open.
  *   `lang` is the book's reading-language code (e.g. "en"); absent on books
  *   added before per-book languages existed (the user is prompted on open).
  *   `coverSource` says where the cover came from — the document's own opening image
@@ -45,7 +50,8 @@ export async function addBook({
   const now = Date.now();
   /** @type {BookMeta} */
   const meta = {
-    id, title, addedAt: addedAt || now, lastOpenedAt: now, progressWordIndex: 0,
+    id, title, addedAt: addedAt || now, lastOpenedAt: now,
+    progressParagraph: 0, progressWord: 0, progressUpdatedAt: 0,
     cover, coverSource: coverSource || (cover ? 'document' : undefined),
     coverWidth, coverHeight, lang,
   };
@@ -184,12 +190,23 @@ export async function deleteBook(id) {
   await idbDelete('bookwords', id);
 }
 
-export async function setProgress(id, wordIndex) {
+/**
+ * Save the reading position (paragraph-anchored) for a book.
+ * @param {string} id
+ * @param {{ paragraph: number, word: number }} pos
+ * @param {number} [updatedAt] wall-clock of the edit (for cross-device last-write-wins)
+ */
+export async function setProgress(id, pos, updatedAt = Date.now()) {
   const book = await idbGet('books', id);
-  if (book && book.progressWordIndex !== wordIndex) {
-    book.progressWordIndex = wordIndex;
-    await idbSet('books', id, book);
-  }
+  if (!book) return;
+  const paragraph = pos?.paragraph | 0;
+  const word = pos?.word | 0;
+  if (book.progressParagraph === paragraph && book.progressWord === word) return;
+  book.progressParagraph = paragraph;
+  book.progressWord = word;
+  book.progressUpdatedAt = updatedAt;
+  delete book.progressWordIndex; // superseded by the paragraph-anchored fields
+  await idbSet('books', id, book);
 }
 
 export async function touchOpened(id) {

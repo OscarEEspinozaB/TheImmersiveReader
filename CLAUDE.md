@@ -68,6 +68,7 @@ Two pieces:
 - `npm run dev` — Vite dev server (`http://localhost:5173`, LAN-exposed).
 - `npm run build` / `npm run preview` — production build / serve it.
 - `npm run server` — the home server (`http://<ip>:4321`; data in `data/`, gitignored).
+  `npm run server:dev` — same, with auto-restart on `server/` changes (`node --watch`).
 - `npm run ingest:en` — load `data/kaikki-en.jsonl` into the dictionary KB.
 - `npm run ingest:forms` — rebuild only the KB's inflections table (~1 min).
 - `npm run kb:audit [-- --fix --batch N --model M]` — find (and repair) refined
@@ -90,7 +91,9 @@ KB/sync/AI features) and the in-app "Load sample" button.
 - `src/contractions.js` — contraction registry (surface → lemmas), color
   aggregation, Ollama-grown entries, data migrations.
 - `src/reader/` — `render.js` (spans + bulk recolor), `paginator.js` (virtualized
-  pages), `scroller.js` (continuous), `pageTurn.js` (drag turns), `theme.js`.
+  pages), `scroller.js` (continuous), `pageTurn.js` (drag turns), `theme.js`,
+  `position.js` (word index ↔ paragraph-anchored reading position — the unit that
+  survives a device swap; a paragraph index + Nth word inside it).
 - `src/marking.js` + `src/gloss.js` + `src/popup.js` — the interaction rule:
   **gestures only open bubbles; actions are visible buttons inside** (never add
   a new hidden gesture). Tap on unknown/learning (or hold on any word) → the
@@ -98,7 +101,8 @@ KB/sync/AI features) and the in-app "Load sample" button.
   paragraph bubble (read aloud / copy); tap on a URL/e-mail token → the link
   bubble (open in new tab / copy). In the full popup, an AI-produced answer carries
   a **↻ regenerate** button — one for the dictionary definition, one for the
-  reading-language explanation — that re-runs the model and repaints in place.
+  reading-language explanation, one for the native-language explanation — that
+  re-runs the model and repaints in place.
   `src/speech.js` — Web Speech TTS.
 - `src/definitions/` — provider chain: `localDict` → `kbApi` (home-server KB) →
   `dictionaryApi` (dictionaryapi.dev); `serverAi` (server-brokered explanations);
@@ -115,6 +119,9 @@ KB/sync/AI features) and the in-app "Load sample" button.
   `src/serverLibrary.js` / `src/serverShelf.js` — the Server hub (incl. per-book
   dictionary coverage and the "build this book" job, driven from the app).
 - `src/vocabSync.js` — offline-first vocabulary sync (outbox push, incremental pull).
+  `src/positionSync.js` — cross-device reading-position sync, keyed by book **title**
+  (not the device-local id): pull on open (jump if the server's is newer), push while
+  reading. Last-write-wins by timestamp, same as vocab.
 - `src/dashboard.js` (+ `stats.js`, `charts.js`, `kbDetails.js`) — Dictionary &
   Progress hubs. `src/deck.js` / `src/swiper.js` — Word Swiper.
 - `src/settings.js` — native language, default reading language, runtime **active**
@@ -123,7 +130,7 @@ KB/sync/AI features) and the in-app "Load sample" button.
 - `src/main.js` — view switching (`shelf | server | dictionary | progress | reader |
   swiper`) and wiring.
 - `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,
-  aiDefine), `generate/` (refine + explain pipelines, book CLI, `audit.js`,
+  position, aiDefine), `generate/` (refine + explain pipelines, book CLI, `audit.js`,
   `bookJob.js` — per-book coverage + the in-app build job), `ingest/` (Kaikki +
   `forms.js` + `epubText.js`), `db.js` / `library-db.js` (schemas), `lemma.js` (the
   lemma layer: formOf / family / verbForms grounding), `paradigms.js` (curated).
