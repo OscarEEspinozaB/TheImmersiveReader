@@ -745,10 +745,6 @@ body.nav-hidden .primary-nav {
   opacity: 0.5;
 }
 
-.popup__regen.is-working {
-  animation: rerefine-spin 0.9s linear infinite;
-}
-
 .popup__slot-source {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -2231,8 +2227,15 @@ button.kb-form:focus-visible {
   opacity: 0.5;
 }
 
-/* While it works, the ↻ spins so the wait (a real LLM call) is legible. */
-.dict-rerefine-btn.is-working {
+/* While it works, the ↻ GLYPH spins (not the button box) so the wait — a real LLM
+   call — is legible. The icon spans its own inline-block element to rotate cleanly.
+   Shared by the dictionary hub and the reader popup. */
+.regen-icon {
+  display: inline-block;
+}
+
+.dict-rerefine-btn.is-working .regen-icon,
+.popup__regen.is-working .regen-icon {
   animation: rerefine-spin 0.9s linear infinite;
 }
 

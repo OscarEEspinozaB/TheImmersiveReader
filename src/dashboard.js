@@ -706,7 +706,11 @@ function reRefineButton(word, onUpdated) {
   btn.className = 'dict-rerefine-btn';
   btn.title = 'Re-do this definition with the AI';
   btn.setAttribute('aria-label', 'Re-refine this definition');
-  btn.textContent = '↻';
+  // The ↻ lives in its own span so the spin rotates the glyph, not the button box.
+  const icon = document.createElement('span');
+  icon.className = 'regen-icon';
+  icon.textContent = '↻';
+  btn.appendChild(icon);
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     btn.classList.add('is-working');

@@ -462,7 +462,11 @@ export class WordPopup {
     btn.className = 'popup__regen';
     btn.title = title;
     btn.setAttribute('aria-label', title);
-    btn.textContent = '↻';
+    // The ↻ lives in its own span so the spin rotates the glyph, not the button box.
+    const icon = document.createElement('span');
+    icon.className = 'regen-icon';
+    icon.textContent = '↻';
+    btn.appendChild(icon);
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       btn.disabled = true;
