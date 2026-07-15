@@ -38,10 +38,12 @@ const TENSE_ORDER = ['past', 'past participle', 'present participle', 'third-per
 
 // Render the KB's ground-truth verb paradigm (server/lemma.js → verbForms) as a
 // short "label: form" list, e.g. "base: wrestle, past simple: wrestled, past
-// participle: wrestled, present participle: wrestling". A small local model
-// asked to invent this list from scratch will happily hallucinate wrong forms
-// (e.g. "wrestled" -> "wrestleled"); giving it the real forms removes the need
-// to guess.
+// participle: wrestled, present participle: wrestling". This is given to the model
+// as REFERENCE, not to recite: if it names which form the word is, it names it
+// right instead of inventing one (a small local model will otherwise say things
+// like "wrestled" -> "wrestleled"). The paradigm itself is shown by the reader's
+// family card (colored by learning state, and covering nouns/adjectives too, not
+// only verbs), so the explanation must not repeat it.
 // `paradigm` is null for any word without verb-tense data in the KB (nouns,
 // adjectives, words outside the dataset) — the common case, so guard for it.
 function formsLine(paradigm) {
@@ -61,24 +63,26 @@ function explainPrompt(word, sentence, lang, forms) {
       `or a possessive (e.g. "Dursley's" = belonging to Dursley), state that first, ` +
       `then explain the base word. `
     : '';
+  // The app shows the full paradigm beside the answer (the family card), so the
+  // explanation must NOT list forms — that used to be half the answer, crowding out
+  // the meaning and sometimes disagreeing with the card (reciting a verb paradigm
+  // for a word the card shows as a noun). The grounded forms stay as private
+  // reference so the one phrase naming the form is right, never invented.
   const known = formsLine(forms);
-  const verbNote = known
-    ? `This word is a verb; its correct forms are already known: ${known}. Say which ` +
-      `of these forms "${word}" is here, then repeat the list exactly as given — do ` +
-      `not invent or alter any of the forms. Keep that part short. `
-    : `If it is a verb, briefly say which form "${word}" is here (e.g. base form, ` +
-      `past simple, past participle, or present participle), then list its forms, ` +
-      `each LABELED, like: "base: go, past simple: went, past participle: gone, ` +
-      `present participle: going". `;
+  const formNote =
+    `Do NOT list the word's grammatical forms (base, past, participle, plural, …) — ` +
+    `the app already shows the full set beside your answer. You may note in one short ` +
+    `phrase which form "${word}" is in this sentence` +
+    (known ? ` (for your reference only, its verb forms are ${known})` : '') +
+    `, but keep the focus on meaning. `;
   return (
     `You are helping someone learn ${lang}. Explain the word "${word}" as it is ` +
     `used in this sentence:\n\n"${sentence}"\n\n` +
     cliticNote +
-    `Start with its part of speech (noun, verb, adjective, adverb, etc.). Then, as ` +
-    `the MAIN part of your answer, give a short, simple explanation in basic ${lang} ` +
-    `of what "${word}" actually MEANS here (one or two sentences) — this matters ` +
-    `more than the grammar below. ` +
-    verbNote +
+    `Start with its part of speech (noun, verb, adjective, adverb, etc.) as used HERE. ` +
+    `Then, as the MAIN part of your answer, give a short, simple explanation in basic ` +
+    `${lang} of what "${word}" actually MEANS in this sentence (one or two sentences). ` +
+    formNote +
     `Use plain text only — no markdown, no bullet points. Be brief.`
   );
 }
@@ -90,14 +94,14 @@ function explainNativePrompt(word, sentence, reading, language, forms) {
   const cliticNote = HAS_APOSTROPHE.test(word)
     ? `If "${word}" is a contraction or a possessive form, explain that first. `
     : '';
+  // As above: the family card shows the paradigm, so don't recite it here — spend
+  // the answer on the translation, which is the part only this can give.
   const known = formsLine(forms);
-  const verbNote = known
-    ? `This word is a verb; its correct ${reading} forms are already known: ${known}. ` +
-      `Briefly say which of these forms "${word}" is here — do not invent or alter ` +
-      `the forms — then move on. `
-    : `If it is a verb, briefly say which form "${word}" is here (base, past simple, ` +
-      `past participle, or present participle), then list its ${reading} forms, each ` +
-      `labeled (base, past simple, past participle, present participle). `;
+  const formNote =
+    `Do NOT list the word's grammatical forms — the app shows them beside your answer. ` +
+    `You may note in one short phrase which form "${word}" is here` +
+    (known ? ` (for your reference only, its ${reading} verb forms are ${known})` : '') +
+    `. `;
   return (
     `A person learning ${reading} (native language: ${language}) needs help. ` +
     `Explain the ${reading} word "${word}" as it is used in this sentence:\n\n"${sentence}"\n\n` +
@@ -108,7 +112,7 @@ function explainNativePrompt(word, sentence, reading, language, forms) {
     `context. Never skip it and never replace it with just a grammar description. ` +
     `Start with its part of speech, then give that ${language} translation, then a ` +
     `short, simple explanation of any nuance (one sentence). ` +
-    verbNote +
+    formNote +
     `Use plain text only — no markdown, no bullet points. Be brief.`
   );
 }

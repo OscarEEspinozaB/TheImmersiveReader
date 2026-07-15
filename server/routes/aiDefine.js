@@ -25,7 +25,9 @@ export const aiDefineRouter = Router();
 // Bump when the prompt wording changes meaningfully, so previously-cached (now
 // stale/weaker) answers stop being served and get regenerated instead of hiding
 // the improvement behind the cache forever.
-const PROMPT_VERSION = 2;
+// v3: the explanation no longer recites the grammatical paradigm (the family card
+// shows it); the answer is meaning/translation only.
+const PROMPT_VERSION = 3;
 
 // The model is part of the cache identity: switching models in settings should
 // get a fresh answer from that model, not silently reuse another model's cached
@@ -75,9 +77,9 @@ async function handle(req, res, { kind, nativeLang, generate }) {
 
   kbLog(C.yellow, 'MISS·ai', fp, sentence);
   try {
-    // Ground the prompt with the KB's real verb paradigm, if any, so the model
-    // doesn't have to invent forms itself (a small local model will otherwise
-    // hallucinate, e.g. "wrestled" -> "wrestleled").
+    // Ground the prompt with the KB's real verb paradigm, if any, as REFERENCE:
+    // the explanation names which form the word is (right, not invented) but does
+    // not recite the paradigm — the reader's family card shows that.
     let forms = null;
     try {
       forms = verbForms(getDb(), lang, word);
