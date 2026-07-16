@@ -36,13 +36,15 @@ is never inferred from a missing dictionary entry).
 File (txt/md/pdf/epub)
    │  ingest + normalize (client-side; pdf.js / fflate)
    ▼
-Clean text + anchored images  →  stored in the library (IndexedDB, .tir exportable)
+Clean text + anchored images + structure blocks
+   →  stored in the library (IndexedDB, .tir exportable)
    │  Intl.Segmenter
    ▼
 Tokens (word + whitespace/punctuation, preserved)
    │  cross-reference vocabulary store
    ▼
-eReader view (each word tagged with its normalized key + state class)
+eReader view (each word tagged with its normalized key + state class,
+grouped into styled containers where a block covers it)
    │  hold/tap (see §5)
    ▼
 State change → recolor ALL occurrences in this language → persist → sync to server
@@ -50,6 +52,69 @@ State change → recolor ALL occurrences in this language → persist → sync t
    ▼
 Definition chain → popup (quick definition, KB details, AI explanations)
 ```
+
+### Document structure (blocks)
+
+The reading text is **flat on purpose** — every char offset in it is load-bearing
+(tokens, image anchors, paragraph-anchored positions, cross-device sync). So the
+document's structure never rewrites the text: it travels alongside it as
+`blocks: [{ start, end, type }]`, sorted non-overlapping char ranges with a type —
+`h1`/`h2`/`h3` (headings; deeper levels flatten to `h3`), `li` (list item),
+`code`, `quote`. Plain paragraphs are not annotated. Conventions
+(`src/ingest/index.js` is the contract):
+
+- a block is separated from its neighbours by `\n\n`, except **consecutive list
+  items**, one `\n` apart (a tight list);
+- a list item's text begins with its visible marker (`•` or `3.` plus a space) —
+  the text stays readable even with no styling at all;
+- a code block keeps its internal newlines and indentation verbatim.
+
+Where blocks come from, per format: **EPUB** maps XHTML tags (`h1..h6`, `li`,
+`pre`, `blockquote`); **Markdown** parses line syntax (`#`, list markers, fenced
+code — kept now, it used to be dropped — and `>` quotes); **PDF** infers headings
+from geometry (a short paragraph whose font height is ≥1.2×/≥1.55× the document's
+median is `h2`/`h1`) and list items from a leading bullet glyph — a leading dash
+is deliberately **not** a bullet, because in a novel it is dialogue — or from dot
+leaders running into a page number (a table-of-contents entry: the leaders are
+also the paragraph boundary, since TOC lines never end in punctuation). Plain
+text has no blocks.
+
+**Illustrations and math.** Images are anchored the same way — a char offset into
+the flat text — and rendered as block figures. LaTeX-built EPUBs carry both their
+mathematics AND their figures as SVG (which `createImageBitmap` can't decode), so
+`ingest/epub.js` sorts each SVG by **size and role**: a small **inline formula**
+(√max, ~15&nbsp;pt tall, inside running text) becomes text from its cleaned `alt`
+(so `⌊<svg √max>⌋` reads as `⌊√ max⌋`, not the empty `⌊⌋` it used to collapse to);
+a **display equation** (its own line) is rasterized to a PNG on a white card —
+legible on every theme, since the glyphs are black — with the `alt` as a fallback;
+a **figure** (a plot or diagram, hundreds of points tall, whose `alt` is flattened
+layout junk like `0x0y11∙2∙22…`) is rasterized with no fallback. Raster
+illustrations below 60&nbsp;px on a side are dropped as decorative.
+
+**PDF vector figures.** A figure a PDF drew with path operators (a plot, a tree)
+is not a raster XObject, so `extractImages` never sees it — it survives only as
+scattered label text (`y-axis`, `15`, `•`). When a page has no raster image but a
+centered "Figure N" caption, `ingest/pdf.js` finds the figure by its **vector
+ink**: it maps every drawing path to page coordinates through the CTM (dropping
+full-width thin paths — header rules and the bands behind code listings), clusters
+the ink, and takes the cluster sitting just above the caption (so a decorative
+callout box higher up, or a code block right above the caption, is left out). That
+band is rendered, cropped to its ink on a white card, anchored just before the
+caption, and the figure's own label lines are dropped from the flow.
+Some math also arrives as an HTML `<table>` (a LaTeX `array` / equation system, and
+plain data tables): the whole table is one block, **each row is a line, and cells
+are space-separated**, so `x0 = 0 / y0 = 0 / …` reads as clean lines rather than
+exploding every cell onto its own — the per-cell wrapper `<div>`s no longer count
+as line breaks inside a cell.
+
+The renderer (`reader/render.js`) appends items whose offset falls inside a block
+into a styled container (`.reader__block--<type>`) instead of the bare flow. The
+containers are inline-blocks at 100% width so they participate in the `pre-wrap`
+line layout: the `\n\n`/`\n` separators around them space blocks exactly like
+plain paragraphs, and pagination measures nothing new. Words inside a block are
+ordinary tokens — colored, tappable, markable; the red sea does not care about
+structure. Books stored before blocks existed simply have none (one flat flow);
+re-ingest the source file to pick structure up.
 
 ## 4. Words, normalization, contractions
 
@@ -228,7 +293,8 @@ paradigms) is the server's — see [home-server.md §2a](home-server.md).
 ```text
 src/
   ingest/            txt, md, pdf (pdf.js: de-hyphenation, line-wrap repair,
-                     paragraphs from geometry), epub (fflate, spine order); → {text, images}
+                     paragraphs + headings from geometry), epub (fflate, spine
+                     order); → {text, images, blocks} (structure — see §3)
   tokenizer.js       text → Token[] (Intl.Segmenter, whitespace preserved)
   normalize.js       word → key (shared with the server)
   words.js           segmentation shared with the server's book builder

@@ -2,8 +2,8 @@
 
 /**
  * @param {File} file
- * @returns {Promise<{ text: string, images: [] }>}
+ * @returns {Promise<import('./index.js').IngestResult>}
  */
 export async function readTxt(file) {
-  return { text: await file.text(), images: [] };
+  return { text: await file.text(), images: [], blocks: [] };
 }

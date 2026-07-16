@@ -5,7 +5,7 @@
 //
 // The stream is a mix of text tokens and images, interleaved by position.
 
-import { makeNode, mergeImages } from './render.js';
+import { mergeImages, appendItem, prependItem, removeLastItem, removeFirstItem } from './render.js';
 
 const RESIZE_DEBOUNCE = 150;
 
@@ -14,9 +14,11 @@ export class Paginator {
    * @param {HTMLElement} viewport the clipping container (fixed height)
    * @param {(import('../tokenizer.js').Token)[]} tokens
    * @param {{ start: number, width: number, height: number, blob: Blob }[]} [images]
+   * @param {import('../ingest/index.js').DocBlock[]} [blocks]
    */
-  constructor(viewport, tokens, images = []) {
+  constructor(viewport, tokens, images = [], blocks = []) {
     this.viewport = viewport;
+    this.blocks = blocks;
 
     // Word index per word token (for marking + restore), assigned before merge.
     let w = 0;
@@ -157,9 +159,9 @@ export class Paginator {
 
     let i = start;
     for (; i < this.total; i++) {
-      el.appendChild(makeNode(this.items[i]));
+      appendItem(el, this.items[i], this.blocks);
       if (el.scrollHeight > maxH && i > start) {
-        el.removeChild(el.lastChild);
+        removeLastItem(el);
         break;
       }
     }
@@ -174,9 +176,9 @@ export class Paginator {
 
     let i = end - 1;
     for (; i >= 0; i--) {
-      el.insertBefore(makeNode(this.items[i]), el.firstChild);
+      prependItem(el, this.items[i], this.blocks);
       if (el.scrollHeight > maxH) {
-        el.removeChild(el.firstChild);
+        removeFirstItem(el);
         break;
       }
     }

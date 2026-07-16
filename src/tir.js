@@ -8,7 +8,8 @@
 //   book.tir  (zip)
 //     manifest.json   { format, version, title, addedAt, lang, cover, coverMime,
 //                       coverSource, coverWidth, coverHeight,
-//                       images: [{ file, mime, start, width, height }] }
+//                       images: [{ file, mime, start, width, height }],
+//                       blocks: [{ start, end, type }] }   (v2 — see ingest/index.js)
 //     text.txt        the clean reading text
 //     images/0.png …  the illustration blobs (one file per anchored image)
 //     cover.png       optional cover: the shelf thumbnail, and (when uploaded) the
@@ -25,7 +26,10 @@ import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { getBook, getBookContent, addBook, findBookByTitle } from './library.js';
 
 const FORMAT = 'tir';
-const VERSION = 1;
+// v2: the manifest carries `blocks` — the document's structure (headings, list
+// items, code, quotes) as char ranges over text.txt. v1 files import fine (no
+// blocks: a flat flow of paragraphs, exactly what they always were).
+const VERSION = 2;
 
 const MIME_TO_EXT = {
   'image/png': 'png',
@@ -88,6 +92,7 @@ export async function exportBookToBlob(id) {
     coverWidth: meta.coverWidth,
     coverHeight: meta.coverHeight,
     images: manifestImages,
+    blocks: content.blocks || [],
   };
   files['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2));
   files['text.txt'] = strToU8(content.text || '');
@@ -174,6 +179,8 @@ export async function importTir(file) {
     title,
     text,
     images,
+    blocks: manifest.blocks || [], // v1 files carry none: a flat flow, as they always were
+
     cover,
     // Legacy files (and books whose cover came from the file itself) have no
     // coverSource: addBook then defaults it to 'document', which is what they are.

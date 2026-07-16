@@ -82,15 +82,20 @@ KB/sync/AI features) and the in-app "Load sample" button.
 
 ## Code map
 
-- `src/ingest/` — per-format readers → `{ text, images }` (clean text + anchored
-  illustrations; PDF de-hyphenation/paragraph reconstruction, EPUB spine order).
+- `src/ingest/` — per-format readers → `{ text, images, blocks }` (clean flat
+  text, anchored illustrations, and structure: headings/list-items/code/quotes
+  as char RANGES over the text, never rewriting it — offsets are load-bearing;
+  the contract lives in `ingest/index.js`. PDF de-hyphenation/paragraph+heading
+  reconstruction from geometry, EPUB spine order, Markdown line syntax).
 - `src/tokenizer.js` / `src/words.js` / `src/normalize.js` — segmentation and the
   word→key rule (normalize is shared with the server; keep it dependency-free).
 - `src/vocabulary.js` — `<lang>:<word>` → `{ state, at }` store (localStorage; only
   non-default states persist) + change events for sync.
 - `src/contractions.js` — contraction registry (surface → lemmas), color
   aggregation, Ollama-grown entries, data migrations.
-- `src/reader/` — `render.js` (spans + bulk recolor), `paginator.js` (virtualized
+- `src/reader/` — `render.js` (spans + bulk recolor + block containers: items
+  inside a structure range render into `.reader__block--<type>` inline-block
+  wrappers so the pre-wrap flow spaces them like plain paragraphs), `paginator.js` (virtualized
   pages), `scroller.js` (continuous), `pageTurn.js` (drag turns), `theme.js`,
   `position.js` (word index ↔ paragraph-anchored reading position — the unit that
   survives a device swap; a paragraph index + Nth word inside it).
@@ -115,7 +120,8 @@ KB/sync/AI features) and the in-app "Load sample" button.
   document's own opening image; anchored at offset 0 so the book opens with it.
 - `src/library.js` / `src/shelf.js` / `src/tir.js` — IndexedDB library, shelf UI
   (incl. the readability badge: % of sentences whose every word is known —
-  never word statistics; see docs/library.md), `.tir` book format.
+  never word statistics; see docs/library.md), `.tir` book format (v2 carries
+  `blocks` in the manifest; v1 imports as the flat flow it always was).
   `src/serverLibrary.js` / `src/serverShelf.js` — the Server hub (incl. per-book
   dictionary coverage and the "build this book" job, driven from the app).
 - `src/vocabSync.js` — offline-first vocabulary sync (outbox push, incremental pull).

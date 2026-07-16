@@ -2,6 +2,15 @@
 // are in the DOM at any time (the whole book never is), so it scales to any size.
 // Each word becomes a <span> tagged with its normalized key, global word index,
 // and current learning state; whitespace/punctuation become plain text nodes.
+//
+// BLOCKS: the document's structure (headings, list items, code, quotes — see
+// src/ingest/index.js) arrives as offset ranges over the text. Items whose offset
+// falls inside a block are appended into a styled container element instead of
+// the bare flow; the append/prepend/remove helpers below manage those containers
+// so the paginator's fill loops can keep thinking in single items. Containers are
+// inline-blocks (width 100%) on purpose: they take part in the pre-wrap line
+// layout, so the "\n\n" / "\n" separators around them space blocks exactly like
+// they space plain paragraphs.
 
 import { getState } from '../vocabulary.js';
 import { parts, displayState, aggregateStates } from '../contractions.js';
@@ -83,7 +92,8 @@ function cssEscape(value) {
 /**
  * Interleave images into the token stream by character offset. Each image is
  * placed before the first token at/after its anchor offset. Object URLs are
- * created here and collected (in urlSink) for later revocation.
+ * created here and collected (in urlSink) for later revocation. Image items keep
+ * their `start` so block assignment can place them like any other item.
  * @param {import('../tokenizer.js').Token[]} tokens
  * @param {{ start: number, width: number, height: number, blob: Blob }[]} images
  * @param {string[]} urlSink
@@ -96,7 +106,7 @@ export function mergeImages(tokens, images, urlSink) {
   const pushImage = (img) => {
     const url = URL.createObjectURL(img.blob);
     urlSink.push(url);
-    items.push({ isImage: true, url, width: img.width, height: img.height });
+    items.push({ isImage: true, url, width: img.width, height: img.height, start: img.start });
   };
   for (const token of tokens) {
     while (k < sorted.length && sorted[k].start <= token.start) pushImage(sorted[k++]);
@@ -104,4 +114,90 @@ export function mergeImages(tokens, images, urlSink) {
   }
   while (k < sorted.length) pushImage(sorted[k++]);
   return items;
+}
+
+/**
+ * The block whose range contains `offset`, or null (binary search; `blocks` is
+ * sorted and non-overlapping — the ingest contract).
+ * @param {import('../ingest/index.js').DocBlock[]} blocks
+ * @param {number} offset
+ */
+export function blockAt(blocks, offset) {
+  let lo = 0;
+  let hi = blocks.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const b = blocks[mid];
+    if (offset < b.start) hi = mid - 1;
+    else if (offset >= b.end) lo = mid + 1;
+    else return b;
+  }
+  return null;
+}
+
+function makeBlockNode(block) {
+  const div = document.createElement('div');
+  div.className = `reader__block reader__block--${block.type}`;
+  div._block = block; // identity: items of the SAME block join the same container
+  return div;
+}
+
+/**
+ * Append `item` to the flow `el`, inside its block container when it has one.
+ * A container is created on the block's first item and reused while the block's
+ * items keep arriving (they are contiguous in the stream).
+ */
+export function appendItem(el, item, blocks) {
+  const block = blocks && blocks.length ? blockAt(blocks, item.start) : null;
+  const node = makeNode(item);
+  if (!block) {
+    el.appendChild(node);
+    return;
+  }
+  let box = el.lastChild;
+  if (!box || box._block !== block) {
+    box = makeBlockNode(block);
+    el.appendChild(box);
+  }
+  box.appendChild(node);
+}
+
+/** Undo the last appendItem (drops the block container if it emptied). */
+export function removeLastItem(el) {
+  const last = el.lastChild;
+  if (!last) return;
+  if (last._block) {
+    last.removeChild(last.lastChild);
+    if (!last.hasChildNodes()) el.removeChild(last);
+  } else {
+    el.removeChild(last);
+  }
+}
+
+/** Mirror of appendItem for backward fills (items arrive in reverse order). */
+export function prependItem(el, item, blocks) {
+  const block = blocks && blocks.length ? blockAt(blocks, item.start) : null;
+  const node = makeNode(item);
+  if (!block) {
+    el.insertBefore(node, el.firstChild);
+    return;
+  }
+  let box = el.firstChild;
+  if (!box || box._block !== block) {
+    box = makeBlockNode(block);
+    el.insertBefore(box, el.firstChild);
+  }
+  box.insertBefore(node, box.firstChild);
+}
+
+/** Undo the last prependItem (drops the block container if it emptied). */
+export function removeFirstItem(el) {
+  const first = el.firstChild;
+  if (!first) return;
+  if (first._block) {
+    first.removeChild(first.firstChild);
+    if (!first.hasChildNodes()) el.removeChild(first);
+  } else {
+    el.removeChild(first);
+  }
 }

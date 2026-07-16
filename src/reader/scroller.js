@@ -9,7 +9,7 @@
 // Same public surface as Paginator (content, onChange, currentFirstWordIndex,
 // goToWordIndex, refresh, destroy).
 
-import { makeNode, mergeImages } from './render.js';
+import { mergeImages, appendItem, blockAt } from './render.js';
 import { getState } from '../vocabulary.js';
 
 const CHUNK_ITEMS = 600; // min items per chunk (extended to the next paragraph break)
@@ -23,9 +23,11 @@ export class Scroller {
    * @param {HTMLElement} viewport the scroll container (#reader)
    * @param {import('../tokenizer.js').Token[]} tokens
    * @param {{ start: number, width: number, height: number, blob: Blob }[]} [images]
+   * @param {import('../ingest/index.js').DocBlock[]} [blocks]
    */
-  constructor(viewport, tokens, images = []) {
+  constructor(viewport, tokens, images = [], blocks = []) {
     this.viewport = viewport;
+    this.blocks = blocks;
     // Every scrollTop we set (the restore jump AND the per-render compensation below)
     // must be INSTANT. The stylesheet gives .reader--scroll `scroll-behavior: smooth`,
     // which animates programmatic scrolls — that animation races our measurements and
@@ -52,7 +54,7 @@ export class Scroller {
     this.content.style.overflowAnchor = 'none';
     viewport.replaceChildren(this.content);
 
-    this.chunks = buildChunks(items, this.content);
+    this.chunks = buildChunks(items, this.content, blocks);
     this._wrapperToChunk = new Map(this.chunks.map((c) => [c.wrapper, c]));
 
     this._io = new IntersectionObserver(
@@ -158,7 +160,7 @@ export class Scroller {
     const beforeH = rectBefore.height;
 
     const frag = document.createDocumentFragment();
-    for (const item of chunk.items) frag.appendChild(makeNode(item));
+    for (const item of chunk.items) appendItem(frag, item, this.blocks);
     chunk.wrapper.replaceChildren(frag);
     chunk.wrapper.style.height = ''; // size to content
     chunk.rendered = true;
@@ -188,9 +190,11 @@ export class Scroller {
 /**
  * Split items into chunks that end on a paragraph/line boundary (so block-level
  * chunk wrappers don't introduce mid-paragraph breaks), each with a wrapper div
- * pre-sized to an estimated height.
+ * pre-sized to an estimated height. A boundary inside a typed block (a newline
+ * within a code block, a tight list's separator) is not a valid cut: the block
+ * would be split into two containers, one per chunk.
  */
-function buildChunks(items, content) {
+function buildChunks(items, content, blocks = []) {
   const chunks = [];
   let lastFirstWord = 0;
   let i = 0;
@@ -201,7 +205,7 @@ function buildChunks(items, content) {
       const it = items[j];
       j += 1;
       count += 1;
-      if (count >= CHUNK_ITEMS && !it.isWord && /\n/.test(it.text)) break;
+      if (count >= CHUNK_ITEMS && !it.isWord && /\n/.test(it.text) && !blockAt(blocks, it.start)) break;
     }
     const slice = items.slice(i, j);
     i = j;

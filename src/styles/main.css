@@ -377,6 +377,59 @@ body {
   border-radius: 4px;
 }
 
+/* Document structure (headings / list items / code / quotes — see ingest/index.js).
+   Containers are inline-block at 100% width ON PURPOSE: they take part in the
+   pre-wrap line layout, so the \n\n / \n separators around them space blocks
+   exactly like plain paragraphs (a block-level div would add an extra blank line
+   after itself). No vertical margins for the same reason: spacing comes from the
+   text, so pagination measures it the same way it measures prose. */
+.reader__block {
+  display: inline-block;
+  width: 100%;
+  vertical-align: top;
+  margin: 0;
+}
+
+.reader__block--h1 {
+  font-size: 1.55em;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.reader__block--h2 {
+  font-size: 1.3em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.reader__block--h3 {
+  font-size: 1.12em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* The marker ("• " / "3. ") is part of the text; the hanging indent aligns the
+   wrapped lines under the first character after it. */
+.reader__block--li {
+  padding-left: 1.3em;
+  text-indent: -1.3em;
+}
+
+.reader__block--code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.78em;
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  border-radius: 8px;
+  padding: 0.8em 1em;
+}
+
+.reader__block--quote {
+  border-left: 3px solid color-mix(in srgb, var(--text) 30%, transparent);
+  padding-left: 1em;
+  font-style: italic;
+}
+
 .reader__placeholder {
   font-family: var(--font-ui);
   opacity: 0.6;

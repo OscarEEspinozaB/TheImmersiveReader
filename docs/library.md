@@ -85,9 +85,10 @@ re-running extraction:
 
 ```text
 book.tir  (zip)
-  manifest.json   { format: "tir", version: 1, id, title, addedAt, lang,
+  manifest.json   { format: "tir", version: 2, id, title, addedAt, lang,
                     cover, coverMime, coverSource, coverWidth, coverHeight,
-                    images: [{ file, mime, start, width, height }] }
+                    images: [{ file, mime, start, width, height }],
+                    blocks: [{ start, end, type }] }
   text.txt        the clean reading text
   images/0.png …  illustration blobs (zip-stored, level 0 — already compressed)
   cover.png       optional cover (shelf thumbnail + the book's opening image when
@@ -107,6 +108,10 @@ book.tir  (zip)
   uploads by the same id.
 - Reading position and vocabulary are deliberately **not** embedded — vocabulary
   is global and position is per-device — so files stay portable and shareable.
+- `blocks` (v2) is the document's structure — headings / list items / code /
+  quotes as char ranges over `text.txt` (the contract lives in
+  `src/ingest/index.js`, rendering in [design.md §3](design.md)). v1 files import
+  fine: no blocks means the flat flow of paragraphs they always were.
 - Import tolerates missing image entries and rejects newer-version files with a
   clear message. Language comes from the manifest, so no language prompt on
   import.

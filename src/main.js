@@ -254,7 +254,7 @@ async function openBook(id) {
   // An uploaded cover is rendered as the book's first image (cover.js anchors it at
   // offset 0), so the book opens with it exactly as it looks on the shelf.
   showDocument(
-    { text: content.text, images: imagesWithCover(book, content.images) },
+    { text: content.text, images: imagesWithCover(book, content.images), blocks: content.blocks },
     { restore },
   );
   touchOpened(id);
@@ -330,12 +330,12 @@ async function addBookFromFile(file) {
   setView('reader');
   reader.innerHTML = '<p class="reader__placeholder">Loading…</p>';
   try {
-    const { text, images } = await ingest(file);
+    const { text, images, blocks } = await ingest(file);
     // The document's own cover: the image it opens with, if it has one. An
     // illustration deep in the text is not a cover (see cover.js).
     const cover = documentCover(images)?.blob || null;
     const title = file.name.replace(/\.[^.]+$/, '');
-    const id = await addBook({ title, text, images, cover, lang, wordData: bookWordData(text) });
+    const id = await addBook({ title, text, images, blocks, cover, lang, wordData: bookWordData(text) });
     await openBook(id);
   } catch (err) {
     console.error(err);
@@ -602,13 +602,13 @@ function applyReadingFont() {
 // content on this device, e.g. a font/mode change) or a { paragraph, word } position
 // (used when opening a book, possibly from another device). Paragraph-anchored so it
 // lands the right paragraph even if the word segmenter disagrees across engines.
-function showDocument({ text, images = [] }, { restore = 0 } = {}) {
+function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) {
   if (pageTurn) {
     pageTurn.destroy();
     pageTurn = null;
   }
   if (paginator) paginator.destroy();
-  currentContent = { text, images };
+  currentContent = { text, images, blocks };
   applyRedSeaSuppression();
 
   const continuous = getReadingMode() === 'continuous';
@@ -620,7 +620,7 @@ function showDocument({ text, images = [] }, { restore = 0 } = {}) {
   currentWordStarts = wordStartsOf(tokens);
   lastSavedPosKey = '';
   const Reader = continuous ? Scroller : Paginator;
-  paginator = new Reader(reader, tokens, images);
+  paginator = new Reader(reader, tokens, images, blocks);
   // Listen on the full-width wrap so the empty side margins turn pages too.
   if (!continuous) pageTurn = attachPageTurn(paginator, { surface: readerWrap });
   attachMarking(paginator.content, {

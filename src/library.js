@@ -27,7 +27,8 @@ function uuid() {
 
 /**
  * Add a book to the library.
- * @param {{ title: string, text: string, images?: any[], cover?: Blob | null,
+ * @param {{ title: string, text: string, images?: any[],
+ *   blocks?: import('./ingest/index.js').DocBlock[], cover?: Blob | null,
  *   words?: string[] | null, lang?: string }} book
  * @returns {Promise<string>} the new book id
  */
@@ -40,7 +41,7 @@ function uuid() {
 const WORDS_VERSION = 5;
 
 export async function addBook({
-  id, title, text, images = [], cover = null, coverSource, coverWidth, coverHeight,
+  id, title, text, images = [], blocks = [], cover = null, coverSource, coverWidth, coverHeight,
   wordData = null, lang, addedAt,
 }) {
   // `id`/`addedAt` may be supplied when importing a `.tir` so the book keeps its
@@ -56,7 +57,7 @@ export async function addBook({
     coverWidth, coverHeight, lang,
   };
   await idbSet('books', id, meta);
-  await idbSet('content', id, { text, images });
+  await idbSet('content', id, { text, images, blocks });
   if (wordData) await setBookWords(id, wordData);
   return id;
 }
@@ -121,7 +122,12 @@ export async function findBookByTitle(title) {
   return (await idbGetAll('books')).find((b) => titleKey(b.title) === key);
 }
 
-/** @returns {Promise<{ text: string, images: any[] } | undefined>} */
+/**
+ * Books stored before structure existed have no `blocks` — they read as one flat
+ * flow of paragraphs (re-ingest the source file to get structure).
+ * @returns {Promise<{ text: string, images: any[],
+ *   blocks?: import('./ingest/index.js').DocBlock[] } | undefined>}
+ */
 export function getBookContent(id) {
   return idbGet('content', id);
 }
