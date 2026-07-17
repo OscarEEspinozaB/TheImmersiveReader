@@ -12,10 +12,84 @@
 //    queued, which also keeps cancellation responsive.
 
 import { getReadingLang, getTtsRate, getTtsVoice } from './settings.js';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
 
-/** Whether this browser can speak at all. */
+// On Android/iOS the app runs inside a Capacitor WebView whose engine has NO
+// Web Speech API (window.speechSynthesis is absent), so every 🔊 button and the
+// voice settings would silently vanish. When running natively we route speech
+// through the platform's own TTS engine via @capacitor-community/text-to-speech
+// instead; on the web the original Web Speech path below is untouched.
+const NATIVE = !!globalThis.Capacitor?.isNativePlatform?.();
+
+/** Whether speech is available at all (native engine, or Web Speech on the web). */
 export function canSpeak() {
+  if (NATIVE) return true;
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
+}
+
+// --- Native (Capacitor) backend -------------------------------------------------
+// The plugin is Promise-based (one call speaks, resolves when finished) and has
+// no per-utterance events, so the shared "active/token/pill" machinery below is
+// enough to drive the now-playing pill and the always-fires onEnd contract.
+let nativeVoices = []; // cached { voiceURI, name, lang }[] from the OS engine
+if (NATIVE) {
+  // Guard against a synchronous throw too — this runs at module load, so an
+  // uncaught error here would abort every importer (including main.js startup).
+  try {
+    TextToSpeech.getSupportedVoices()
+      .then((r) => {
+        nativeVoices = r?.voices || [];
+      })
+      .catch(() => {
+        nativeVoices = [];
+      });
+  } catch (err) {
+    console.error('getSupportedVoices failed:', err);
+  }
+}
+
+// The plugin's speak() takes a voice as an INDEX into getSupportedVoices(); map
+// our saved voiceURI (or the first voice for the language) to that index.
+function nativeVoiceIndex(lang) {
+  if (!nativeVoices.length) return null;
+  const base = (lang || 'en').toLowerCase();
+  const saved = getTtsVoice();
+  if (saved) {
+    const i = nativeVoices.findIndex(
+      (v) => v.voiceURI === saved && (v.lang || '').toLowerCase().startsWith(base),
+    );
+    if (i >= 0) return i;
+  }
+  const i = nativeVoices.findIndex((v) => (v.lang || '').toLowerCase().startsWith(base));
+  return i >= 0 ? i : null;
+}
+
+function speakNative(text, lang, { rate, onEnd }) {
+  invalidate(); // stop-logical whatever was playing; fires its onEnd
+  const token = speakToken; // current after invalidate() bumped it
+  activeOnEnd = onEnd || null;
+  active = true;
+  schedulePill(token);
+  const finish = () => {
+    if (token !== speakToken) return;
+    active = false;
+    hidePill();
+    const cb = activeOnEnd;
+    activeOnEnd = null;
+    cb?.();
+  };
+  TextToSpeech.stop()
+    .catch(() => {})
+    .then(() => {
+      if (token !== speakToken) return undefined; // replaced/stopped meanwhile
+      const opts = { text, lang: lang || 'en', rate: rate ?? getTtsRate() };
+      const vi = nativeVoiceIndex(lang);
+      if (vi != null) opts.voice = vi;
+      return TextToSpeech.speak(opts);
+    })
+    .then(finish)
+    .catch(finish);
+  return true;
 }
 
 const CANCEL_SETTLE_MS = 120; // beat between cancel() and the next speak()
@@ -26,15 +100,19 @@ const CANCEL_SETTLE_MS = 120; // beat between cancel() and the next speak()
 // module load also warms the engine, which helps against first-utterance clipping.
 let voices = [];
 function refreshVoices() {
-  voices = window.speechSynthesis.getVoices() || [];
+  voices = window.speechSynthesis?.getVoices() || [];
 }
-if (canSpeak()) {
+// Web Speech only. canSpeak() is also true on native (where speech goes through
+// the plugin), but window.speechSynthesis is ABSENT there — touching it would
+// throw at module load and abort every importer (this is what blanked the app).
+if (!NATIVE && 'speechSynthesis' in window) {
   refreshVoices();
   window.speechSynthesis.addEventListener?.('voiceschanged', refreshVoices);
 }
 
 /** Installed voices, freshest available list. */
 export function listVoices() {
+  if (NATIVE) return nativeVoices;
   if (canSpeak() && !voices.length) refreshVoices();
   return voices;
 }
@@ -145,6 +223,7 @@ function cancelEngine() {
  */
 export function speak(text, lang, { rate = getTtsRate(), onEnd } = {}) {
   if (!canSpeak() || !text) return false;
+  if (NATIVE) return speakNative(text, lang, { rate, onEnd });
   const synth = window.speechSynthesis;
   invalidate();
   // Only poke the engine when something is actually playing/queued: cancelling
@@ -195,6 +274,10 @@ export function speak(text, lang, { rate = getTtsRate(), onEnd } = {}) {
 /** Stop whatever is being spoken (no-op when silent). Fires its onEnd. */
 export function stopSpeaking() {
   invalidate();
+  if (NATIVE) {
+    TextToSpeech.stop().catch(() => {});
+    return;
+  }
   if (canSpeak()) cancelEngine();
 }
 

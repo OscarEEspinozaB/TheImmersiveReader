@@ -9,7 +9,9 @@ import { Paginator } from './reader/paginator.js';
 import { Scroller } from './reader/scroller.js';
 import { attachPageTurn } from './reader/pageTurn.js';
 import { initTheme, setTheme, getTheme, THEMES } from './reader/theme.js';
-import { attachMarking } from './marking.js';
+import { attachMarking, hidePopup } from './marking.js';
+import { hideGloss } from './gloss.js';
+import { App as CapacitorApp } from '@capacitor/app';
 import { buildSentenceLookup, buildParagraphLookup } from './sentences.js';
 import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
@@ -62,9 +64,12 @@ import {
   getReadingMode,
   setReadingMode,
   FONT_OPTIONS,
+  FONT_SIZE_OPTIONS,
   getReadingFont,
   setReadingFont,
   getReadingFontOption,
+  getReadingFontSize,
+  setReadingFontSize,
 } from './settings.js';
 
 const reader = document.getElementById('reader');
@@ -88,6 +93,7 @@ const viewToggle = document.getElementById('view-toggle');
 const sortSelect = document.getElementById('sort-select');
 const readingModeSelect = document.getElementById('reading-mode-select');
 const readingFontSelect = document.getElementById('reading-font-select');
+const readingSizeSelect = document.getElementById('reading-size-select');
 const fileInput = document.getElementById('file-input');
 const sampleButton = document.getElementById('sample-button');
 const prevButton = document.getElementById('prev-page');
@@ -136,7 +142,13 @@ initVocabSync({
 });
 
 // --- View switching: shelf / reader / dictionary / progress / swiper ---
+// The nav view currently on screen ('shelf' | 'server' | 'dictionary' |
+// 'progress' | 'reader' | 'swiper'). Distinct from `currentView`, which is the
+// shelf's grid/list layout. Drives the hardware back button (see below).
+let activeView = 'shelf';
+
 function setView(view) {
+  activeView = view;
   const reading = view === 'reader';
   // Tear down the swiper's key listener when leaving it.
   if (view !== 'swiper' && swiperEl._cleanup) {
@@ -596,6 +608,7 @@ function applyReadingFont() {
   const root = document.documentElement.style;
   root.setProperty('--reader-font', stack);
   root.setProperty('--reader-weight', weight);
+  root.setProperty('--reader-font-size', String(getReadingFontSize() / 100)); // unitless multiplier
 }
 
 // `restore` is either an exact word index (a number — used when re-rendering the SAME
@@ -661,6 +674,41 @@ function saveCurrentPosition() {
   pushPosition(currentBookTitle, pos, now); // to the home server, keyed by title
 }
 
+// Hardware back button (Android). Capacitor's default is to exit the app; instead
+// we walk back through the UI the way a user expects: dismiss any open transient
+// UI first, then step out of the reader / a hub to the library, and only leave the
+// app from the library itself. No-op on the web (the event never fires there).
+function handleBackButton() {
+  if (!menu.hidden) {
+    setMenuOpen(false);
+    return;
+  }
+  // An open bubble or popup swallows back before any navigation happens.
+  if (document.querySelector('.popup:not([hidden]), .gloss:not([hidden])')) {
+    hidePopup();
+    hideGloss();
+    return;
+  }
+  if (activeView === 'reader') {
+    showShelf(); // saves the reading position, same as the "library" button
+    return;
+  }
+  if (activeView !== 'shelf') {
+    showShelf();
+    return;
+  }
+  CapacitorApp.exitApp(); // already at the library root → leave the app
+}
+if (globalThis.Capacitor?.isNativePlatform?.()) {
+  // Guard: a plugin hiccup here must never abort app startup (the shelf render
+  // runs later in this module). Degrade to no back-button handling instead.
+  try {
+    CapacitorApp.addListener('backButton', handleBackButton);
+  } catch (err) {
+    console.error('backButton listener failed:', err);
+  }
+}
+
 // --- Shelf / add-book wiring ---
 shelfButton.addEventListener('click', showShelf);
 navLibrary.addEventListener('click', showShelf);
@@ -705,6 +753,21 @@ for (const { value, label } of FONT_OPTIONS) {
 readingFontSelect.value = getReadingFont();
 readingFontSelect.addEventListener('change', () => {
   setReadingFont(readingFontSelect.value);
+  applyReadingFont();
+  reRenderAtCurrentSpot();
+});
+
+// Reading size: same story as the font — a bigger size re-flows the pages, so
+// re-render at the current spot after applying the new multiplier.
+for (const { value, label } of FONT_SIZE_OPTIONS) {
+  const opt = document.createElement('option');
+  opt.value = String(value);
+  opt.textContent = label;
+  readingSizeSelect.appendChild(opt);
+}
+readingSizeSelect.value = String(getReadingFontSize());
+readingSizeSelect.addEventListener('change', () => {
+  setReadingFontSize(readingSizeSelect.value);
   applyReadingFont();
   reRenderAtCurrentSpot();
 });

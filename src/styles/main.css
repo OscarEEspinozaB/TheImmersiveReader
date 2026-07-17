@@ -331,7 +331,9 @@ body.chrome-hidden .reader-wrap--scroll {
 .reader__flow {
   font-family: var(--reader-font, var(--font-reading));
   font-weight: var(--reader-weight, 400);
-  font-size: 1.25rem;
+  /* Base reading size × the user's size setting (--reader-font-size, a unitless
+     multiplier set in main.js). Headings/code/quotes use em, so they scale too. */
+  font-size: calc(1.25rem * var(--reader-font-size, 1));
   line-height: 1.65;
   white-space: pre-wrap;
   /* URLs are single unbreakable tokens (see tokenizer.js); let them wrap

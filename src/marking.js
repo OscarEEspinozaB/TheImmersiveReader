@@ -75,6 +75,11 @@ const ARMING_MIN_MS = 400;
 let popup = null;
 let requestId = 0;
 
+/** Close the shared word popup if it is open (used by the hardware back button). */
+export function hidePopup() {
+  popup?.hide();
+}
+
 export function attachMarking(flow, { getSentence = () => '', getParagraph = () => '', book = {} } = {}) {
   if (!popup) popup = new WordPopup();
   popup.hide(); // a popup left open by the previous render anchors to a dead span
