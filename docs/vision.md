@@ -101,8 +101,8 @@ plugin for each native gap below.
   paragraph read-aloud already exist (`src/speech.js` via the bubbles and the
   Dictionary hub). What remains is **continuous read-aloud**: speak page after
   page with the words highlighted as they are spoken, first-class in paged mode.
-  (Today the continuous reading mode exists partly so an *external* read-aloud
-  tool can see the whole text.)
+  (An *external* read-aloud tool is no longer a substitute: the continuous mode
+  is windowed now, so such tools only see the loaded window.)
 - **Sentence-level rescue** (much later — owner, 2026-07-02): a "translate this
   sentence" action, server-brokered and cached like the word explanations, for
   the moments the words are known but the sentence still doesn't parse.
@@ -163,8 +163,9 @@ fire on e.g. a Spanish book.
 
 ## 5. Home library server
 
-Implemented: book store, per-profile vocabulary sync, shared AI-explanation
-cache (see [home-server.md](home-server.md)). Still pending from the design:
+Implemented: book store, per-profile vocabulary sync, cross-device
+reading-position sync, shared AI-explanation cache (see
+[home-server.md](home-server.md)). Still pending from the design:
 
 - **Accounts.** Real users instead of the trusted "profile name": username +
   password (argon2id), signed session tokens, authorization on every protected
@@ -174,9 +175,6 @@ cache (see [home-server.md](home-server.md)). Still pending from the design:
   Books carry a rating (uploader sets, admin overrides); `GET /books` filters by
   `book.rating ≤ user.rating_tier` **server-side on every request**. This is the
   honest, LAN-proportionate version of "age verification".
-- **Reading-progress sync.** A `reading_progress (user, book, word_index)` table
-  and endpoints, so a book opened on the phone resumes where the laptop left
-  off. Same last-write-wins model as vocabulary.
 - **Shelf ACL (later).** Optional named shelves restricted to specific users
   (private shelf), independent of the age gate. Deliberately coarse.
 - **OPDS export (later).** Publish the catalog as an OPDS feed so generic e-reader
@@ -204,8 +202,8 @@ cache (see [home-server.md](home-server.md)). Still pending from the design:
   and per-week deltas.
 - Optional **daily snapshot log** `[{date, known, learning}]` if last-change-only
   growth charts feel coarse; CSV export.
-- A clean 4th bottom-nav slot is reserved for **Practice** once a global
-  (cross-book) deck exists — today the swiper is launched per book from the shelf.
+- A bottom-nav slot is reserved for **Practice** once a global (cross-book)
+  deck exists — today the swiper is launched per book from the shelf.
 - When KB translations/locking land (§4), surface them in the same `dictRow`s
   (translations per sense, pin icon on locked fields).
 

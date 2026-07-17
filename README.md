@@ -18,7 +18,9 @@ per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
   "You can read N%": the share of the book's sentences where you know every
   word, so you pick material at your real level.
 - **Ingest** `.txt`, `.md`, `.pdf`, and `.epub` client-side. PDF/EPUB text is
-  reconstructed into clean paragraphs and embedded illustrations show inline.
+  reconstructed into clean paragraphs, embedded illustrations show inline, and
+  document **structure survives**: headings, list items, code blocks and quotes
+  render styled (from EPUB tags, Markdown syntax, or PDF geometry).
 - **Word states**: Unknown (red) → Learning (gold) → Known (blends in), plus a
   manual-only **Discarded** state (recessive slate-blue) that sets non-vocabulary
   tokens aside — proper nouns, code identifiers, Roman numerals — out of the
@@ -49,10 +51,14 @@ per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
   speech, word families, synonyms/antonyms and lemma links) → free dictionary API
   fallback → context-aware **AI explanations** brokered and cached by the server
   (generated once, shared by every device), including an "explain in my
-  language" rescue and web-dictionary links as a last resort.
+  language" rescue and web-dictionary links as a last resort. Any AI-produced
+  answer carries a **↻ regenerate** button — a weak definition or explanation is
+  re-done in place, and the better answer replaces the shared cache for everyone.
 - **Home library server**: upload processed books from one device, browse and
   download them on another; per-profile **vocabulary sync** (offline-first,
-  last-write-wins) so progress follows you and survives a wiped browser.
+  last-write-wins) so progress follows you and survives a wiped browser; and
+  **cross-device reading position** — put the book down on the laptop, pick it
+  up on the phone at the same paragraph.
 - **Dictionary & Progress hubs**: bottom navigation with a searchable personal
   dictionary (per language, windowed for large vocabularies, with the growing
   server-built dictionary and a data stats card) and a Progress view (counts,

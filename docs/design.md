@@ -155,9 +155,10 @@ Two reading modes (menu-selectable, re-rendered in place at the current spot):
   (`reader/pageTurn.js`): the page follows the finger, an adjacent page slides
   in, releasing past ~20% of the width commits; buttons/arrow keys play the same
   slide; a tap in the outer thirds/margins turns Google-Books style.
-- **Continuous** (`reader/scroller.js`): windowed scroll that keeps the full
-  text available (enables external read-aloud tools). Only chunks near the viewport
-  are in the DOM; the rest are spacers of an estimated height. When a chunk **above**
+- **Continuous** (`reader/scroller.js`): **windowed** scroll. Only chunks near the viewport
+  are in the DOM; the rest are spacers of an estimated height (the deliberate
+  trade-off: external read-aloud tools only see the loaded window, not the whole
+  book — chosen for memory and smoothness on huge books). When a chunk **above**
   the viewport renders to its real height, the scroller compensates `scrollTop` by the
   difference (native `overflow-anchor` is turned off) so the visible text — and a
   just-restored reading position — never drifts as the window fills in. Its programmatic
@@ -210,7 +211,10 @@ becomes another hidden gesture:
   the word is not in** (the popup also colors the word and shows the same state
   legend); keys `1`/`2`/`3`/`4` set Known / Learning / Unknown / Discarded
   regardless of position. Every occurrence recolors immediately (`reader/render.js`).
-- Top/bottom chrome auto-hides and only reveals near the screen edges.
+- Top/bottom chrome auto-hides and only reveals near the screen edges. In
+  continuous mode the text reclaims the bars' space (there is no pager at all,
+  and the top clearance collapses while the bar is hidden); paged mode keeps
+  constant margins so toggling the chrome never repaginates.
 
 Themes (dark + light variants) via `reader/theme.js`; a selectable reader
 typeface (bundled Literata variable font + system stacks) applies through CSS

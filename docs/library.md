@@ -12,12 +12,15 @@ also the wire format for the home server's book store
 ```text
 IndexedDB "immersive-reader"
   store "books"      BookMeta = { id, title, addedAt, lang, cover?, coverSource?,
-                                  coverWidth?, coverHeight?, progressWordIndex,
+                                  coverWidth?, coverHeight?, progressParagraph,
+                                  progressWord, progressUpdatedAt,
                                   lastOpenedAt?, … }        (metadata, small)
-  store "content"    { text, images: [{ start, width, height, blob }] }  (heavy, by id)
-  store "bookwords"  per-book unique lemmas + occurrence counts (versioned;
-                     recomputed when stale; counts weight the shelf's
-                     comprehensibility score by running words)
+  store "content"    { text, images: [{ start, width, height, blob }],
+                       blocks: [{ start, end, type }] }     (heavy, by id)
+  store "bookwords"  per-book word data, versioned & recomputed when stale:
+                     unique lemmas, occurrence counts (the swiper deck's
+                     frequency ranking) and per-sentence word indexes (the
+                     shelf's readability badge)
   store "kv"         small values (e.g. last-opened book)
 ```
 
@@ -25,7 +28,10 @@ IndexedDB "immersive-reader"
   reopening is instant.
 - **Vocabulary stays global per language** (`<lang>:<word>` in localStorage) —
   shared across all books, which is the point of the tool. Only reading
-  *position* is per-book.
+  *position* is per-book: stored **paragraph-anchored** (`progressParagraph` +
+  the Nth word inside it, see [design.md §5](design.md)) so it survives a device
+  swap, and synced through the home server keyed by book title
+  ([home-server.md §4a](home-server.md)).
 - Each book carries its own **reading language** (`lang`), asked on add
   (defaulting from Settings) and editable from the book card or the reader menu.
   It drives tokenization, vocabulary keys, dictionary lookups and red-sea
