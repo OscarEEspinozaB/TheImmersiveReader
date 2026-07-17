@@ -1,6 +1,12 @@
 // User settings: small, persisted configuration. For now just the native
 // language used for the on-demand "explain in my language" rescue via Ollama.
 
+// Build-time defaults live in one place — ../app.config.json — so shipping a
+// different home-server IP or default language never means touching code. These
+// are DEFAULTS ONLY: every value below can be overridden at runtime in Settings,
+// and the user's choice (persisted in localStorage) always wins over the config.
+import appConfig from '../app.config.json';
+
 const STORAGE_KEY = 'immersive-reader.settings.v1';
 
 // Native language (for the "explain in my language" rescue). Names are used
@@ -29,6 +35,17 @@ export const SORT_OPTIONS = [
 // font, so a lighter 380 reads comfortably for long sessions; the static system
 // fonts round it to their nearest available weight). Literata is bundled and
 // self-hosted (see the @fontsource import in main.js), so it works offline.
+// Reader font-size steps, as a percentage of the base reading size. Applied via
+// the --reader-font-size CSS variable (a unitless multiplier). Replaces the
+// browser zoom the web reader relied on — the WebView APK has no such control.
+export const FONT_SIZE_OPTIONS = [
+  { value: 85, label: 'Small' },
+  { value: 100, label: 'Normal' },
+  { value: 115, label: 'Large' },
+  { value: 130, label: 'Larger' },
+  { value: 150, label: 'Huge' },
+];
+
 export const FONT_OPTIONS = [
   { value: 'literata', label: 'Literata (recommended)', stack: "'Literata Variable', Georgia, serif", weight: '380' },
   { value: 'georgia', label: 'Georgia', stack: "Georgia, 'Iowan Old Style', 'Times New Roman', serif", weight: '400' },
@@ -38,23 +55,25 @@ export const FONT_OPTIONS = [
   { value: 'mono', label: 'Monospace', stack: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace", weight: '400' },
 ];
 const settings = {
-  language: 'Spanish',
-  defaultReadingLang: 'en', // default for NEW books; each book stores its own lang
-  // Local dictionary KB service on the LAN. Defaults to the home machine so the
-  // offline dictionary works out of the box with no configuration.
-  kbUrl: 'http://192.168.100.6:4321',
+  language: appConfig.defaults.nativeLanguage,
+  defaultReadingLang: appConfig.defaults.readingLanguage, // default for NEW books; each book stores its own lang
+  // Local dictionary KB service on the LAN. Defaults to the home machine (from
+  // app.config.json) so the offline dictionary works out of the box with no
+  // configuration. On the phone this default must be the server's LAN IP.
+  kbUrl: appConfig.server.defaultUrl,
   // Lightweight profile name for per-user vocabulary sync (empty = sync off, the
   // vocabulary stays device-local). No password — trusted home LAN.
   profile: '',
-  sortBy: 'lastRead',
-  readingMode: 'paged', // 'paged' | 'continuous'
-  readingFont: 'literata', // reader typeface (see FONT_OPTIONS)
+  sortBy: appConfig.defaults.sortBy,
+  readingMode: appConfig.defaults.readingMode, // 'paged' | 'continuous'
+  readingFont: appConfig.defaults.readingFont, // reader typeface (see FONT_OPTIONS)
+  readingFontSize: appConfig.defaults.readingFontSize, // % of base size (see FONT_SIZE_OPTIONS)
   // Ollama model for AI explanations (server/generate/explain.js). '' = the
   // server's own default (KB_EXPLAIN_MODEL), no override sent.
-  aiModel: '',
+  aiModel: appConfig.defaults.aiModel,
   // Read-aloud (Web Speech): utterance rate and preferred voice ('' = auto —
   // the first installed voice matching the reading language, else the engine default).
-  ttsRate: 0.9,
+  ttsRate: appConfig.defaults.ttsRate,
   ttsVoice: '', // a SpeechSynthesisVoice.voiceURI
 };
 
@@ -81,6 +100,7 @@ function load() {
     if (SORT_OPTIONS.some((o) => o.value === obj.sortBy)) settings.sortBy = obj.sortBy;
     if (obj.readingMode === 'paged' || obj.readingMode === 'continuous') settings.readingMode = obj.readingMode;
     if (FONT_OPTIONS.some((o) => o.value === obj.readingFont)) settings.readingFont = obj.readingFont;
+    if (FONT_SIZE_OPTIONS.some((o) => o.value === obj.readingFontSize)) settings.readingFontSize = obj.readingFontSize;
     if (typeof obj.aiModel === 'string') settings.aiModel = obj.aiModel;
     if (Number.isFinite(obj.ttsRate) && obj.ttsRate >= 0.5 && obj.ttsRate <= 2) settings.ttsRate = obj.ttsRate;
     if (typeof obj.ttsVoice === 'string') settings.ttsVoice = obj.ttsVoice;
@@ -201,6 +221,19 @@ export function setReadingFont(value) {
 /** The FONT_OPTIONS entry currently in effect (never null). */
 export function getReadingFontOption() {
   return FONT_OPTIONS.find((o) => o.value === settings.readingFont) || FONT_OPTIONS[0];
+}
+
+/** Reader font size as a percentage of the base (e.g. 100), see FONT_SIZE_OPTIONS. */
+export function getReadingFontSize() {
+  return settings.readingFontSize;
+}
+
+export function setReadingFontSize(value) {
+  const n = Number(value);
+  if (FONT_SIZE_OPTIONS.some((o) => o.value === n)) {
+    settings.readingFontSize = n;
+    save();
+  }
 }
 
 /** Ollama model override for AI explanations, e.g. "gemma4:e4b" ('' = server default). */

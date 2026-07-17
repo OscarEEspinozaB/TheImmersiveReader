@@ -13,9 +13,14 @@
     "ingest:en": "node server/ingest/run.js en",
     "ingest:forms": "node server/ingest/forms.js en",
     "build:book": "node server/generate/book.js",
-    "kb:audit": "node server/generate/audit.js"
+    "kb:audit": "node server/generate/audit.js",
+    "cap:sync": "vite build && cap sync android",
+    "cap:open": "cap open android",
+    "cap:icons": "capacitor-assets generate --android --iconBackgroundColor '#000000' --iconBackgroundColorDark '#000000'"
   },
   "dependencies": {
+    "@capacitor-community/text-to-speech": "^5.1.0",
+    "@capacitor/app": "^6.0.3",
     "@fontsource-variable/literata": "^5.2.8",
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
@@ -24,6 +29,10 @@
     "pdfjs-dist": "^4.7.76"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
     "vite": "^5.4.0"
   }
 }

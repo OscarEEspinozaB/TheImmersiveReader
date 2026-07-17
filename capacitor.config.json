@@ -1,0 +1,12 @@
+{
+  "appId": "com.immersivereader.app",
+  "appName": "The Immersive Reader",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}
