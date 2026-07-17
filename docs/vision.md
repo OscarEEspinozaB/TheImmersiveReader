@@ -250,3 +250,40 @@ not do yet:
 - **Spanish.** Verb conjugation is a far larger paradigm (regular -ar/-er/-ir plus a
   sizeable irregular table); the schema already carries `pos` and `lang`, so this is
   a data problem, not a design one.
+
+## 10. Mobile: on-device server & multi-server sync
+
+The Android APK ships as a Capacitor WebView (implemented — see
+[android.md](android.md)). The web is the single source of truth; the APK embeds a
+build of it and hardens storage. What is still *future* is untethering the phone from
+the home LAN for the two things that genuinely need a server: **the AI (Ollama)** and
+**centralized history/sync**.
+
+- **A server on the phone itself (Termux).** The home-server is already Node +
+  better-sqlite3, which runs under Termux, so the same process could run on the
+  device. This is the bridge until phones expose a public on-device AI API: when
+  away from home, a local Termux server answers explanation/dictionary requests
+  instead of the (unreachable) home machine. Real considerations: `better-sqlite3`
+  is a native addon and needs a build toolchain under Termux; the server must be
+  startable/stoppable on demand (battery), and small enough models to be usable on
+  the phone's CPU (the §1 hardware gate applies here too).
+- **Multi-server topology: primary + backup.** With two servers (home = primary,
+  Termux = backup/away) the open question is roles and reconciliation. Vocabulary and
+  reading-position already sync last-write-wins by timestamp; the KB and the
+  AI-explanation cache would need the same treatment so the away-server's answers
+  merge back into the home KB on reconnect (and vice-versa) without drift. The home
+  server stays authoritative for the library and accounts (§5); the phone server is a
+  read-through cache + AI worker, not a second source of truth. Deciding exactly what
+  the backup is *allowed* to write is the core design work here.
+- **Away-mode UX.** The app should know which server it can currently reach and route
+  transparently (home when on-LAN, phone-local when away, offline-degraded when
+  neither), surfacing the state without asking the user to flip switches.
+- **Over-the-air web updates (OTA).** Today the APK embeds a build of the web
+  (`dist/`), so shipping a web change means rebuilding and reinstalling the APK — the
+  price of full offline. The chosen future path (owner's call) is an OTA updater
+  (e.g. `@capgo/capacitor-updater`): the native shell stays installed while the web
+  bundle updates itself from a URL we control. The elegant fit here is to pull the
+  bundle **from the home-server on the LAN** and fall back to the embedded bundle
+  when offline — same reach-what-you-can logic as away-mode above. Rejected for now:
+  pointing Capacitor's `server.url` straight at the hosted web (instant updates but
+  loses true offline and needs the server always reachable).

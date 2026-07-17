@@ -83,9 +83,9 @@ npm run preview    # serve the production build
 npm run server     # Express + SQLite · http://<machine-ip>:4321
 ```
 
-Point Settings → "Home server" at that URL (default `http://192.168.100.6:4321`).
-Data lives in `data/` (gitignored): two SQLite files + a book blob dir — backup
-is copying that folder.
+Point Settings → "Home server" at that URL (the shipped default lives in
+`app.config.json` → `server.defaultUrl`). Data lives in `data/` (gitignored): two
+SQLite files + a book blob dir — backup is copying that folder.
 
 - **Dictionary data**: download an English Kaikki.org (Wiktextract) dump to
   `data/kaikki-en.jsonl`, then `npm run ingest:en` (minutes, no LLM).
@@ -101,13 +101,27 @@ If another device can't reach the app: same WiFi, router client-isolation off,
 and open ports 5173/4321 in the host firewall. Find the machine's IP with
 `hostname -I`.
 
+### Android APK (optional)
+
+The phone app is the same web app wrapped in a [Capacitor](https://capacitorjs.com)
+WebView — one source of truth, no second codebase.
+
+```bash
+npm run cap:sync   # build the web + copy it into android/
+npm run cap:open   # open in Android Studio to run / build the APK
+```
+
+Set `server.defaultUrl` in `app.config.json` to the server's LAN IP before building
+(the phone has no `localhost`). See [docs/android.md](docs/android.md).
+
 ## Tech
 
 Vanilla JavaScript + HTML + CSS, built with [Vite](https://vitejs.dev). PDF via
 [pdf.js](https://mozilla.github.io/pdf.js/), EPUB/zip via
 [fflate](https://github.com/101arrowz/fflate). Server: Node +
 [Express](https://expressjs.com) + [better-sqlite3](https://github.com/WiseLibs/better-sqlite3).
-No framework.
+Android via [Capacitor](https://capacitorjs.com) (WebView wrapper around the same
+build). No framework.
 
 ## License
 

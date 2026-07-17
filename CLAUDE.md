@@ -76,6 +76,10 @@ Two pieces:
   X." non-definitions, dirty POS. Re-run after every ingest.
 - `npm run build:book -- "<file>" --batch N` — batch-refine a book's words
   (collapsed to lemmas; resumable; `--model M --force` re-refines with a stronger model).
+- `npm run cap:sync` — build the web and copy it into the Android project
+  (`vite build && cap sync android`). `npm run cap:open` — open it in Android Studio
+  to run/build the APK. The APK is the same web app in a Capacitor WebView — one
+  source of truth; see [docs/android.md](docs/android.md).
 
 No test runner. Verify with `npm run dev` (plus `npm run server` for
 KB/sync/AI features) and the in-app "Load sample" button.
@@ -133,6 +137,9 @@ KB/sync/AI features) and the in-app "Load sample" button.
 - `src/settings.js` — native language, default reading language, runtime **active**
   reading language (the open book's, read via `getReadingLang()`), home-server URL,
   profile, AI model override, reading mode/font, read-aloud voice + speed, shelf sort.
+  Build-time **defaults** are centralized in `app.config.json` (imported here) — the
+  shipped home-server IP + default languages, so re-shipping them never touches code;
+  every value stays user-overridable in Settings.
 - `src/main.js` — view switching (`shelf | server | dictionary | progress | reader |
   swiper`) and wiring.
 - `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,
@@ -144,7 +151,8 @@ KB/sync/AI features) and the in-app "Load sample" button.
 Per-feature docs: [docs/design.md](docs/design.md) (core reader),
 [docs/library.md](docs/library.md), [docs/home-server.md](docs/home-server.md),
 [docs/dictionary-progress.md](docs/dictionary-progress.md),
-[docs/word-swiper.md](docs/word-swiper.md) · Future: [docs/vision.md](docs/vision.md).
+[docs/word-swiper.md](docs/word-swiper.md), [docs/android.md](docs/android.md)
+(the Capacitor APK) · Future: [docs/vision.md](docs/vision.md).
 
 ## Invariants (do not break)
 
