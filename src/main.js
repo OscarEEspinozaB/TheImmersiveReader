@@ -613,6 +613,8 @@ function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) 
 
   const continuous = getReadingMode() === 'continuous';
   reader.classList.toggle('reader--scroll', continuous);
+  // Continuous mode reclaims the chrome's reserved space (see .reader-wrap--scroll).
+  readerWrap.classList.toggle('reader-wrap--scroll', continuous);
   pager.hidden = continuous; // no page buttons in continuous mode
 
   const tokens = tokenize(text);

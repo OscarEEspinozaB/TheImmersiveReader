@@ -301,6 +301,19 @@ body {
   touch-action: pan-y; /* horizontal gestures (page turns) are handled in JS */
 }
 
+/* Continuous mode never paginates, so it can hand the chrome's space back to the
+   text: the pager doesn't exist there (no bottom reserve at all), and when the
+   top bar auto-hides its clearance collapses to the safe area. Paged mode keeps
+   the constant padding above — reclaiming it would repaginate on every toggle. */
+.reader-wrap--scroll {
+  padding-bottom: calc(var(--sab) + 0.5rem);
+  transition: padding-top 0.25s ease; /* match the bars' slide */
+}
+
+body.chrome-hidden .reader-wrap--scroll {
+  padding-top: calc(var(--sat) + 0.5rem);
+}
+
 /* Reader viewport: clips the flowing columns; one column == one page.
    It must have NO horizontal padding so column width == clientWidth exactly. */
 .reader {
