@@ -8,7 +8,9 @@ import '@fontsource-variable/literata/wght.css'; // self-hosted reader font (off
 import { Paginator } from './reader/paginator.js';
 import { Scroller } from './reader/scroller.js';
 import { attachPageTurn } from './reader/pageTurn.js';
-import { initTheme, setTheme, getTheme, THEMES } from './reader/theme.js';
+import { initTheme, setTheme, getTheme, THEMES, refreshStatusBarStyle } from './reader/theme.js';
+import { initStatusBar } from './statusBar.js';
+import { initAppUpdate, isNativeApp, currentBundle, checkNow, rollbackToPrevious } from './appUpdate.js';
 import { attachMarking, hidePopup } from './marking.js';
 import { hideGloss } from './gloss.js';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -50,6 +52,8 @@ import {
   setDefaultReadingLang,
   getKbUrl,
   setKbUrl,
+  getUpdateUrl,
+  setUpdateUrl,
   getProfile,
   setProfile,
   getAiModel,
@@ -94,11 +98,10 @@ const sortSelect = document.getElementById('sort-select');
 const readingModeSelect = document.getElementById('reading-mode-select');
 const readingFontSelect = document.getElementById('reading-font-select');
 const readingSizeSelect = document.getElementById('reading-size-select');
-const fileInput = document.getElementById('file-input');
-const sampleButton = document.getElementById('sample-button');
 const prevButton = document.getElementById('prev-page');
 const nextButton = document.getElementById('next-page');
 const pageIndicator = document.getElementById('page-indicator');
+const pageBook = document.getElementById('page-book');
 const menuToggle = document.getElementById('menu-toggle');
 const menu = document.getElementById('menu');
 const langSelect = document.getElementById('lang-select');
@@ -110,6 +113,11 @@ const exportButton = document.getElementById('export-words');
 const importInput = document.getElementById('import-words');
 const resetButton = document.getElementById('reset-data');
 const themeSwatches = document.getElementById('theme-swatches');
+const appUpdateSection = document.getElementById('app-update-section');
+const updateUrlInput = document.getElementById('update-url');
+const appVersionLabel = document.getElementById('app-version');
+const checkUpdateButton = document.getElementById('check-update');
+const resetAppButton = document.getElementById('reset-app');
 
 let paginator = null;
 let pageTurn = null; // live drag page-turn controller (paged mode only)
@@ -124,6 +132,12 @@ let lastSavedPosKey = ''; // "paragraph:word" last persisted, to skip redundant 
 let currentView = 'grid';
 
 initTheme();
+// Enable edge-to-edge (WebView under the status bar) on native, then push the
+// current theme's icon color once the plugin has loaded. No-op on the web.
+initStatusBar().then(refreshStatusBarStyle);
+// Confirm this web bundle boots, then pull a newer one from the home server if
+// there is one (OTA — no APK reinstall). No-op on the web / offline.
+initAppUpdate({ onStaged: (version) => showAppVersion(version) });
 applyReadingFont();
 loadVocabulary();
 // Re-map any vocabulary entries saved as whole contractions (e.g. "didn't") into
@@ -171,6 +185,10 @@ function setView(view) {
   navDictionary.classList.toggle('is-active', view === 'dictionary');
   navProgress.classList.toggle('is-active', view === 'progress');
 
+  // The status bar names the open book, next to the % readout. The top bar keeps
+  // the app's own name always — that is the brand, not a document title.
+  pageBook.textContent = reading ? currentBookTitle : '';
+
   hasDocument = reading; // chrome auto-hide applies only in the reader
   if (reading) {
     showChrome();
@@ -213,6 +231,7 @@ function renderLibrary() {
     sortBy: getSortBy(),
     onOpen: openBook,
     onPractice: openSwiper,
+    onSample: loadSample,
   });
 }
 
@@ -443,6 +462,71 @@ readingLangSelect.addEventListener('change', async () => {
 kbUrlInput.value = getKbUrl();
 kbUrlInput.addEventListener('change', () => setKbUrl(kbUrlInput.value));
 
+// --- App updates (Android only) ---
+/**
+ * The menu's footer line: which web bundle is running and where updates come from.
+ * Updating is automatic (checked at every start), but "it updated" is invisible
+ * without this — and a staged update needs to say that it wants a restart.
+ * @param {string} [pendingVersion] a downloaded update waiting for the next start
+ */
+async function showAppVersion(pendingVersion) {
+  if (!isNativeApp) return;
+  appVersionLabel.hidden = false;
+  appVersionLabel.classList.toggle('is-pending', !!pendingVersion);
+  try {
+    const b = await currentBundle();
+    const running = b ? `Version ${b.version}${b.builtin ? ' (installed with the app)' : ''}` : 'Version unknown';
+    appVersionLabel.textContent = pendingVersion
+      ? `${running}\nUpdate ${pendingVersion} downloaded — restart to apply`
+      : `${running}\nUpdates from ${getUpdateUrl() || 'not set'}`;
+  } catch (err) {
+    appVersionLabel.textContent = `Updater error: ${err.message}`;
+  }
+}
+
+
+// The web is always served the build its host has, and a browser has an address bar
+// to recover with; neither is true inside the APK, so this whole section exists only
+// there (see src/appUpdate.js).
+if (isNativeApp) {
+  appUpdateSection.hidden = false;
+  updateUrlInput.value = getUpdateUrl();
+  updateUrlInput.addEventListener('change', () => {
+    setUpdateUrl(updateUrlInput.value);
+    updateUrlInput.value = getUpdateUrl(); // show the home-server fallback when cleared
+  });
+
+  showAppVersion();
+
+  checkUpdateButton.addEventListener('click', async () => {
+    const label = checkUpdateButton.querySelector('span');
+    label.textContent = 'Checking…';
+    // Whatever happens, the label must stop saying "Checking…" — a stuck label is
+    // indistinguishable from a broken app.
+    let text;
+    try {
+      const { status, detail } = await checkNow();
+      text = {
+        updated: 'Downloaded — restart to apply',
+        current: 'Already up to date',
+        failed: `Failed: ${detail}`,
+        unsupported: 'Updates unavailable',
+      }[status];
+    } catch (err) {
+      text = `Failed: ${err.message}`;
+    }
+    label.textContent = text;
+    setTimeout(() => (label.textContent = 'Check for updates'), 8000);
+  });
+
+  // The way back from a bad update, with no address bar to type one. One step
+  // back, to the last version that worked — good updates in between are kept.
+  resetAppButton.addEventListener('click', async () => {
+    if (!(await confirmDialog('Go back to the previous version of the app?'))) return;
+    await rollbackToPrevious();
+  });
+}
+
 profileInput.value = getProfile();
 profileInput.addEventListener('change', () => {
   setProfile(profileInput.value);
@@ -626,9 +710,10 @@ function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) 
 
   const continuous = getReadingMode() === 'continuous';
   reader.classList.toggle('reader--scroll', continuous);
-  // Continuous mode reclaims the chrome's reserved space (see .reader-wrap--scroll).
+  // Continuous mode reclaims the space of the HIDDEN chrome (see .reader-wrap--scroll).
   readerWrap.classList.toggle('reader-wrap--scroll', continuous);
-  pager.hidden = continuous; // no page buttons in continuous mode
+  // The status bar stays in both modes (book + %); continuous just drops the arrows.
+  pager.classList.toggle('pager--scroll', continuous);
 
   const tokens = tokenize(text);
   currentParagraphs = buildParagraphs(text);
@@ -780,10 +865,9 @@ function reRenderAtCurrentSpot() {
   }
 }
 addBookInput.addEventListener('change', (e) => addBookFromFile(e.target.files[0]));
-fileInput.addEventListener('change', (e) => addBookFromFile(e.target.files[0]));
 
-sampleButton.addEventListener('click', async () => {
-  setMenuOpen(false);
+// Offered from the empty library (see renderShelf), the one place it is useful.
+async function loadSample() {
   const res = await fetch(`${import.meta.env.BASE_URL}sample/sample.txt`);
   const text = await res.text();
   setActiveReadingLang('en'); // the sample (Alice in Wonderland) is English
@@ -796,7 +880,7 @@ sampleButton.addEventListener('click', async () => {
     lang: 'en',
   });
   await openBook(id);
-});
+}
 
 // --- Startup: migrate any old single document, then show the shelf ---
 migrateOldDocument()

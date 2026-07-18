@@ -21,6 +21,7 @@ import { booksRouter } from './routes/books.js';
 import { vocabRouter } from './routes/vocab.js';
 import { positionRouter } from './routes/position.js';
 import { aiDefineRouter } from './routes/aiDefine.js';
+import { appUpdateRouter } from './routes/appUpdate.js';
 import { getLibraryDb } from './library-db.js';
 
 const PORT = Number(process.env.KB_PORT || 4321);
@@ -40,6 +41,7 @@ app.use(booksRouter);
 app.use(vocabRouter);
 app.use(positionRouter);
 app.use(aiDefineRouter);
+app.use(appUpdateRouter); // OTA web bundles for the Android app
 
 getDb(); // open the connection + ensure schema before accepting requests
 getLibraryDb(); // open the library DB + ensure its schema/dirs exist

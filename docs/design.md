@@ -211,10 +211,14 @@ becomes another hidden gesture:
   the word is not in** (the popup also colors the word and shows the same state
   legend); keys `1`/`2`/`3`/`4` set Known / Learning / Unknown / Discarded
   regardless of position. Every occurrence recolors immediately (`reader/render.js`).
-- Top/bottom chrome auto-hides and only reveals near the screen edges. In
-  continuous mode the text reclaims the bars' space (there is no pager at all,
-  and the top clearance collapses while the bar is hidden); paged mode keeps
-  constant margins so toggling the chrome never repaginates.
+- Top/bottom chrome auto-hides and only reveals near the screen edges. The top
+  bar always shows the app's own name (the brand, never a document title); the
+  bottom **status bar** is what says **which book is open**: its title on the
+  left and the **% of the book read** on the right. That bar is present in
+  *both* reading modes — continuous mode only drops the page arrows
+  (there are no pages to step through); its percentage is the scroll position.
+  In continuous mode the text reclaims the bars' space while they are hidden;
+  paged mode keeps constant margins so toggling the chrome never repaginates.
 
 Themes (dark + light variants) via `reader/theme.js`; a selectable reader
 typeface (bundled Literata variable font + system stacks) applies through CSS

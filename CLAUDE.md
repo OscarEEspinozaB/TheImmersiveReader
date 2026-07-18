@@ -76,13 +76,40 @@ Two pieces:
   X." non-definitions, dirty POS. Re-run after every ingest.
 - `npm run build:book -- "<file>" --batch N` — batch-refine a book's words
   (collapsed to lemmas; resumable; `--model M --force` re-refines with a stronger model).
+- `npm run app:publish` — build the web and publish it to the home server as an OTA
+  bundle; installed APKs pick it up on their next start (no reinstall).
 - `npm run cap:sync` — build the web and copy it into the Android project
   (`vite build && cap sync android`). `npm run cap:open` — open it in Android Studio
   to run/build the APK. The APK is the same web app in a Capacitor WebView — one
-  source of truth; see [docs/android.md](docs/android.md).
+  source of truth; web changes reach an installed APK over the air (`app:publish`),
+  so `cap:sync` is only for native changes. See [docs/android.md](docs/android.md).
 
 No test runner. Verify with `npm run dev` (plus `npm run server` for
-KB/sync/AI features) and the in-app "Load sample" button.
+KB/sync/AI features) and the "Load sample" button on the empty library.
+
+### Shipping — the last step of every task
+
+The phone runs the bundle the home server last published, not the working tree, so
+a change that is not published does not exist for the user. **Finish every task that
+touched the web (`src/`, `index.html`, `app.config.json`, styles) by running:**
+
+```bash
+npm run app:publish
+```
+
+Then say which version was published. Installed APKs download it at their next start
+and apply it at the one after (or via the "Restart now" bar).
+
+Rebuild the APK **only** when the change is native — a Capacitor plugin, `android/`,
+`capacitor.config.json`, icons — because that cannot travel over the air:
+
+```bash
+npm run cap:sync && (cd android && ./gradlew assembleDebug)
+# → android/app/build/outputs/apk/debug/app-debug.apk (must be installed by hand)
+```
+
+A native change still needs `app:publish` too: the APK's embedded bundle and the
+published one should not drift apart.
 
 ## Code map
 
@@ -136,14 +163,18 @@ KB/sync/AI features) and the in-app "Load sample" button.
   Progress hubs. `src/deck.js` / `src/swiper.js` — Word Swiper.
 - `src/settings.js` — native language, default reading language, runtime **active**
   reading language (the open book's, read via `getReadingLang()`), home-server URL,
+  OTA update URL (Android-only; falls back to the home-server URL),
   profile, AI model override, reading mode/font, read-aloud voice + speed, shelf sort.
   Build-time **defaults** are centralized in `app.config.json` (imported here) — the
   shipped home-server IP + default languages, so re-shipping them never touches code;
   every value stays user-overridable in Settings.
+- `src/appUpdate.js` — Android OTA: pulls a newer web bundle from the home server
+  and stages it for the next start. Never a dependency (no-op on web/offline).
 - `src/main.js` — view switching (`shelf | server | dictionary | progress | reader |
   swiper`) and wiring.
 - `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,
-  position, aiDefine), `generate/` (refine + explain pipelines, book CLI, `audit.js`,
+  position, aiDefine, appUpdate — the OTA bundle, published by `publishApp.js`),
+  `generate/` (refine + explain pipelines, book CLI, `audit.js`,
   `bookJob.js` — per-book coverage + the in-app build job), `ingest/` (Kaikki +
   `forms.js` + `epubText.js`), `db.js` / `library-db.js` (schemas), `lemma.js` (the
   lemma layer: formOf / family / verbForms grounding), `paradigms.js` (curated).

@@ -24,7 +24,10 @@ server/
   paradigms.js      hand-curated paradigms: pronouns, BE/HAVE/DO, modals,
                     demonstratives, irregular degrees (good/better/best)
   log.js            colored per-request console log (HIT/MISS/BUILDING/BUILT…)
-  routes/           define, build, words, stats, books, vocab, position, aiDefine
+  routes/           define, build, words, stats, books, vocab, position, aiDefine,
+                    appUpdate (OTA web bundles for the Android app)
+  publishApp.js     `npm run app:publish`: zip dist/ → data/app/, point latest.json
+  app-bundle.js     where published bundles live (shared by the two above)
   generate/         ollama.js (refine), build.js (refine-and-store pipeline),
                     explain.js (context AI), book.js (batch CLI), run.js (text CLI),
                     audit.js (find + repair wrong entries),
@@ -32,7 +35,7 @@ server/
   ingest/           kaikki.js (Wiktextract JSONL → KB), pdfText.js, run.js (CLI),
                     forms.js (rebuild only the inflections table)
 data/               gitignored: dictionary.sqlite, library.sqlite, books/ (blobs),
-                    kaikki-<lang>.jsonl (user-dropped dump)
+                    app/ (published web bundles), kaikki-<lang>.jsonl (user dump)
 ```
 
 Both DBs run WAL with a 5 s busy timeout so the server and a batch CLI can share
@@ -40,7 +43,7 @@ them. The server imports `src/normalize.js` and `src/words.js` directly — one
 implementation of word keying and segmentation for browser and Node, so KB keys
 (`<lang>:<word>`) always match what the reader makes clickable.
 
-Env vars: `KB_PORT`, `KB_DB_PATH`, `LIBRARY_DB_PATH`, `LIBRARY_BOOKS_DIR`,
+Env vars: `KB_PORT`, `KB_DB_PATH`, `LIBRARY_DB_PATH`, `LIBRARY_BOOKS_DIR`, `APP_BUNDLE_DIR`,
 `KB_OLLAMA_URL` (default `http://localhost:11434`), `KB_REFINE_MODEL`,
 `KB_EXPLAIN_MODEL` (default `gemma4:e2b`), `KAIKKI_FILE`.
 
@@ -231,7 +234,14 @@ GET    /position?user=&book=            one book's reading position (or &since= 
 POST   /ai/define                       explain in reading language (cached)
 POST   /ai/explain                      explain in native language (cached)
 GET    /ai/health · /ai/models          Ollama probe · installed models
+GET    /app/latest                      published web bundle { version, size, sha256 }; 404 if none
+GET    /app/bundle.zip                  that bundle (OTA for the APK — see docs/android.md)
 ```
+
+`/app/*` is **read-only over HTTP**: publishing is the local `npm run app:publish`
+(builds the web, zips `dist/` into `data/app/`, repoints `latest.json`, keeps the
+last 3 for rollback). The LAN is trusted enough to *serve* code to the phones, not
+to let any device *push* code the others will run.
 
 ## 7. Client integration
 
@@ -245,6 +255,9 @@ GET    /ai/health · /ai/models          Ollama probe · installed models
   (`onChange` / `applyRemoteEntry`).
 - `src/positionSync.js` — reading-position push/pull, keyed by book title; the
   reader pulls on open and pushes as you read.
+- `src/appUpdate.js` — Android only: checks `/app/latest` on start and pulls a
+  newer web bundle over the LAN, so a web change reaches the phone without
+  reinstalling the APK.
 - One setting (`Home server` URL, default `http://192.168.100.6:4321`) turns the
   whole integration on; away from the LAN every call fails soft and the app
   falls back to its local, offline behavior.

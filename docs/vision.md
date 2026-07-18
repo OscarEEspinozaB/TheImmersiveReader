@@ -278,12 +278,3 @@ the home LAN for the two things that genuinely need a server: **the AI (Ollama)*
 - **Away-mode UX.** The app should know which server it can currently reach and route
   transparently (home when on-LAN, phone-local when away, offline-degraded when
   neither), surfacing the state without asking the user to flip switches.
-- **Over-the-air web updates (OTA).** Today the APK embeds a build of the web
-  (`dist/`), so shipping a web change means rebuilding and reinstalling the APK — the
-  price of full offline. The chosen future path (owner's call) is an OTA updater
-  (e.g. `@capgo/capacitor-updater`): the native shell stays installed while the web
-  bundle updates itself from a URL we control. The elegant fit here is to pull the
-  bundle **from the home-server on the LAN** and fall back to the embedded bundle
-  when offline — same reach-what-you-can logic as away-mode above. Rejected for now:
-  pointing Capacitor's `server.url` straight at the hosted web (instant updates but
-  loses true offline and needs the server always reachable).

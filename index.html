@@ -26,23 +26,8 @@
     </header>
 
     <nav id="menu" class="menu" hidden>
-      <label class="menu__item">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 20h14" />
-        </svg>
-        <span>Open file</span>
-        <input id="file-input" type="file" accept=".txt,.md,.pdf,.epub,.tir" hidden />
-      </label>
-
-      <button id="sample-button" class="menu__item" type="button">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z" /><path d="M8 3v18" />
-        </svg>
-        <span>Load sample</span>
-      </button>
-
-      <div class="menu__section">
-        <span class="menu__section-label">Reading</span>
+      <details class="menu__section">
+        <summary class="menu__section-label">Reading</summary>
         <label class="menu__field">
           <span>Mode</span>
           <select id="reading-mode-select">
@@ -83,10 +68,10 @@
           <span>My language</span>
           <select id="lang-select"></select>
         </label>
-      </div>
+      </details>
 
-      <div class="menu__section">
-        <span class="menu__section-label">Server &amp; sync</span>
+      <details class="menu__section">
+        <summary class="menu__section-label">Server &amp; sync</summary>
         <label class="menu__field">
           <span>Home server</span>
           <input id="kb-url" type="text" placeholder="http://192.168.100.6:4321" autocomplete="off" />
@@ -101,10 +86,32 @@
             <option value="">Server default</option>
           </select>
         </label>
-      </div>
+      </details>
 
-      <div class="menu__section">
-        <span class="menu__section-label">Data</span>
+      <!-- Android only (src/main.js unhides it on native): the APK updates its web
+           bundle over the air, and has no address bar to recover from a bad one. -->
+      <details class="menu__section" id="app-update-section" hidden>
+        <summary class="menu__section-label">App updates</summary>
+        <label class="menu__field">
+          <span>Update URL</span>
+          <input id="update-url" type="text" placeholder="same as home server" autocomplete="off" />
+        </label>
+        <button id="check-update" class="menu__item" type="button">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" />
+          </svg>
+          <span>Check for updates</span>
+        </button>
+        <button id="reset-app" class="menu__item menu__item--danger" type="button">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10H9" />
+          </svg>
+          <span>Previous version</span>
+        </button>
+      </details>
+
+      <details class="menu__section">
+        <summary class="menu__section-label">Data</summary>
         <button id="export-words" class="menu__item" type="button">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 4v12" /><path d="m7 11 5 5 5-5" /><path d="M5 20h14" />
@@ -126,12 +133,17 @@
           </svg>
           <span>Reset vocabulary</span>
         </button>
-      </div>
+      </details>
 
-      <div class="menu__section">
-        <span class="menu__section-label">Theme</span>
+      <details class="menu__section">
+        <summary class="menu__section-label">Theme</summary>
         <div id="theme-swatches" class="menu__themes"></div>
-      </div>
+      </details>
+
+      <!-- Which web bundle is running (Android only). Deliberately OUTSIDE the
+           collapsible sections: "did the update land?" must be answerable by
+           opening the menu, not by hunting through it. -->
+      <div class="menu__version" id="app-version" hidden></div>
     </nav>
 
     <!-- Bookshelf: the home screen. Lists saved books; open one to read. -->
@@ -183,10 +195,15 @@
       <div id="reader" class="reader"></div>
     </main>
 
+    <!-- Reading status bar: which book is open (left) and how far in it we are
+         (right). Present in both reading modes; only the page arrows are paged-only. -->
     <footer id="pager" class="pager" hidden>
-      <button id="prev-page" type="button" disabled>&#9664;</button>
-      <span id="page-indicator" class="pager__indicator">—</span>
-      <button id="next-page" type="button" disabled>&#9654;</button>
+      <span id="page-book" class="pager__book"></span>
+      <div class="pager__nav">
+        <button id="prev-page" type="button" disabled>&#9664;</button>
+        <span id="page-indicator" class="pager__indicator">—</span>
+        <button id="next-page" type="button" disabled>&#9654;</button>
+      </div>
     </footer>
 
     <!-- Primary navigation: first-level hub destinations. Hidden while reading

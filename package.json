@@ -14,6 +14,7 @@
     "ingest:forms": "node server/ingest/forms.js en",
     "build:book": "node server/generate/book.js",
     "kb:audit": "node server/generate/audit.js",
+    "app:publish": "vite build && node server/publishApp.js",
     "cap:sync": "vite build && cap sync android",
     "cap:open": "cap open android",
     "cap:icons": "capacitor-assets generate --android --iconBackgroundColor '#000000' --iconBackgroundColorDark '#000000'"
@@ -21,6 +22,8 @@
   "dependencies": {
     "@capacitor-community/text-to-speech": "^5.1.0",
     "@capacitor/app": "^6.0.3",
+    "@capacitor/status-bar": "^6.0.3",
+    "@capgo/capacitor-updater": "^6.50.2",
     "@fontsource-variable/literata": "^5.2.8",
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",

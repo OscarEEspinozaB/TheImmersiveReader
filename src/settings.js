@@ -61,6 +61,11 @@ const settings = {
   // app.config.json) so the offline dictionary works out of the box with no
   // configuration. On the phone this default must be the server's LAN IP.
   kbUrl: appConfig.server.defaultUrl,
+  // Where the ANDROID app pulls its web updates from (OTA — src/appUpdate.js).
+  // Meaningless on the web, which is always served the current build by whoever
+  // hosts it. Empty = use kbUrl: the bundle is normally published to the same home
+  // server, and this exists so the two can be split without touching code.
+  updateUrl: appConfig.server.updateUrl,
   // Lightweight profile name for per-user vocabulary sync (empty = sync off, the
   // vocabulary stays device-local). No password — trusted home LAN.
   profile: '',
@@ -96,6 +101,7 @@ function load() {
     // Only a non-empty saved value overrides the default — a blank/absent one
     // keeps the built-in home IP, so the local dictionary stays on by default.
     if (typeof obj.kbUrl === 'string' && obj.kbUrl) settings.kbUrl = obj.kbUrl;
+    if (typeof obj.updateUrl === 'string') settings.updateUrl = obj.updateUrl;
     if (typeof obj.profile === 'string') settings.profile = obj.profile;
     if (SORT_OPTIONS.some((o) => o.value === obj.sortBy)) settings.sortBy = obj.sortBy;
     if (obj.readingMode === 'paged' || obj.readingMode === 'continuous') settings.readingMode = obj.readingMode;
@@ -169,6 +175,20 @@ export function getKbUrl() {
 
 export function setKbUrl(url) {
   settings.kbUrl = (url || '').trim().replace(/\/+$/, '');
+  save();
+}
+
+/**
+ * Base URL the Android app fetches web updates from (`/app/latest`,
+ * `/app/bundle.zip`). Falls back to the home-server URL, which is where
+ * `npm run app:publish` puts the bundle. Android-only; ignored on the web.
+ */
+export function getUpdateUrl() {
+  return settings.updateUrl || settings.kbUrl;
+}
+
+export function setUpdateUrl(url) {
+  settings.updateUrl = (url || '').trim().replace(/\/+$/, '');
   save();
 }
 

@@ -2,6 +2,8 @@
 // defined by CSS variables under [data-theme='<id>'] in main.css; the preview
 // colors here mirror those so the menu can render swatches.
 
+import { syncStatusBarStyle } from '../statusBar.js';
+
 const STORAGE_KEY = 'immersive-reader.theme.v1';
 const DEFAULT_THEME = 'midnight';
 
@@ -32,6 +34,12 @@ export function getTheme() {
   return current;
 }
 
+/** Re-push the current theme's icon style (call once the native plugin loads). */
+export function refreshStatusBarStyle() {
+  const theme = THEMES.find((t) => t.id === current);
+  if (theme) syncStatusBarStyle(theme.mode);
+}
+
 export function setTheme(id) {
   if (!isValid(id)) return;
   apply(id);
@@ -45,4 +53,6 @@ export function setTheme(id) {
 function apply(id) {
   current = id;
   document.documentElement.dataset.theme = id;
+  const theme = THEMES.find((t) => t.id === id);
+  if (theme) syncStatusBarStyle(theme.mode); // match status-bar icons on native
 }

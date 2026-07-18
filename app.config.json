@@ -2,7 +2,9 @@
   "$comment": "Centralized build-time defaults for the app (web + Android APK). These are DEFAULTS ONLY: the user can override any of them at runtime in Settings, and their choice is persisted in localStorage. Change values here to reship different defaults (e.g. a new home-server IP) without touching code. Bundled into every build via a JSON import in src/settings.js.",
   "server": {
     "comment": "Home-server (dictionary KB + AI explanations + vocab/position sync) base URL. On the phone this must be the LAN IP of the machine running `npm run server`, not localhost. Empty string = local dictionary/sync off until the user sets it.",
-    "defaultUrl": "http://192.168.100.6:4321"
+    "defaultUrl": "http://192.168.100.6:4321",
+    "updateComment": "Base URL the ANDROID app pulls its web updates from (OTA: /app/latest + /app/bundle.zip, published by `npm run app:publish`). Empty string = use defaultUrl above, which is the normal case: same home server. Set it only to serve updates from a different host. Ignored by the web build.",
+    "updateUrl": ""
   },
   "defaults": {
     "nativeLanguage": "Spanish",

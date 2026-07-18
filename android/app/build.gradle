@@ -30,6 +30,18 @@ repositories {
     }
 }
 
+// The OTA updater plugin (@capgo/capacitor-updater) hardcodes WorkManager 2.10.5,
+// which refuses to be consumed by a project compiling against anything below SDK 35
+// — this one is on Capacitor 6's defaults (compileSdk 34 / AGP 8.2.1). 2.9.1 is the
+// last release that compiles against 34, and the plugin only uses the long-stable
+// WorkManager API (OneTimeWorkRequest / Constraints / BackoffPolicy) to run the
+// bundle download. Drop this pin when the project moves to compileSdk 35+.
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.work:work-runtime:2.9.1'
+    }
+}
+
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"

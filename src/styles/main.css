@@ -236,8 +236,9 @@ body {
   min-width: 0;
 }
 
-/* Grouped settings: a labeled block of related fields, replacing plain
-   dividers so the flyout reads as sections instead of one long flat list. */
+/* Grouped settings: a <details> disclosure per topic. Collapsed by default so the
+   flyout is a short list of headings — every section (Theme included) stays one tap
+   away no matter how many settings accumulate. */
 .menu__section {
   display: flex;
   flex-direction: column;
@@ -248,12 +249,57 @@ body {
 }
 
 .menu__section-label {
-  padding: 0 0.6rem 0.15rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--text) 55%, transparent);
+  cursor: pointer;
+  list-style: none; /* the default triangle; ::before below replaces it */
+}
+
+.menu__section-label::-webkit-details-marker {
+  display: none; /* same, for WebKit (the Android WebView) */
+}
+
+/* A chevron that points down when the section is open. */
+.menu__section-label::before {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.menu__section[open] > .menu__section-label::before {
+  transform: rotate(45deg);
+}
+
+.menu__section-label:hover {
+  color: var(--text);
+}
+
+/* Always-visible footer of the settings menu: the running web-bundle version. */
+.menu__version {
+  white-space: pre-line; /* the running version and its source read as two lines */
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.6rem 0.15rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  opacity: 0.55;
+}
+
+/* An update is downloaded and waiting for a restart — the one state worth color. */
+.menu__version.is-pending {
+  color: var(--word-learning);
+  opacity: 0.9;
 }
 
 /* Theme palette swatches */
@@ -301,17 +347,19 @@ body {
   touch-action: pan-y; /* horizontal gestures (page turns) are handled in JS */
 }
 
-/* Continuous mode never paginates, so it can hand the chrome's space back to the
-   text: the pager doesn't exist there (no bottom reserve at all), and when the
-   top bar auto-hides its clearance collapses to the safe area. Paged mode keeps
-   the constant padding above — reclaiming it would repaginate on every toggle. */
+/* Continuous mode never paginates, so it can hand the HIDDEN chrome's space back
+   to the text: while the bars are away its clearance collapses to the safe areas.
+   Paged mode keeps the constant padding above — reclaiming it would repaginate on
+   every toggle. */
 .reader-wrap--scroll {
-  padding-bottom: calc(var(--sab) + 0.5rem);
-  transition: padding-top 0.25s ease; /* match the bars' slide */
+  transition:
+    padding-top 0.25s ease,
+    padding-bottom 0.25s ease; /* match the bars' slide */
 }
 
 body.chrome-hidden .reader-wrap--scroll {
   padding-top: calc(var(--sat) + 0.5rem);
+  padding-bottom: calc(var(--sab) + 0.5rem);
 }
 
 /* Reader viewport: clips the flowing columns; one column == one page.
@@ -540,7 +588,8 @@ body.chrome-hidden .reader-wrap--scroll {
   }
 }
 
-/* Pager: fixed overlay at the bottom; slides away with the top bar. */
+/* Reading status bar: fixed overlay at the bottom; slides away with the top bar.
+   Book title on the left, page arrows + % on the right. */
 .pager {
   position: fixed;
   bottom: 0;
@@ -551,8 +600,10 @@ body.chrome-hidden .reader-wrap--scroll {
   padding-bottom: var(--sab);
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 1.5rem;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-left: calc(0.9rem + var(--sal));
+  padding-right: calc(0.9rem + var(--sar));
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   border-top: 1px solid var(--border);
   backdrop-filter: blur(6px);
@@ -644,9 +695,33 @@ body.nav-hidden .primary-nav {
   }
 }
 
+/* The open book's title. It yields to the readout: it shrinks and ellipsises
+   rather than pushing the % off the bar. */
+.pager__book {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.pager__nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex: none;
+}
+
+/* Continuous mode has no pages to step through — only the % readout. */
+.pager--scroll button {
+  display: none;
+}
+
 .pager__indicator {
-  min-width: 5rem;
-  text-align: center;
+  min-width: 2.5rem;
+  text-align: right;
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
 }
@@ -1097,6 +1172,24 @@ button.kb-form:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+/* The empty library's one offer: try the app with the bundled sample book. */
+.shelf__sample {
+  display: block;
+  margin: 0.9rem auto 0;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 1.1rem;
+  cursor: pointer;
+}
+
+.shelf__sample:hover {
+  border-color: var(--text);
 }
 
 .shelf__empty {
@@ -2403,4 +2496,45 @@ button.kb-form:focus-visible {
 
 .book__action.is-stop {
   color: var(--word-unknown);
+}
+
+/* OTA update notice (Android only, src/appUpdate.js). The new web bundle is
+   already staged for the next start; this bar only offers to skip the wait, so it
+   is dismissible and never blocks the app. Sits above the bottom chrome. */
+.app-update {
+  position: fixed;
+  left: calc(0.75rem + var(--sal));
+  right: calc(0.75rem + var(--sar));
+  bottom: calc(0.75rem + var(--sab) + var(--pager-h));
+  z-index: 40; /* above popups: it is a whole-app message */
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.app-update__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-update button {
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+.app-update__apply {
+  border-color: var(--word-learning);
+  color: var(--word-learning);
 }

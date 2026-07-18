@@ -8,5 +8,11 @@
   "server": {
     "androidScheme": "http",
     "cleartext": true
+  },
+  "plugins": {
+    "CapacitorUpdater": {
+      "autoUpdate": false,
+      "resetWhenUpdate": true
+    }
   }
 }

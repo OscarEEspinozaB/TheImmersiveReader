@@ -29,9 +29,10 @@ const sorters = {
 
 /**
  * @param {HTMLElement} container
- * @param {{ view: 'grid'|'list', sortBy?: string, onOpen: (id: string) => void }} opts
+ * @param {{ view: 'grid'|'list', sortBy?: string, onOpen: (id: string) => void,
+ *           onSample?: () => void }} opts
  */
-export async function renderShelf(container, { view, sortBy = 'lastRead', onOpen, onPractice }) {
+export async function renderShelf(container, { view, sortBy = 'lastRead', onOpen, onPractice, onSample }) {
   for (const url of coverUrls) URL.revokeObjectURL(url);
   coverUrls = [];
 
@@ -45,6 +46,16 @@ export async function renderShelf(container, { view, sortBy = 'lastRead', onOpen
     empty.className = 'shelf__empty';
     empty.textContent = 'Your library is empty. Add a .txt, .md or .pdf to begin.';
     container.appendChild(empty);
+    // The sample book belongs to exactly this moment — an empty library — not to
+    // the settings menu, where it sat between unrelated options forever after.
+    if (onSample) {
+      const sample = document.createElement('button');
+      sample.className = 'shelf__sample';
+      sample.type = 'button';
+      sample.textContent = 'Load sample';
+      sample.addEventListener('click', onSample);
+      container.appendChild(sample);
+    }
     return;
   }
 
