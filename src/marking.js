@@ -60,11 +60,17 @@ const ARMING_MIN_MS = 400;
  * @param {{
  *   getSentence?: (wordIndex: number) => string,
  *   getParagraph?: (wordIndex: number) => string,
+ *   getParagraphSpeech?: (wordIndex: number) =>
+ *     { text: string, words: { start: number, end: number, wordIndex: number }[] } | null,
+ *   followWord?: (wordIndex: number) => void,
  *   book?: { uid?: string },
  * }} [opts]
  *   `book` identifies the open book so server-cached AI answers are stored/shared
  *   per book (the sentence is the real key; book + page are organizing metadata).
- *   `getParagraph` backs the triple-tap "copy paragraph" gesture.
+ *   `getParagraph` backs the paragraph bubble's copy action; `getParagraphSpeech`
+ *   its continuous read-aloud (paragraph slices from any word, with per-word
+ *   offsets for the follow-along highlight — see sentences.js); `followWord`
+ *   brings an off-page word into view so the highlight can follow the voice.
  */
 // ONE popup (and one request counter) for the whole app. attachMarking runs on
 // every re-render (book open, reading-mode or font change), and each WordPopup
@@ -80,7 +86,16 @@ export function hidePopup() {
   popup?.hide();
 }
 
-export function attachMarking(flow, { getSentence = () => '', getParagraph = () => '', book = {} } = {}) {
+export function attachMarking(
+  flow,
+  {
+    getSentence = () => '',
+    getParagraph = () => '',
+    getParagraphSpeech = null,
+    followWord = null,
+    book = {},
+  } = {},
+) {
   if (!popup) popup = new WordPopup();
   popup.hide(); // a popup left open by the previous render anchors to a dead span
   requestId += 1;
@@ -352,7 +367,8 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
   //  • Press-and-HOLD any word (incl. known) → the same word bubble; the required
   //    hold grows with how well the word is known (OPEN_HOLD_MS) and a fill shows
   //    the time remaining. The full popup only ever opens FROM the bubble.
-  //  • Double tap → the paragraph bubble (read aloud / copy paragraph / copy word).
+  //  • Double tap → the paragraph bubble (read aloud from the tapped word /
+  //    copy paragraph / copy word).
   // Holding and tapping never collide: a tap releases before the hold fires.
   let holdTimer = null;
   let armedSpan = null;
@@ -411,9 +427,13 @@ export function attachMarking(flow, { getSentence = () => '', getParagraph = () 
     resetTaps();
     if (!span) return;
     if (count >= 2) {
+      const wordIndex = Number(span.dataset.i);
       showParagraphActions(span, {
         surface: span.textContent,
-        paragraph: getParagraph(Number(span.dataset.i)),
+        paragraph: getParagraph(wordIndex),
+        wordIndex,
+        getParagraphSpeech,
+        followWord,
       });
     } else if (span.dataset.state !== 'known' && span.dataset.state !== 'discarded') {
       // Known and discarded are "resolved": a single tap never interrupts reading.

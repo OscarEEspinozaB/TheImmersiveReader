@@ -4,13 +4,16 @@
 // gesture.
 //
 // Two modes share one element:
-//  • Word bubble — word (state-colored) + part of speech, 🔊 (word, then its
-//    definition once loaded), a 2-line definition, the word's FAMILY (its
-//    paradigm, each form in its own state's color — so a red "gone" is seen next
-//    to a white "go" the reader already knows), state chips to mark without the
-//    popup, and ⋯ to expand into the full popup.
+//  • Word bubble — word (state-colored) + part of speech, 🔊 (the word alone —
+//    hearing its pronunciation must not drag the whole definition along), a
+//    2-line definition, the word's FAMILY (its paradigm, each form in its own
+//    state's color — so a red "gone" is seen next to a white "go" the reader
+//    already knows), state chips to mark without the popup, and ⋯ to expand
+//    into the full popup.
 //  • Paragraph bubble — visible actions on the tapped word's paragraph:
-//    read aloud (toggle), copy paragraph, copy word.
+//    read aloud FROM THE TAPPED WORD, continuously to the end of the book
+//    (paragraph by paragraph, readAloud.js), with each word highlighted as it
+//    is spoken and the page following the voice; copy paragraph; copy word.
 //  • Link bubble — a URL/e-mail token was tapped: open it (new tab) or copy it.
 //    Navigation only ever happens from the visible button, never from the tap.
 //
@@ -21,6 +24,7 @@ import { getQuickDefinition } from './definitions/index.js';
 import { renderFamilyStrip, posSummary } from './kbDetails.js';
 import { getReadingLang } from './settings.js';
 import { canSpeak, speak, isSpeaking, stopSpeaking } from './speech.js';
+import { isReading, startReading, stopReading } from './readAloud.js';
 import { copyWithToast } from './copy.js';
 import { MARK_ORDER } from './vocabulary.js';
 
@@ -160,12 +164,9 @@ export function showGloss(span, { surface, word, sentence, parts = null, onExpan
   const pos = document.createElement('span');
   pos.className = 'gloss__pos';
 
-  const speakBtn = speakToggle(
-    // Word first, then its explanation once it has one — “oír la palabra y su
-    // explicación” in a single control.
-    () => (defText ? `${surface}. ${defText}` : surface),
-    { label: `Pronounce ${surface} and its meaning` },
-  );
+  // The word ALONE: pronunciation is what the 🔊 is for; the definition is
+  // already on screen and reading it out loud was noise (user feedback).
+  const speakBtn = speakToggle(() => surface, { label: `Pronounce ${surface}` });
 
   const more = document.createElement('button');
   more.type = 'button';
@@ -238,12 +239,41 @@ export function showGloss(span, { surface, word, sentence, parts = null, onExpan
   position(span);
 }
 
+// Read-aloud follow-along (MS Edge style): the word being spoken carries
+// .is-speaking. Spans are looked up by global word index at each boundary, so
+// the highlight survives the bubble hiding and a page re-render. Returns the
+// span (null when that word is not in the DOM — the voice ran past the page).
+let spokenEl = null;
+function highlightSpokenWord(wordIndex) {
+  const next =
+    wordIndex == null ? null : document.querySelector(`.word[data-i="${wordIndex}"]`);
+  if (next !== spokenEl) {
+    spokenEl?.classList.remove('is-speaking');
+    spokenEl = next;
+    spokenEl?.classList.add('is-speaking');
+  }
+  return next;
+}
+
 /**
  * Paragraph bubble: visible actions for the tapped word's paragraph.
  * @param {HTMLElement} span the word element (anchor)
- * @param {{ surface: string, paragraph: string }} opts
+ * @param {{ surface: string, paragraph: string, wordIndex?: number | null,
+ *           getParagraphSpeech?: ((wordIndex: number) =>
+ *             { text: string, words: { start: number, end: number, wordIndex: number }[] } | null) | null,
+ *           followWord?: ((wordIndex: number,
+ *                          ctx: { paragraphStart: boolean }) => void) | null }} opts
+ *   With `getParagraphSpeech` (sentences.js), Read from here runs a CONTINUOUS
+ *   session (readAloud.js): from the tapped word to the end of the book,
+ *   paragraph by paragraph, highlighting the spoken word; `followWord` brings a
+ *   word outside the rendered page into view (page turn / scroll) so the
+ *   highlight can keep following. Without it, the button falls back to a
+ *   one-shot read of `paragraph`. Copying always copies the whole paragraph.
  */
-export function showParagraphActions(span, { surface, paragraph }) {
+export function showParagraphActions(
+  span,
+  { surface, paragraph, wordIndex = null, getParagraphSpeech = null, followWord = null },
+) {
   show(span);
 
   const head = document.createElement('div');
@@ -256,19 +286,35 @@ export function showParagraphActions(span, { surface, paragraph }) {
   const actions = document.createElement('div');
   actions.className = 'gloss__actions';
 
-  if (canSpeak() && paragraph) {
-    const read = actionButton('🔊 Read aloud', () => {
-      if (isSpeaking()) {
-        stopSpeaking();
+  const continuous = getParagraphSpeech != null && wordIndex != null;
+  if (canSpeak() && (continuous || paragraph)) {
+    const read = actionButton('🔊 Read from here', () => {
+      if (isReading() || isSpeaking()) {
+        stopReading(); // also silences a plain one-shot speech
         return;
       }
-      const ok = speak(paragraph, getReadingLang(), {
-        onEnd: () => {
-          read.textContent = '🔊 Read aloud';
-          if (!el.hidden) armAutoHide();
+      const restore = () => {
+        read.textContent = '🔊 Read from here';
+        if (!el.hidden) armAutoHide();
+      };
+      read.textContent = '⏹ Stop';
+      if (!continuous) {
+        if (!speak(paragraph, getReadingLang(), { onEnd: restore })) restore();
+        return;
+      }
+      startReading({
+        fromWord: wordIndex,
+        getSlice: getParagraphSpeech,
+        getLang: getReadingLang,
+        onWord: (w, paragraphStart = false) => {
+          // Follow first (page turn / scroll may need to bring the word's span
+          // into the DOM), then paint. followWord decides whether any movement
+          // is warranted — asked once per boundary, never loops.
+          if (w != null && followWord) followWord(w, { paragraphStart });
+          highlightSpokenWord(w);
         },
+        onEnd: restore,
       });
-      if (ok) read.textContent = '⏹ Stop';
     });
     actions.appendChild(read);
   }

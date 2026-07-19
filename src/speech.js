@@ -1,8 +1,12 @@
 // Speech with the browser's built-in voices (Web Speech API) — free,
 // offline-capable, no server involved. Speaks single words (gloss bubble,
-// Dictionary hub), word + explanation, and whole paragraphs (paragraph bubble).
-// Voice and speed are user settings (Settings → Voice / Voice speed). Full
-// continuous read-aloud with word highlighting is future work (docs/vision.md §3).
+// Dictionary hub) and paragraph tails (paragraph bubble's "Read from here").
+// Callers can follow along via `onBoundary` (character offset of the word being
+// spoken — Web Speech boundary events on the web, the native engine's
+// onRangeStart on Android); engines without boundary events simply never call
+// it. Voice and speed are user settings (Settings → Voice / Voice speed).
+// Continuous book-length reading lives in readAloud.js, which chains paragraph
+// speaks on top of this module.
 //
 // Two engine quirks are worked around here:
 //  • cancel() immediately followed by speak() clips the first words on several
@@ -43,6 +47,12 @@ if (NATIVE) {
       .catch(() => {
         nativeVoices = [];
       });
+    // One listener for the app's lifetime: the native engine reports the char
+    // range of each word as it is spoken; route it to the active speech's
+    // onBoundary (activeOnBoundary is cleared whenever a speech run ends).
+    TextToSpeech.addListener('onRangeStart', (info) => {
+      activeOnBoundary?.(info.start);
+    }).catch(() => {});
   } catch (err) {
     console.error('getSupportedVoices failed:', err);
   }
@@ -64,19 +74,22 @@ function nativeVoiceIndex(lang) {
   return i >= 0 ? i : null;
 }
 
-function speakNative(text, lang, { rate, onEnd }) {
+function speakNative(text, lang, { rate, onEnd, onBoundary }) {
   invalidate(); // stop-logical whatever was playing; fires its onEnd
   const token = speakToken; // current after invalidate() bumped it
   activeOnEnd = onEnd || null;
+  activeOnBoundary = onBoundary || null;
   active = true;
   schedulePill(token);
-  const finish = () => {
+  const finish = (completed) => {
     if (token !== speakToken) return;
     active = false;
-    hidePill();
+    activeOnBoundary = null;
+    if (completed) hidePillSoon(); // linger: a chained follow-up may be coming
+    else hidePill();
     const cb = activeOnEnd;
     activeOnEnd = null;
-    cb?.();
+    cb?.(completed);
   };
   TextToSpeech.stop()
     .catch(() => {})
@@ -87,8 +100,8 @@ function speakNative(text, lang, { rate, onEnd }) {
       if (vi != null) opts.voice = vi;
       return TextToSpeech.speak(opts);
     })
-    .then(finish)
-    .catch(finish);
+    .then(() => finish(true))
+    .catch(() => finish(false));
   return true;
 }
 
@@ -131,17 +144,19 @@ function resolveVoice(lang) {
   return all.find((v) => (v.lang || '').toLowerCase().startsWith(base)) || null;
 }
 
-// Sentence chunks for queueing (one utterance per sentence).
+// Sentence chunks for queueing (one utterance per sentence). Each chunk keeps
+// its `start` offset into the original text so per-utterance boundary events
+// (relative to the chunk) can be mapped back to offsets the caller understands.
 function chunksOf(text, lang) {
   try {
     const out = [];
     for (const s of new Intl.Segmenter(lang, { granularity: 'sentence' }).segment(text)) {
       const t = s.segment.trim();
-      if (t) out.push(t);
+      if (t) out.push({ text: t, start: s.index + s.segment.indexOf(t) });
     }
-    return out.length ? out : [text];
+    return out.length ? out : [{ text, start: 0 }];
   } catch {
-    return [text];
+    return [{ text, start: 0 }];
   }
 }
 
@@ -151,8 +166,15 @@ function chunksOf(text, lang) {
 // something is playing and stops it on tap. It appears only for speech that
 // lasts past a beat, so a quick word pronunciation doesn't flash UI.
 const PILL_DELAY_MS = 300;
+// How long the pill outlives a NATURALLY finished speech: continuous read-aloud
+// (readAloud.js) chains paragraph after paragraph with a breathing gap between
+// them, and the pill must not blink out and back at every paragraph seam. Must
+// exceed that gap (plus the engines' settle delay). An explicit stop still
+// hides it at once.
+const PILL_LINGER_MS = 1000;
 let pill = null;
 let pillTimer = null;
+let pillHideTimer = null;
 
 function ensurePill() {
   if (pill) return;
@@ -168,6 +190,10 @@ function ensurePill() {
 
 function schedulePill(token) {
   if (pillTimer) clearTimeout(pillTimer);
+  if (pillHideTimer) {
+    clearTimeout(pillHideTimer); // a new speech keeps a lingering pill alive
+    pillHideTimer = null;
+  }
   pillTimer = setTimeout(() => {
     pillTimer = null;
     if (token !== speakToken || !active) return;
@@ -181,12 +207,26 @@ function hidePill() {
     clearTimeout(pillTimer);
     pillTimer = null;
   }
+  if (pillHideTimer) {
+    clearTimeout(pillHideTimer);
+    pillHideTimer = null;
+  }
   if (pill) pill.hidden = true;
+}
+
+// Hide the pill only if nothing new starts playing within the linger window.
+function hidePillSoon() {
+  if (pillHideTimer) clearTimeout(pillHideTimer);
+  pillHideTimer = setTimeout(() => {
+    pillHideTimer = null;
+    if (!active) hidePill();
+  }, PILL_LINGER_MS);
 }
 
 // --- Speaking -------------------------------------------------------------------
 let speakToken = 0; // invalidates the in-flight speech's handlers
 let activeOnEnd = null;
+let activeOnBoundary = null;
 let active = false;
 let lastCancelAt = 0;
 // HARD references to every queued utterance: Chrome garbage-collects utterance
@@ -195,15 +235,21 @@ let lastCancelAt = 0;
 let liveUtterances = [];
 
 // End the current speech logically: whoever was playing gets its onEnd (so play
-// buttons always restore), and stale utterance events become no-ops.
+// buttons always restore), and stale utterance events become no-ops. This is
+// the cancelled path — onEnd fires with completed=false.
 function invalidate() {
   speakToken += 1;
+  const wasActive = active;
   active = false;
+  activeOnBoundary = null;
   liveUtterances = [];
-  hidePill();
+  // Only a real interruption hides the pill. When nothing was playing (a new
+  // paragraph starting inside the chain's gap), a lingering pill must survive
+  // the seam — schedulePill() then adopts it for the new speech.
+  if (wasActive) hidePill();
   const cb = activeOnEnd;
   activeOnEnd = null;
-  cb?.();
+  cb?.(false);
 }
 
 function cancelEngine() {
@@ -216,14 +262,19 @@ function cancelEngine() {
  * a row should always voice the LAST one, not queue a backlog.
  * @param {string} text
  * @param {string} lang BCP-47 reading-language code (e.g. "en", "es", "pt-BR")
- * @param {{ rate?: number, onEnd?: () => void }} [opts] `onEnd` always fires —
- *   on natural end AND when the speech is cancelled/replaced — so callers can
- *   rely on it to restore a play button.
+ * @param {{ rate?: number, onEnd?: (completed: boolean) => void,
+ *           onBoundary?: (offset: number) => void }} [opts]
+ *   `onEnd` always fires — with `completed=true` on natural end, `false` when
+ *   the speech was cancelled/replaced — so callers can rely on it to restore a
+ *   play button, and chained readers (readAloud.js) can tell "go on" from
+ *   "stop". `onBoundary` fires with the character offset (into `text`) of each
+ *   word as it starts being spoken — best-effort: engines without boundary
+ *   events never call it.
  * @returns {boolean} whether speech started
  */
-export function speak(text, lang, { rate = getTtsRate(), onEnd } = {}) {
+export function speak(text, lang, { rate = getTtsRate(), onEnd, onBoundary } = {}) {
   if (!canSpeak() || !text) return false;
-  if (NATIVE) return speakNative(text, lang, { rate, onEnd });
+  if (NATIVE) return speakNative(text, lang, { rate, onEnd, onBoundary });
   const synth = window.speechSynthesis;
   invalidate();
   // Only poke the engine when something is actually playing/queued: cancelling
@@ -242,10 +293,17 @@ export function speak(text, lang, { rate = getTtsRate(), onEnd } = {}) {
     if (token !== speakToken) return; // replaced/stopped during the settle delay
     let remaining = chunks.length;
     for (const chunk of chunks) {
-      const u = new SpeechSynthesisUtterance(chunk);
+      const u = new SpeechSynthesisUtterance(chunk.text);
       u.lang = lang || 'en';
       if (voice) u.voice = voice;
       u.rate = rate;
+      if (onBoundary) {
+        u.onboundary = (e) => {
+          if (token !== speakToken) return;
+          if (e.name && e.name !== 'word') return; // sentence boundaries etc.
+          onBoundary(chunk.start + (e.charIndex || 0));
+        };
+      }
       let done = false; // some engines fire BOTH end and error for one utterance
       u.onend = u.onerror = () => {
         if (done || token !== speakToken) return;
@@ -253,11 +311,12 @@ export function speak(text, lang, { rate = getTtsRate(), onEnd } = {}) {
         remaining -= 1;
         if (remaining === 0) {
           active = false;
+          activeOnBoundary = null;
           liveUtterances = [];
-          hidePill();
+          hidePillSoon(); // natural end — linger for a chained follow-up
           const cb = activeOnEnd;
           activeOnEnd = null;
-          cb?.();
+          cb?.(true);
         }
       };
       liveUtterances.push(u); // keep it alive (see note above)
@@ -271,9 +330,21 @@ export function speak(text, lang, { rate = getTtsRate(), onEnd } = {}) {
   return true;
 }
 
+// Stop-request subscribers: the continuous reader (readAloud.js) must also end
+// its session when the pill's ⏹ is tapped BETWEEN paragraphs — at that moment
+// no speech is active, so its onEnd(false) alone can't carry the news.
+const stopListeners = new Set();
+
+/** Subscribe to every explicit stop request (the pill, any stopSpeaking call). */
+export function onSpeechStop(fn) {
+  stopListeners.add(fn);
+}
+
 /** Stop whatever is being spoken (no-op when silent). Fires its onEnd. */
 export function stopSpeaking() {
   invalidate();
+  hidePill(); // even a lingering pill: an explicit stop leaves no trace
+  for (const fn of stopListeners) fn();
   if (NATIVE) {
     TextToSpeech.stop().catch(() => {});
     return;
@@ -327,4 +398,86 @@ export function voicesForLang(lang = getReadingLang()) {
   const base = (lang || 'en').toLowerCase();
   const match = all.filter((v) => (v.lang || '').toLowerCase().startsWith(base));
   return match.length ? match : all;
+}
+
+// English display names for locale tags ("en-GB" → "English — United Kingdom").
+// Guarded: Intl.DisplayNames may be missing or reject odd tags.
+function localeLabel(tag) {
+  try {
+    const [base, region] = tag.split('-');
+    const l = new Intl.DisplayNames(['en'], { type: 'language' }).of(base);
+    const r = region ? new Intl.DisplayNames(['en'], { type: 'region' }).of(region.toUpperCase()) : '';
+    return r ? `${l} — ${r}` : l || tag;
+  } catch {
+    return tag;
+  }
+}
+
+/**
+ * The Settings picker's view of the voices: one entry per REAL voice, grouped
+ * by exact locale (each group labelled with country AND code — "English —
+ * United Kingdom (en-GB)"), every voice with a DISTINCT label. Needed because
+ * Android's engine both names voices generically after their locale alone
+ * ("inglés Australia" for every en-AU voice, in the device's language) AND
+ * lists each voice several times (local/network twins + a default
+ * placeholder): twins collapse into their offline variant, placeholders are
+ * dropped, duplicated names become a stable "Voice N", and voices that need
+ * connectivity are flagged "· online". Voices with real names (the web
+ * engines') keep them. `voiceURI` values are untouched — saved selections
+ * keep working.
+ * @param {string} [lang] defaults to the active reading language
+ * @returns {{ label: string, voices: { voiceURI: string, label: string }[] }[]}
+ */
+export function voiceGroupsForLang(lang = getReadingLang()) {
+  const seen = new Set();
+  const groups = new Map(); // locale tag → voices
+  for (const v of voicesForLang(lang)) {
+    const uri = v.voiceURI || v.name || '';
+    if (!uri || seen.has(uri)) continue; // drop true duplicates
+    seen.add(uri);
+    const tag = (v.lang || lang || 'en').replace('_', '-');
+    if (!groups.has(tag)) groups.set(tag, []);
+    groups.get(tag).push(v);
+  }
+
+  const out = [];
+  for (const [tag, all] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    // Google TTS inflates the list: every real voice appears TWICE (…-x-gba-local
+    // and …-x-gba-network are the same voice, synthesized on-device vs in the
+    // cloud), plus a "<locale>-language" placeholder for the engine default
+    // (a duplicate of one of the real voices — and Auto already covers it).
+    // Collapse to one entry per REAL voice, preferring the offline twin: it
+    // works in airplane mode and costs no data.
+    let voices = all.filter((v) => !new RegExp(`^${tag}-(language|default)$`, 'i').test(v.voiceURI || ''));
+    if (!voices.length) voices = all; // the placeholder was all there was
+    const byVoice = new Map(); // canonical id (twin suffix stripped) → best entry
+    for (const v of voices) {
+      const key = String(v.voiceURI).toLowerCase().replace(/-(local|network)$/, '');
+      const held = byVoice.get(key);
+      if (!held || (held.localService === false && v.localService === true)) byVoice.set(key, v);
+    }
+    voices = [...byVoice.entries()]
+      // Stable order (the canonical id is stable) so "Voice N" keeps meaning
+      // the same voice across openings.
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, v]) => v);
+
+    const names = voices.map((v) => v.name || '');
+    const entries = voices.map((v, i) => {
+      // Generic: no name, a name shared with a sibling voice, or a Google-TTS
+      // URI (…-x-<variant>-local|network) — those names are always the bare
+      // locale, even when the voice is alone in its group.
+      const generic =
+        !v.name ||
+        names.indexOf(v.name) !== names.lastIndexOf(v.name) ||
+        /-x-[a-z0-9]+-(local|network)$/i.test(v.voiceURI || '');
+      const base = generic ? `Voice ${i + 1}` : v.name;
+      // Offline is the norm (and the preferred twin above) — only flag the
+      // voices that NEED connectivity. localService undefined shows no flag.
+      const net = v.localService === false ? ' · online' : '';
+      return { voiceURI: v.voiceURI, label: `${base}${net}` };
+    });
+    out.push({ label: `${localeLabel(tag)} (${tag})`, voices: entries });
+  }
+  return out;
 }

@@ -68,3 +68,45 @@ export function buildParagraphLookup(text, tokens) {
     return '';
   };
 }
+
+/**
+ * Build a function mapping a word index to the SPEECH SLICE of its paragraph:
+ * the paragraph's text from that word to the end (read-aloud starts where the
+ * reader tapped — tap the first word to hear the whole paragraph) plus every
+ * word inside the slice with its offsets, so speech boundary events (character
+ * offsets into the spoken text) can be mapped back to word spans and
+ * highlighted as they are pronounced.
+ * @param {string} text the clean source text
+ * @param {import('./tokenizer.js').Token[]} tokens tokens in document order
+ * @returns {(wordIndex: number) =>
+ *   { text: string, words: { start: number, end: number, wordIndex: number }[] } | null}
+ */
+export function buildParagraphSpeechLookup(text, tokens) {
+  const words = []; // { at, len } by word index, offsets into `text`
+  let offset = 0;
+  for (const t of tokens) {
+    if (t.isWord) words.push({ at: offset, len: t.text.length });
+    offset += t.text.length;
+  }
+
+  const paragraphs = [];
+  const re = /[^\n]+/g;
+  let m;
+  while ((m = re.exec(text))) paragraphs.push({ start: m.index, end: m.index + m[0].length });
+
+  return (wordIndex) => {
+    const w = words[wordIndex];
+    if (!w) return null;
+    const p = paragraphs.find((x) => w.at >= x.start && w.at < x.end);
+    if (!p) return null;
+    const slice = { text: text.slice(w.at, p.end).trimEnd(), words: [] };
+    for (let j = wordIndex; j < words.length && words[j].at < p.end; j++) {
+      slice.words.push({
+        start: words[j].at - w.at,
+        end: words[j].at - w.at + words[j].len,
+        wordIndex: j,
+      });
+    }
+    return slice;
+  };
+}

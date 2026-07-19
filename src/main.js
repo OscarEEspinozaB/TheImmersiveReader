@@ -14,7 +14,11 @@ import { initAppUpdate, isNativeApp, currentBundle, checkNow, rollbackToPrevious
 import { attachMarking, hidePopup } from './marking.js';
 import { hideGloss } from './gloss.js';
 import { App as CapacitorApp } from '@capacitor/app';
-import { buildSentenceLookup, buildParagraphLookup } from './sentences.js';
+import {
+  buildSentenceLookup,
+  buildParagraphLookup,
+  buildParagraphSpeechLookup,
+} from './sentences.js';
 import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
 import { renderServerShelf } from './serverShelf.js';
@@ -29,7 +33,8 @@ import { prepareCover, documentCover, imagesWithCover } from './cover.js';
 import { renderSwiper } from './swiper.js';
 import { alertDialog, confirmDialog, selectDialog } from './dialog.js';
 import { listAiModels } from './definitions/index.js';
-import { canSpeak, voicesForLang } from './speech.js';
+import { canSpeak, voiceGroupsForLang } from './speech.js';
+import { stopReading } from './readAloud.js';
 import {
   addBook,
   getBook,
@@ -164,6 +169,9 @@ let activeView = 'shelf';
 function setView(view) {
   activeView = view;
   const reading = view === 'reader';
+  // Leaving the reader ends a continuous read-aloud: the voice must never keep
+  // going (and turning pages underneath) over the library or a hub view.
+  if (!reading) stopReading();
   // Tear down the swiper's key listener when leaving it.
   if (view !== 'swiper' && swiperEl._cleanup) {
     swiperEl._cleanup();
@@ -593,14 +601,30 @@ function populateVoiceOptions() {
   if (!canSpeak()) return;
   const current = getTtsVoice(); // the setting is the source of truth, not the select
   voiceSelect.innerHTML = '<option value="">Auto (language default)</option>';
-  for (const v of voicesForLang(getReadingLang())) {
-    const opt = document.createElement('option');
-    opt.value = v.voiceURI;
-    opt.textContent = `${v.name} (${v.lang})`;
-    voiceSelect.appendChild(opt);
+  // Grouped by locale with distinct per-voice labels (see voiceGroupsForLang —
+  // Android names every voice of a locale identically, so raw names collide).
+  for (const group of voiceGroupsForLang(getReadingLang())) {
+    const og = document.createElement('optgroup');
+    og.label = group.label;
+    for (const v of group.voices) {
+      const opt = document.createElement('option');
+      opt.value = v.voiceURI;
+      opt.textContent = v.label;
+      og.appendChild(opt);
+    }
+    voiceSelect.appendChild(og);
   }
   voiceSelect.value = current;
-  if (voiceSelect.value !== current) voiceSelect.value = ''; // saved voice not installed here
+  if (voiceSelect.value !== current) {
+    // The saved voice may be the collapsed local/network twin of a listed one
+    // (see voiceGroupsForLang) — show that twin as selected rather than
+    // pretending the choice fell back to Auto. Otherwise: not installed here.
+    const canon = (u) => u.toLowerCase().replace(/-(local|network)$/, '');
+    const twin = current
+      ? [...voiceSelect.options].find((o) => o.value && canon(o.value) === canon(current))
+      : null;
+    voiceSelect.value = twin ? twin.value : '';
+  }
 }
 
 // --- Vocabulary backup (export / import to a file) ---
@@ -695,11 +719,39 @@ function applyReadingFont() {
   root.setProperty('--reader-font-size', String(getReadingFontSize() / 100)); // unitless multiplier
 }
 
+// Follow the voice during a continuous read-aloud (`paginator` is the
+// module-level current reader, so this stays valid for the open book). Paged
+// mode: the page only turns when the spoken word is not on the current one.
+// Scroll mode — for following the book hands-free (cooking) — every NEW
+// paragraph aligns to the top band of the view, and inside a long paragraph
+// the view rolls forward whenever the voice nears the bottom edge, so the
+// spoken word never slips out of sight.
+function followSpokenWord(wordIndex, { paragraphStart = false } = {}) {
+  if (!paginator) return;
+  const span = paginator.content.querySelector(`.word[data-i="${wordIndex}"]`);
+  if (!span) {
+    paginator.goToWordIndex(wordIndex); // off-page / outside the window: jump
+    return;
+  }
+  if (getReadingMode() !== 'continuous') return; // paged: on-page by construction
+  const vr = reader.getBoundingClientRect();
+  const sr = span.getBoundingClientRect();
+  const topBand = vr.top + vr.height * 0.1; // where followed text settles
+  const nearBottom = sr.bottom > vr.bottom - vr.height * 0.18;
+  if (paragraphStart || nearBottom || sr.top < vr.top) {
+    reader.scrollTo({
+      top: reader.scrollTop + (sr.top - topBand),
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
+  }
+}
+
 // `restore` is either an exact word index (a number — used when re-rendering the SAME
 // content on this device, e.g. a font/mode change) or a { paragraph, word } position
 // (used when opening a book, possibly from another device). Paragraph-anchored so it
 // lands the right paragraph even if the word segmenter disagrees across engines.
 function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) {
+  stopReading(); // a re-render/new book orphans the session's word indexes
   if (pageTurn) {
     pageTurn.destroy();
     pageTurn = null;
@@ -726,6 +778,8 @@ function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) 
   attachMarking(paginator.content, {
     getSentence: buildSentenceLookup(text, tokens),
     getParagraph: buildParagraphLookup(text, tokens),
+    getParagraphSpeech: buildParagraphSpeechLookup(text, tokens),
+    followWord: followSpokenWord,
     book: { uid: currentBookId || '' },
   });
 

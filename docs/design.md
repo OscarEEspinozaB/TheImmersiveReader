@@ -181,7 +181,8 @@ becomes another hidden gesture:
   (`src/gloss.js`): a speech bubble with a tail pointing at the word, visually
   distinct from the book text. It holds the word (state-colored) with a small
   **legend naming its current state** beside it, part of speech, a 🔊 that
-  pronounces the word and then its definition (`src/speech.js`, Web Speech), a
+  pronounces the word — the word alone, never the definition text
+  (`src/speech.js`, Web Speech), a
   two-line definition, **the word's family** (§6a — the paradigm, each form in the
   color of the state IT has), **three state chips** to mark without opening the
   popup, and `⋯` to expand into the full popup. The chips are always the **three states
@@ -198,11 +199,30 @@ becomes another hidden gesture:
   slower holds show a fill animation. It signals intent without the old heavy
   gate (2 s holds made sense when they guarded the full popup; the bubble is a light
   glance). The full popup only ever opens **from** the bubble.
-- **Double tap** opens the **paragraph bubble**: read the paragraph aloud
-  (toggle stop), copy the paragraph, copy the word (clipboard with a legacy
-  fallback for non-HTTPS LAN contexts, `src/copy.js`). While any read-aloud is
-  playing, a fixed **`⏹ Stop reading` pill** shows at the bottom — the playback
-  indicator and stop control that survives the bubble's auto-hide.
+- **Double tap** opens the **paragraph bubble**: `🔊 Read from here` starts a
+  **continuous read-aloud** (`src/readAloud.js`) — from the tapped word to the
+  end of the book, fed to the speech engine **one paragraph at a time** (long
+  single utterances stall every engine), with a short breathing gap between
+  paragraphs. As it plays, the **word being spoken is softly shaded** (a gentle
+  cross-fade, not a hard step) so the eye can follow the voice (MS Edge style;
+  Web Speech boundary events on the web, the native engine's `onRangeStart` on
+  Android — engines that report no boundaries still highlight and align each
+  paragraph's first word). The view **follows the voice** — built for following
+  the book hands-free: in paged mode the page turns when the voice leaves it;
+  in continuous mode each **new paragraph aligns to the top** of the view and,
+  inside a long paragraph, the view **rolls forward** whenever the spoken word
+  nears the bottom edge (smooth scroll; instant under `prefers-reduced-motion`),
+  so the reading never slips out of sight — even after scrolling away to peek
+  at something. Each paragraph re-reads the current voice/speed settings, so a change
+  in Settings applies from the next paragraph. The session ends at the book's
+  end, on the bubble's `⏹ Stop`, on the pill (below), when any other speech
+  starts (a word's 🔊), or on leaving the reader / re-rendering the book. Plus
+  copy the paragraph (always the whole paragraph) and copy the word (clipboard
+  with a legacy fallback for non-HTTPS LAN contexts, `src/copy.js`). While any
+  read-aloud is playing, a fixed **`⏹ Stop reading` pill** shows at the bottom —
+  the playback indicator and stop control that survives the bubble's auto-hide
+  (it lingers through the inter-paragraph gap instead of blinking, and stopping
+  inside that gap still ends the session).
 - **Tap on a link** (a URL/e-mail token, §4) opens the **link bubble**: the
   link's text plus `Open in new tab ↗` (scheme-less `www.` links get `https://`,
   e-mail addresses open as `mailto:`) and `Copy link`. The tap itself never
@@ -308,14 +328,19 @@ src/
   words.js           segmentation shared with the server's book builder
   vocabulary.js      <lang>:<word> → {state, at}; onChange/applyRemoteEntry for sync
   contractions.js    registry, color aggregation, AI-grown entries, migrations
-  sentences.js       sentence + paragraph lookup per word index
+  sentences.js       sentence / paragraph / paragraph-speech-slice lookup per
+                     word index (the slice: text from a word to the paragraph
+                     end + per-word offsets for the follow-along highlight)
   reader/            render, paginator, scroller, pageTurn, theme,
                      position.js (word index ↔ paragraph-anchored reading position)
   marking.js         hold/tap gestures, popup wiring   popup.js  the word popup
   gloss.js           the word/paragraph speech bubble (incl. the family strip)
-  speech.js          Web Speech: word, word+definition, paragraph read-aloud
+  speech.js          Web Speech (native TTS on Android): speak with per-word
+                     boundary callbacks + completed/cancelled onEnd
                      (user-set voice + speed; sentence-chunked; a settle delay
                      after cancel avoids the engines' first-words clipping)
+  readAloud.js       continuous read-aloud session: paragraph-by-paragraph
+                     chaining with a breathing gap, stop-anywhere semantics
   definitions/       index (chain), localDict, kbApi, dictionaryApi, serverAi,
                      ollama (contraction decomposition only), prompts
   definitionsCache.js  per-language word cache (dict + AI history + native)
@@ -329,6 +354,13 @@ src/
   settings.js        native language, default reading language, active (per-book)
                      reading language, home-server URL, profile, AI model,
                      reading mode/font, read-aloud voice + speed, shelf sort
+                     (the voice picker shows ONE entry per real voice, grouped
+                     by locale — country + code: Android's local/network twins
+                     collapse into the offline one, the engine's "<locale>-
+                     language" placeholder is dropped, generic per-locale names
+                     become a stable "Voice N", and connectivity-only voices
+                     are flagged "· online"; see voiceGroupsForLang in
+                     speech.js)
   main.js            view switching (shelf | server | dictionary | progress |
                      reader | swiper) and wiring
 ```

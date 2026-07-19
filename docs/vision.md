@@ -97,12 +97,6 @@ plugin for each native gap below.
 
 ## 3. Reader
 
-- **Voice (old milestone M3) — the remaining part.** Word, word+definition and
-  paragraph read-aloud already exist (`src/speech.js` via the bubbles and the
-  Dictionary hub). What remains is **continuous read-aloud**: speak page after
-  page with the words highlighted as they are spoken, first-class in paged mode.
-  (An *external* read-aloud tool is no longer a substitute: the continuous mode
-  is windowed now, so such tools only see the loaded window.)
 - **Sentence-level rescue** (much later — owner, 2026-07-02): a "translate this
   sentence" action, server-brokered and cached like the word explanations, for
   the moments the words are known but the sentence still doesn't parse.

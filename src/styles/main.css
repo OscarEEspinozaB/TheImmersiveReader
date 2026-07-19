@@ -529,6 +529,9 @@ body.chrome-hidden .reader-wrap--scroll {
 .word {
   cursor: pointer;
   border-radius: 3px;
+  /* The read-aloud highlight cross-fades from word to word instead of
+     snapping (also softens hover). */
+  transition: background-color 0.3s ease;
 }
 
 .word[data-state='known'] {
@@ -558,6 +561,14 @@ body.chrome-hidden .reader-wrap--scroll {
   background: color-mix(in srgb, var(--text) 14%, transparent);
 }
 
+/* Read-aloud follow-along: the word currently being spoken (paragraph bubble's
+   "Read from here") is softly shaded so the eye can track the voice, MS Edge
+   style. Same tint family as the hold fill — an attention cue, never a state
+   color; background-color (not the shorthand) so the .word transition fades it. */
+.word.is-speaking {
+  background-color: color-mix(in srgb, var(--text) 15%, transparent);
+}
+
 /* Press-and-hold to open the dictionary: a fill grows left-to-right over the hold
    time required for the word's state (set via --arm-ms in marking.js), so the user
    sees how long to keep pressing. Only learning/known words arm; unknown open at
@@ -585,6 +596,9 @@ body.chrome-hidden .reader-wrap--scroll {
 @media (prefers-reduced-motion: reduce) {
   .word.is-arming {
     animation: none;
+  }
+  .word {
+    transition: none;
   }
 }
 
