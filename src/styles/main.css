@@ -382,7 +382,7 @@ body.chrome-hidden .reader-wrap--scroll {
   /* Base reading size × the user's size setting (--reader-font-size, a unitless
      multiplier set in main.js). Headings/code/quotes use em, so they scale too. */
   font-size: calc(1.25rem * var(--reader-font-size, 1));
-  line-height: 1.65;
+  line-height: var(--reader-line-height, 1.65);
   white-space: pre-wrap;
   /* URLs are single unbreakable tokens (see tokenizer.js); let them wrap
      mid-string instead of overflowing the page on narrow screens. */
@@ -622,6 +622,12 @@ body.chrome-hidden .reader-wrap--scroll {
   border-top: 1px solid var(--border);
   backdrop-filter: blur(6px);
   transition: transform 0.25s ease;
+}
+
+/* The note editor owns the whole screen: its own bar (Back / Save) replaces the
+   global top bar, which would otherwise overlap it. */
+body.editor-active .topbar {
+  display: none;
 }
 
 /* Chrome auto-hide: slide both bars off-screen while reading. */
@@ -907,6 +913,14 @@ body.nav-hidden .primary-nav {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.5;
+}
+
+/* IPA pronunciation line (freedictionaryapi.com), shown under the definition. */
+.popup__slot-ipa {
+  display: block;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin-top: 0.15rem;
 }
 
 /* Rich KB detail (part of speech, verb tenses, synonyms, antonyms). Shared by the
@@ -1349,6 +1363,251 @@ button.kb-form:focus-visible {
   padding: 0 0.5rem;
 }
 
+/* Accent variant of the shelf toolbar button — the primary action (New note). */
+.file-button--accent {
+  color: var(--word-learning);
+  border-color: color-mix(in srgb, var(--word-learning) 55%, var(--border));
+}
+.file-button--accent:hover {
+  border-color: var(--word-learning);
+}
+
+/* --- Notes shelf: horizontal text cards (never a cover), so a note never reads as
+   a book. The gold left rule and serif preview are the note's visual signature. --- */
+.notes-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Compact "list" view: drop the preview and tighten the row (title + meta only). */
+.notes-grid[data-view='list'] .note-card__snip {
+  display: none;
+}
+.notes-grid[data-view='list'] .note-card__open {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+  gap: 0.15rem;
+}
+
+.note-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--word-learning);
+  border-radius: 10px;
+}
+
+.note-card__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.7rem 2.4rem 0.7rem 0.85rem; /* room for the "⋮" on the right */
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.note-card__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.note-card__snip {
+  font-family: var(--font-reading);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.note-card__meta {
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+
+/* The "⋮" sits in the padding gutter, vertically centered on the card. */
+.note-card__more-wrap {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.4rem;
+}
+
+/* --- Note editor: a focused, full-height writing surface (nav hidden). --- */
+.editor {
+  position: relative; /* anchors the note-settings popover */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--sat)) calc(var(--sar)) calc(var(--sab)) calc(var(--sal));
+}
+
+.editor__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: calc(var(--topbar-h));
+  padding: 0 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.editor__heading {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.editor__save {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--word-learning);
+  border: none;
+  border-radius: 8px;
+  padding: 0.4rem 1rem;
+  cursor: pointer;
+}
+.editor__save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Centered writing column — the editor mirrors the reader's comfortable measure
+   instead of running edge-to-edge across a wide screen. */
+.editor__doc {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: var(--reader-max-width);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor__title {
+  font-family: var(--reader-font, var(--font-reading));
+  font-size: calc(1.35rem * var(--reader-font-size, 1));
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 1.2rem;
+}
+.editor__title:focus {
+  outline: none;
+  border-bottom-color: var(--word-learning);
+}
+
+.editor__text {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  font-family: var(--reader-font, var(--font-reading));
+  font-weight: var(--reader-weight, 400);
+  font-size: calc(1.05rem * var(--reader-font-size, 1));
+  line-height: var(--reader-line-height, 1.65);
+  color: var(--text);
+  background: transparent;
+  border: none;
+  padding: 0.9rem 1.2rem;
+}
+.editor__text:focus {
+  outline: none;
+}
+
+/* Note settings popover, anchored under the gear in the editor bar. */
+.editor-settings {
+  position: absolute;
+  top: calc(var(--topbar-h) + var(--sat) + 0.2rem);
+  right: calc(0.6rem + var(--sar));
+  z-index: 30;
+  width: min(16rem, calc(100vw - 1.2rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.editor-settings[hidden] {
+  display: none;
+}
+
+.editor-settings__field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  font-size: 0.85rem;
+}
+
+.editor-settings__field select {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+  max-width: 9rem;
+}
+
+.editor__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.editor__paste {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--word-learning);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--word-learning) 45%, var(--border));
+  border-radius: 8px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}
+.editor__paste:hover {
+  border-color: var(--word-learning);
+}
+
+.editor__count {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+
 /* --- In-app dialogs (replace native alert/confirm/prompt) --- */
 .dialog-overlay {
   position: fixed;
@@ -1685,10 +1944,22 @@ button.kb-form:focus-visible {
   gap: 0.4rem;
 }
 
+/* The list is a vertical stack of windowed chunks (each renders ~25 rows on demand
+   — see dashboard.js). The MULTI-COLUMN layout lives inside each chunk, so the
+   virtualization's per-chunk height bookkeeping keeps working while the Dictionary
+   fills its full width (2–3 cards per row on a wide screen) instead of one narrow
+   stack. */
 .dict-list {
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
+}
+
+.dict-chunk {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: 0.8rem;
+  align-items: start;
 }
 
 .dict-row {
@@ -1736,9 +2007,11 @@ button.kb-form:focus-visible {
   line-height: 1.45;
 }
 
-/* Dictionary data stats card (top of the Dictionary hub). */
+/* Dictionary data stats card (top of the Dictionary hub). The horizontal margin
+   must stay `auto` so it centers with the other dashboard children (a literal 0
+   here left it stuck to the left edge while Language/Search stayed centered). */
 .kb-stats {
-  margin: 0.4rem 0 0.8rem;
+  margin: 0.4rem auto 0.8rem;
   padding: 0.8rem;
   border: 1px solid var(--border);
   border-radius: 10px;

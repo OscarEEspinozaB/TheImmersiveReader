@@ -111,7 +111,7 @@ function serverCard(book, container, onDownloaded) {
   const cover = document.createElement('button');
   cover.type = 'button';
   cover.className = 'book__cover';
-  cover.title = `Download “${book.title}”`;
+  cover.title = `Add “${book.title}” to My Books`;
   cover.addEventListener('click', download);
   if (book.hasCover) {
     const img = document.createElement('img');
@@ -145,12 +145,12 @@ function serverCard(book, container, onDownloaded) {
   const actions = document.createElement('div');
   actions.className = 'book__actions';
 
-  const dl = iconButton('Download to my library', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3');
+  const dl = iconButton('Add to My Books', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3');
   dl.addEventListener('click', download);
 
-  const del = iconButton('Remove from server', 'M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6');
+  const del = iconButton('Remove from Library', 'M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6');
   del.addEventListener('click', async () => {
-    const ok = await confirmDialog(`Remove "${book.title}" from the server library? Local copies are kept.`, {
+    const ok = await confirmDialog(`Remove "${book.title}" from the Library? Local copies are kept.`, {
       confirmLabel: 'Remove',
       danger: true,
     });
@@ -219,12 +219,17 @@ function serverCard(book, container, onDownloaded) {
     }
     fill.style.width = `${coverageData.pct}%`;
     const done = coverageData.pending === 0;
+    // "Complete" means every word was PROCESSED, which is not the same as every
+    // word being defined: a novel's invented names and dialect spellings exist in
+    // no dictionary, and the count says so rather than quietly inflating `built`.
+    const missing = coverageData.missing || 0;
     label.textContent = done
       ? `Dictionary complete · ${coverageData.total.toLocaleString()} words`
       : `${coverageData.pct}% · ${coverageData.pending.toLocaleString()} words left`;
     label.title =
       `Dictionary: ${coverageData.built.toLocaleString()} of ${coverageData.total.toLocaleString()} words built ` +
-      `(from ${coverageData.words.toLocaleString()} unique words in the book — forms of the same word are one entry).`;
+      (missing ? `, ${missing.toLocaleString()} in no dictionary (proper nouns, dialect spellings)` : '') +
+      ` (from ${coverageData.words.toLocaleString()} unique words in the book — forms of the same word are one entry).`;
     go.hidden = done;
     go.title = `Build the ${coverageData.pending.toLocaleString()} words this book still needs`;
   };

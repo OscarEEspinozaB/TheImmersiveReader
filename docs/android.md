@@ -197,7 +197,7 @@ reading-position sync) over the LAN. Two things make that work on Android:
    the server ever moves behind HTTPS, tighten that file back down.
 
 When the server is unreachable (away from home), the app degrades to its offline
-behavior: local dictionary + dictionaryapi.dev, vocabulary stays device-local and
+behavior: local dictionary + freedictionaryapi.com, vocabulary stays device-local and
 syncs on the next connection. Nothing breaks.
 
 ## What lives in git

@@ -14,7 +14,8 @@ const STORAGE_KEY = 'immersive-reader.settings.v1';
 export const LANGUAGES = ['Spanish', 'English', 'French', 'Portuguese', 'German', 'Italian'];
 
 // Reading language = the language of the book. `code` drives Intl.Segmenter and the
-// dictionary API; `name` is used in prompts. Codes match dictionaryapi.dev.
+// dictionary providers (KB + freedictionaryapi.com); `name` is used in prompts.
+// The public dictionary maps pt-BR → pt internally (see definitions/freeDict.js).
 export const READING_LANGUAGES = [
   { code: 'en', name: 'English' },
   { code: 'es', name: 'Spanish' },
@@ -22,6 +23,7 @@ export const READING_LANGUAGES = [
   { code: 'de', name: 'German' },
   { code: 'it', name: 'Italian' },
   { code: 'pt-BR', name: 'Portuguese' },
+  { code: 'ko', name: 'Korean' },
 ];
 
 export const SORT_OPTIONS = [
@@ -54,6 +56,15 @@ export const FONT_OPTIONS = [
   { value: 'verdana', label: 'Verdana', stack: "Verdana, Geneva, sans-serif", weight: '400' },
   { value: 'mono', label: 'Monospace', stack: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace", weight: '400' },
 ];
+
+// Line spacing, applied via the --reader-line-height CSS variable to both the reader
+// flow and the note editor (they share the reading typography).
+export const LINE_SPACING_OPTIONS = [
+  { value: 1.4, label: 'Tight' },
+  { value: 1.65, label: 'Normal' },
+  { value: 1.9, label: 'Relaxed' },
+  { value: 2.2, label: 'Loose' },
+];
 const settings = {
   language: appConfig.defaults.nativeLanguage,
   defaultReadingLang: appConfig.defaults.readingLanguage, // default for NEW books; each book stores its own lang
@@ -70,9 +81,11 @@ const settings = {
   // vocabulary stays device-local). No password — trusted home LAN.
   profile: '',
   sortBy: appConfig.defaults.sortBy,
+  notesSortBy: appConfig.defaults.sortBy, // the Notes shelf's own order (same options)
   readingMode: appConfig.defaults.readingMode, // 'paged' | 'continuous'
   readingFont: appConfig.defaults.readingFont, // reader typeface (see FONT_OPTIONS)
   readingFontSize: appConfig.defaults.readingFontSize, // % of base size (see FONT_SIZE_OPTIONS)
+  readingLineHeight: 1.65, // line spacing multiplier (see LINE_SPACING_OPTIONS)
   // Ollama model for AI explanations (server/generate/explain.js). '' = the
   // server's own default (KB_EXPLAIN_MODEL), no override sent.
   aiModel: appConfig.defaults.aiModel,
@@ -104,9 +117,11 @@ function load() {
     if (typeof obj.updateUrl === 'string') settings.updateUrl = obj.updateUrl;
     if (typeof obj.profile === 'string') settings.profile = obj.profile;
     if (SORT_OPTIONS.some((o) => o.value === obj.sortBy)) settings.sortBy = obj.sortBy;
+    if (SORT_OPTIONS.some((o) => o.value === obj.notesSortBy)) settings.notesSortBy = obj.notesSortBy;
     if (obj.readingMode === 'paged' || obj.readingMode === 'continuous') settings.readingMode = obj.readingMode;
     if (FONT_OPTIONS.some((o) => o.value === obj.readingFont)) settings.readingFont = obj.readingFont;
     if (FONT_SIZE_OPTIONS.some((o) => o.value === obj.readingFontSize)) settings.readingFontSize = obj.readingFontSize;
+    if (LINE_SPACING_OPTIONS.some((o) => o.value === obj.readingLineHeight)) settings.readingLineHeight = obj.readingLineHeight;
     if (typeof obj.aiModel === 'string') settings.aiModel = obj.aiModel;
     if (Number.isFinite(obj.ttsRate) && obj.ttsRate >= 0.5 && obj.ttsRate <= 2) settings.ttsRate = obj.ttsRate;
     if (typeof obj.ttsVoice === 'string') settings.ttsVoice = obj.ttsVoice;
@@ -214,6 +229,18 @@ export function setSortBy(value) {
   }
 }
 
+/** Notes shelf sort order (same options as the library): "lastRead" | "title" | "added". */
+export function getNotesSortBy() {
+  return settings.notesSortBy;
+}
+
+export function setNotesSortBy(value) {
+  if (SORT_OPTIONS.some((o) => o.value === value)) {
+    settings.notesSortBy = value;
+    save();
+  }
+}
+
 /** Reading mode: "paged" (page turns) | "continuous" (scroll). */
 export function getReadingMode() {
   return settings.readingMode;
@@ -252,6 +279,19 @@ export function setReadingFontSize(value) {
   const n = Number(value);
   if (FONT_SIZE_OPTIONS.some((o) => o.value === n)) {
     settings.readingFontSize = n;
+    save();
+  }
+}
+
+/** Line spacing multiplier for the reader and the note editor. */
+export function getReadingLineHeight() {
+  return settings.readingLineHeight;
+}
+
+export function setReadingLineHeight(value) {
+  const n = Number(value);
+  if (LINE_SPACING_OPTIONS.some((o) => o.value === n)) {
+    settings.readingLineHeight = n;
     save();
   }
 }

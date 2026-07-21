@@ -16,6 +16,7 @@ import {
   isAiAvailable,
   requestKbBuild,
   reRefineWord,
+  freeDictTranslate,
 } from './definitions/index.js';
 import {
   getContraction,
@@ -23,7 +24,7 @@ import {
   learnContraction,
   aggregateStates as aggregateContraction,
 } from './contractions.js';
-import { getLanguage } from './settings.js';
+import { getLanguage, getReadingLang } from './settings.js';
 import { showGloss, showParagraphActions, showLinkActions, hideGloss } from './gloss.js';
 import {
   getCached,
@@ -322,8 +323,29 @@ export function attachMarking(
             popup.showLangButton(`Explain in ${language}`, explain);
           });
       };
+      // Away from home the AI is unreachable, so the context-aware explanation is
+      // off — but a plain dictionary TRANSLATION into the reader's language still
+      // works over any internet (freedictionaryapi, no home server). Offer whichever
+      // is available: the AI when reachable, else the translation (English books
+      // only — freedictionaryapi's translations are English-source). On-demand in
+      // both cases, so a metro tap never spends data until asked.
+      const translate = () => {
+        popup.langLoading(`Translating to ${language}…`); // hides the button
+        freeDictTranslate(word, language)
+          .then((def) => {
+            if (!active()) return;
+            if (def) popup.setLangTranslation(def);
+            else popup.showLangButton(`Translate to ${language}`, translate); // re-offer
+          })
+          .catch(() => {
+            if (active()) popup.showLangButton(`Translate to ${language}`, translate);
+          });
+      };
       isAiAvailable().then((ok) => {
-        if (ok && active()) popup.showLangButton(`Explain in ${language}`, explain);
+        if (!active()) return;
+        if (ok) popup.showLangButton(`Explain in ${language}`, explain);
+        else if (getReadingLang() === 'en' && language !== 'English')
+          popup.showLangButton(`Translate to ${language}`, translate);
       });
     }
 

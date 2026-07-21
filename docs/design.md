@@ -253,14 +253,28 @@ change without touching the UI (`src/definitions/index.js`).
 - **Quick chain** (fast, auto-fetched for unknown/learning words):
   `localDict` → **KB** (`kbApi.js`, the home server's offline dictionary; carries
   part of speech, the word's family, synonyms/antonyms, lemma links) →
-  `dictionaryapi.dev` (free, keyless). A raw (un-refined) KB hit triggers a
-  background server build so the next lookup is the refined one.
+  `nativeWiktionary` (`nativeWiktionary.js`, a **monolingual** definition from the
+  book language's own Wiktionary edition through its CORS-open MediaWiki API — a
+  Spanish book gets a Spanish definition, not an English gloss; the extract parser
+  is validated for `es`, other editions fall through) →
+  `freeDict` (`freeDict.js`, freedictionaryapi.com — free, keyless English
+  Wiktionary: for a non-English book its answer is an English **translation**,
+  labeled as such; carries IPA pronunciation). A raw (un-refined) KB hit triggers a
+  background server build so the next lookup is the refined one; a freeDict hit for
+  a word the KB lacks likewise seeds a build.
 - **AI explanations** (always on demand, per context): brokered and cached by
   the home server (`serverAi.js`) — generated once, shared across devices; the
   "Ask AI" button shows only when the server + Ollama are reachable. Each answer
   is stored per exact sentence; a failed lookup can be retried, and a **↻
   regenerate** button re-does an answer that came out wrong (below).
   An on-demand **"Explain in &lt;native language&gt;"** rescue works the same way.
+  **Away from home** (server unreachable) that AI rescue is replaced by an on-demand
+  **"Translate to &lt;native language&gt;"** button: a plain dictionary translation
+  straight from freedictionaryapi over any internet — no home server — so a reader on
+  mobile data still gets a native-language answer. It is English-book only (that
+  API's translations are English-source) and fires only on press (the metro case:
+  never spend data until asked); the translation carries no ↻ (there is no model to
+  re-run).
 - **Regenerate (↻)** in the full popup: when an AI answer is weak, one press re-does
   it in place. Three of them — one on the refined **dictionary** definition (re-runs
   the KB refinement, resolved to the lemma), one on the reading-language **AI
@@ -341,7 +355,7 @@ src/
                      after cancel avoids the engines' first-words clipping)
   readAloud.js       continuous read-aloud session: paragraph-by-paragraph
                      chaining with a breathing gap, stop-anywhere semantics
-  definitions/       index (chain), localDict, kbApi, dictionaryApi, serverAi,
+  definitions/       index (chain), localDict, kbApi, freeDict, serverAi,
                      ollama (contraction decomposition only), prompts
   definitionsCache.js  per-language word cache (dict + AI history + native)
   library.js/shelf.js/tir.js        local library, shelf UI, .tir format  → docs/library.md

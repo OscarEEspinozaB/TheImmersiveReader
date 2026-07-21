@@ -4,7 +4,7 @@
 
 import { buildExternalLinks } from './externalLookup.js';
 import { renderKbDetails } from './kbDetails.js';
-import { getKbUrl } from './settings.js';
+import { getKbUrl, getReadingLang } from './settings.js';
 
 // Listed in MARK_ORDER (see vocabulary.js): the word's current state is hidden at
 // show() time, so only the other three buttons appear. Keys stay bound to their
@@ -36,7 +36,15 @@ function sourceLabel(source) {
     const host = hostOf(getKbUrl());
     return host ? `Local dictionary · ${host}` : 'Local dictionary';
   }
-  if (source === 'dictionary') return 'Online · dictionaryapi.dev';
+  // freedictionaryapi.com is English Wiktionary: for a non-English book its answer
+  // is a TRANSLATION into English, not a same-language definition — say so plainly.
+  if (source === 'freedict') {
+    return getReadingLang() === 'en'
+      ? 'Online · freedictionaryapi.com'
+      : 'English translation · freedictionaryapi.com';
+  }
+  if (source === 'translation') return 'Translation · freedictionaryapi.com';
+  if (source === 'wiktionary') return `Online · ${getReadingLang()}.wiktionary.org`;
   if (source === 'contraction') return 'Contraction';
   if (source === 'local') return 'Local dictionary';
   if (source.startsWith('ollama')) return source.replace(/^ollama/, 'AI · Ollama');
@@ -280,6 +288,7 @@ export class WordPopup {
       const regen = def.source === 'kb' && def.refined && this._onRerefine ? () => this._onRerefine() : null;
       this._fillSlot(this.quickSlot, {
         state: 'ready', text: def.explanation, source: def.source, kb: def.kb, word, regen,
+        pronunciation: def.pronunciation,
       });
     } else {
       this._hideSlot(this.quickSlot);
@@ -426,6 +435,17 @@ export class WordPopup {
   }
 
   /**
+   * A plain dictionary TRANSLATION into the reader's language (freedictionaryapi),
+   * the away-from-home path when the AI is unreachable. Unlike setLang it carries no
+   * ↻ — there is no model to re-run, it is a fixed dictionary lookup.
+   * @param {import('./definitions/index.js').Definition | null} def
+   */
+  setLangTranslation(def) {
+    if (def) this._fillSlot(this.langSlot, { state: 'ready', text: def.explanation, source: def.source });
+    else this._hideSlot(this.langSlot);
+  }
+
+  /**
    * Shown whenever the dictionary has no entry (regardless of the AI result):
    * the AI is only a helper, so we always offer authoritative web dictionaries.
    * @param {string} word
@@ -492,7 +512,7 @@ export class WordPopup {
     return btn;
   }
 
-  _fillSlot(slot, { state, text, source, kb, word, regen, regenTitle = 'Re-do this definition with the AI' }) {
+  _fillSlot(slot, { state, text, source, kb, word, regen, pronunciation, regenTitle = 'Re-do this definition with the AI' }) {
     slot.hidden = false;
     slot.dataset.state = state;
     slot.textContent = '';
@@ -508,6 +528,12 @@ export class WordPopup {
       slot.appendChild(row);
     } else {
       slot.appendChild(p);
+    }
+    if (pronunciation) {
+      const ipa = document.createElement('span');
+      ipa.className = 'popup__slot-ipa';
+      ipa.textContent = pronunciation;
+      slot.appendChild(ipa);
     }
     const details = renderKbDetails(kb, word);
     if (details) slot.appendChild(details);

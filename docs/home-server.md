@@ -29,6 +29,7 @@ server/
   publishApp.js     `npm run app:publish`: zip dist/ → data/app/, point latest.json
   app-bundle.js     where published bundles live (shared by the two above)
   generate/         ollama.js (refine), build.js (refine-and-store pipeline),
+                    gapfill.js (seed missing words from public dictionaries),
                     explain.js (context AI), book.js (batch CLI), run.js (text CLI),
                     audit.js (find + repair wrong entries),
                     bookJob.js (coverage + the in-app build job)
@@ -83,8 +84,42 @@ Wiktextract** dump, plus an AI-**refined** layer built on top of it.
   **Re-run it after every ingest**, which re-merges them.
 - **Read-through**: a `/define` miss on the refined layer can be followed by a
   client-triggered `POST /build` that refines and stores the word in the
-  background; the next lookup is prebuilt. Words truly absent from the dump
-  report `absent` and stay on the on-demand chain.
+  background; the next lookup is prebuilt.
+- **External gap-fill** (`generate/gapfill.js`): a word the dump never had is no
+  longer a dead end. Before reporting `absent`, the build asks a public dictionary
+  and stores what it says (`entries`/`senses`/`relations`/`inflections`, stamped
+  provenance `dictionary-api` + the host, so these rows stay distinguishable from
+  dumped ones). It closes two holes — the English dump's own gaps (in-universe
+  coinages like *Quidditch*, *Muggle*) and languages with **no dump here at all**.
+  Per language, deliberately never a cross-language gloss:
+
+  | Language | Source | Result |
+  | --- | --- | --- |
+  | `en` | freedictionaryapi.com | English definitions, merged across the lower- and Capitalized entries (a proper noun keeps its meaning under the capitalized one — "muggle" is marijuana, "Muggle" is the Harry Potter one), spelling-pointer senses dropped |
+  | `es` | es.wiktionary.org | Spanish definition + synonyms (plain-text extract) |
+  | `fr`, `it`, `pt` | `<lang>.wiktionary.org` | definition in that language (rendered HTML: `<ol><li>`, cut at the nested example list) |
+  | `de`, `ko`, … | — | none yet; German lays definitions out as `<dl>`/`<dd>` under *Bedeutungen* and needs its own parser. Stays `absent` rather than storing something wrong. |
+
+  **Pacing is what makes a whole book work.** Wikimedia throttles bursts — twelve
+  back-to-back requests already draw `429 Retry-After: 5` — and a book is ~8 000
+  words, which is nothing but a burst. Left unpaced, two thirds of a run came back
+  as transient failures and the build never converged. So requests are spaced
+  (300 ms minimum) and a 429 is honoured once with its own `Retry-After`. That costs
+  ~1.6 s per word, so a full book is a **multi-hour background job** — stoppable and
+  resumable, and worth it because it now finishes instead of needing endless re-runs.
+  **Non-English entries are SEEDED, never refined** (status `seeded`): the refiner
+  writes simple English, and a Spanish word's definition must stay Spanish, so
+  `/define` serves the seeded senses raw. This also means a non-English book can be
+  built with Ollama switched off entirely.
+- **The "not processed" list** (`gapfill_misses`, `GET /words/missing?lang=en`): a
+  word no source could answer is recorded, and later builds skip it **without a
+  network call** — re-asking is measurably free (0.1 ms) versus ~1 s per word of
+  fruitless HTTP. `--force` retries them. This matters because a novel's residue is
+  large and permanent: each Harry Potter book leaves ~150 such words — invented
+  names (*Gringotts*, *Quirrell*), Hagrid's dialect (*yeh'll*, *fattenin*),
+  stutters (*bbook*, *thanksss*) and ingest artifacts. The list only REPORTS; it
+  never marks anything **Discarded**, which stays a manual action and is never
+  inferred from a missing dictionary entry.
 - **Batch CLI** (`npm run build:book -- "<file>" --batch 500`): extracts a whole
   book's unique words **in reading order** (or `--by-frequency`), collapses them to
   their **lemmas** (aim/aimed/aiming/aims are one entry to build) and refines the
@@ -146,7 +181,24 @@ the archive was produced by the client, so the invariant holds.
   and "aiming" are one entry to build, so that is the work actually left. The book's
   lemma list is cached in `library.sqlite` (`book_lemmas`) — unzipping and
   segmenting a whole book on every shelf render would be absurd — and it is only a
-  cache: dropping a row costs one recompute.
+  cache: dropping a row costs one recompute. What counts as **built** follows the
+  book's language: an English book needs a refined entry, a non-English one only
+  needs the KB to HAVE the word (it is seeded, never refined — see the gap-fill
+  table above), because measuring it by the `refined` table would peg every Spanish
+  book at 0% forever. The percentage is what has been **processed** —
+  `built + missing` — so a finished book reads 100%: a confirmed miss is done, not
+  pending, and parking every novel a few points short would claim work that does
+  not exist. `missing` stays its own number (shown in the badge's tooltip) rather
+  than being folded into `built`, because "complete" here means every word was
+  *asked about*, not that every word has a definition. Two details that decide
+  whether the number is believable:
+  - **Built is asked of the LEMMA**, through the same `refineTarget` the build uses:
+    "bore" never gets a refined row of its own, it is served *bear*'s. Checking the
+    surface form left inflected forms pending forever — a `book_lemmas` cache
+    computed before the inflections table was rebuilt is full of them, which is how
+    a finished book sat at "20 words left".
+  - **100% is reserved for `pending === 0`**; anything else rounds DOWN. Rounding
+    99.51% up produced "100% · 20 words left", which reads as a bug.
 - **One job at a time, server-wide** (`POST /books/:id/build`, 409 while busy). The
   bottleneck is CPU inference (5-25 s per word); a second book in parallel would not
   finish sooner, it would only heat the machine and slow the first one down.
@@ -222,6 +274,7 @@ GET    /health                          liveness
 GET    /define?word=&lang=              KB entry (refined + raw senses + formOf + family); 404 on miss
 POST   /build   {words|text, lang, force}   refine-and-store (read-through)
 GET    /words?lang=&q=&sort=&limit=     built (refined) words, for the Dictionary hub
+GET    /words/missing?lang=&limit=      words no source could define ("not processed")
 GET    /stats?lang=                     dictionary-data stats card
 GET    /books?lang=&q=                  catalog        POST /books        upload .tir (raw bytes)
 GET    /books/:id | /content | /cover   metadata / download / cover      DELETE /books/:id
@@ -246,7 +299,7 @@ to let any device *push* code the others will run.
 ## 7. Client integration
 
 - `src/definitions/kbApi.js` — `/define` in the quick chain (after the local
-  dict, before dictionaryapi.dev), `/words`, `/stats`, background `/build`.
+  dict, before freedictionaryapi.com), `/words`, `/stats`, background `/build`.
 - `src/definitions/serverAi.js` — `/ai/*`; replaces the old direct Ollama calls.
 - `src/serverLibrary.js` + `src/serverShelf.js` — the **Server** hub view:
   browse the catalog, download into the local library, upload from the shelf's

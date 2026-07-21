@@ -203,9 +203,16 @@ export function showGloss(span, { surface, word, sentence, parts = null, onExpan
       .then((d) => {
         if (myShow !== showId || el.hidden) return;
         defText = d?.explanation || '';
-        def.textContent = defText || 'No definition — ⋯ has more options.';
-        const p = posSummary(d?.kb?.pos);
-        if (p) pos.textContent = p;
+        // A freedict answer on a non-English book is an English translation, not a
+        // same-language definition — flag it so a "orphan" over "huérfano" reads as
+        // a translation, not a broken dictionary.
+        const isTranslation = d?.source === 'freedict' && getReadingLang() !== 'en';
+        def.textContent = defText
+          ? (isTranslation ? `EN: ${defText}` : defText)
+          : 'No definition — ⋯ has more options.';
+        // Part of speech and IPA pronunciation (freedict carries one) on one line.
+        const meta = [posSummary(d?.kb?.pos), d?.pronunciation].filter(Boolean);
+        if (meta.length) pos.textContent = meta.join(' · ');
         const strip = renderFamilyStrip(d?.kb, word);
         if (strip) family.appendChild(strip);
         position(span); // the real content changes the size

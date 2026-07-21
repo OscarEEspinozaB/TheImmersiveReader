@@ -22,6 +22,7 @@ import { extractWords } from '../../src/words.js';
 import { getDb } from '../db.js';
 import { getLibraryDb, BOOKS_DIR } from '../library-db.js';
 import { refineWords, refineTarget } from './build.js';
+import { isRefinedLanguage } from './gapfill.js';
 import { REFINE_REV, REFINE_MODEL } from './ollama.js';
 import { kbLog, KB_COLORS as C } from '../log.js';
 
@@ -87,24 +88,94 @@ export function bookLemmas(bookId) {
   return { lang, lemmas, words: seenWords.size };
 }
 
-/** The lemmas of this book that still need building (under the CURRENT contract). */
-function pendingLemmas(lang, lemmas) {
-  const db = getDb();
-  const isBuilt = db.prepare('SELECT 1 FROM refined WHERE entry_id = ? AND rev >= ?');
-  return lemmas.filter((w) => !isBuilt.get(`${lang}:${w}`, REFINE_REV));
+/**
+ * The lemmas of this book that still need building (under the CURRENT contract).
+ *
+ * What "built" MEANS depends on the language. An English book is built when its
+ * words carry an AI-refined entry. A non-English book is never refined — the
+ * refiner writes simple English, and a Spanish word's definition should stay
+ * Spanish — so there it means the KB simply HAS the word, seeded from that
+ * language's own Wiktionary (generate/gapfill.js). Measuring non-English books by
+ * the `refined` table would peg them at 0% forever.
+ */
+function isBuiltCheck(db, lang) {
+  if (isRefinedLanguage(lang)) {
+    const isRefined = db.prepare('SELECT 1 FROM refined WHERE entry_id = ? AND rev >= ?');
+    // Ask about the entry that HOLDS THE MEANING, which for an inflected form is its
+    // lemma: "bore" never gets a refined row, it is served bear's (the same
+    // refineTarget the build itself uses). Checking only the surface form leaves
+    // words pending that have nothing left to build — a `book_lemmas` cache computed
+    // before the inflections table was rebuilt is full of exactly those, which is
+    // how a finished book sat at "20 words left" forever.
+    //
+    // Two tiers, because this runs for every lemma of every book on a shelf render:
+    // the direct hit answers most words with one indexed lookup, and only the residue
+    // pays for lemma resolution. Resolving every word up front measured 13x slower
+    // (2.7 s vs 0.2 s across the library) — enough to leave the shelf looking like it
+    // never finished loading.
+    return (w) => {
+      if (isRefined.get(`${lang}:${w}`, REFINE_REV)) return true;
+      const lemma = refineTarget(db, lang, w);
+      return lemma !== w && !!isRefined.get(`${lang}:${lemma}`, REFINE_REV);
+    };
+  }
+  // Seeded languages store one entry per word, so there is no lemma to resolve to.
+  const hasEntry = db.prepare('SELECT 1 FROM entries WHERE id = ?');
+  return (w) => !!hasEntry.get(`${lang}:${w}`);
 }
 
 /**
- * How much of a book's dictionary is already built.
- * @returns {{ words: number, total: number, built: number, pending: number, pct: number } | null}
+ * Split a book's lemmas into what is built, what no dictionary has, and what is
+ * genuinely left to do.
+ *
+ * A confirmed miss is DONE, not pending. Every source was asked and answered "no
+ * such word" (generate/gapfill.js keeps that apart from "could not ask"), so there
+ * is no work left on it — a novel's invented names and dialect spellings are a
+ * permanent residue, ~150 per Harry Potter book. Counting them as pending forever
+ * would park every book just short of 100% and claim work that does not exist.
+ * They stay VISIBLE as their own number rather than being folded into `built`.
+ */
+function splitLemmas(lang, lemmas) {
+  const db = getDb();
+  const isBuilt = isBuiltCheck(db, lang);
+  const isMiss = db.prepare('SELECT 1 FROM gapfill_misses WHERE lang = ? AND word = ?');
+  const built = [];
+  const missing = [];
+  const pending = [];
+  for (const w of lemmas) {
+    if (isBuilt(w)) built.push(w);
+    else if (isMiss.get(lang, w)) missing.push(w);
+    else pending.push(w);
+  }
+  return { built, missing, pending };
+}
+
+/**
+ * How much of a book's dictionary is already built. `pct` is how much has been
+ * PROCESSED — built plus the words no dictionary anywhere has — so a finished book
+ * reads 100% and `missing` says how much of that was unresolvable.
+ * @returns {{ words: number, total: number, built: number, missing: number,
+ *   pending: number, pct: number } | null}
  */
 export function coverage(bookId) {
   const info = bookLemmas(bookId);
   if (!info) return null;
-  const pending = pendingLemmas(info.lang, info.lemmas).length;
+  const { built, missing, pending } = splitLemmas(info.lang, info.lemmas);
   const total = info.lemmas.length;
-  const built = total - pending;
-  return { words: info.words, total, built, pending, pct: total ? Math.round((built / total) * 100) : 100 };
+  // 100% is reserved for "nothing left": rounding 99.51% up to it (4097 of 4117
+  // processed, 20 still to build) claims a finished book and reads as a bug next to
+  // the "20 words left" beside it. Round DOWN while anything is pending.
+  const processed = total - pending.length;
+  const pct = !total || !pending.length ? 100 : Math.min(99, Math.floor((processed / total) * 100));
+
+  return {
+    words: info.words,
+    total,
+    built: built.length,
+    missing: missing.length,
+    pending: pending.length,
+    pct,
+  };
 }
 
 // --- The job -----------------------------------------------------------------
@@ -154,7 +225,10 @@ export function startJob(bookId, { model = REFINE_MODEL } = {}) {
 
   const info = bookLemmas(bookId);
   if (!info) return { started: false, reason: 'no-payload', status: null };
-  const pending = pendingLemmas(info.lang, info.lemmas);
+  // Only genuinely unresolved words are queued: a confirmed miss would just be
+  // skipped word by word, and counting it here would make the job's own progress
+  // bar promise work it cannot do.
+  const { pending } = splitLemmas(info.lang, info.lemmas);
   if (!pending.length) return { started: false, reason: 'nothing-pending', status: null };
 
   job = {

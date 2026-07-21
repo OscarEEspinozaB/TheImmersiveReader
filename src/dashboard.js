@@ -5,7 +5,7 @@ import { listEntries, setState, STATES, normalize, getState, usedLanguages } fro
 import { summary, growthSeries, recent } from './stats.js';
 import { growthChart, splitDonut } from './charts.js';
 import { getCached, cacheDictionary } from './definitionsCache.js';
-import { getQuickDefinition, listKbWords, getKbStats, reRefineWord } from './definitions/index.js';
+import { getQuickDefinition, listKbWords, listMissingWords, getKbStats, reRefineWord } from './definitions/index.js';
 import { renderKbDetails } from './kbDetails.js';
 import { alertDialog } from './dialog.js';
 import { buildExternalLinks } from './externalLookup.js';
@@ -42,15 +42,30 @@ function currentLang() {
   return dashLang;
 }
 
+// Languages of the books on the shelf. Filled in asynchronously (IndexedDB) and
+// kept here so the language switcher can be built synchronously on later renders.
+let bookLangs = [];
+export function refreshBookLanguages() {
+  return listBooks()
+    .then((books) => {
+      bookLangs = [...new Set(books.map((b) => b.lang).filter(Boolean))];
+    })
+    .catch(() => {});
+}
+
 /**
  * A small selector that switches which language's dictionary / progress is shown.
- * Lists every language that has marked words, plus the one currently in view. When
- * changed it re-aligns the whole stack (state writes, lookups, caching) by setting
- * the active reading language, then re-renders via `onChange`.
+ * Lists every language the user has CONTENT in, plus the one currently in view.
+ *
+ * "Content" cannot mean marked words alone: by the red-sea rule an unknown word has
+ * no vocabulary row at all, so a freshly added Spanish book has zero Spanish
+ * entries — and the reader could not switch to Spanish to browse the dictionary the
+ * server just seeded for it. The shelf's languages are therefore part of the list.
  * @param {(code: string) => void} onChange
  */
 function langSwitcher(onChange) {
   const codes = new Set(usedLanguages());
+  for (const l of bookLangs) codes.add(l); // a book you own counts, marked or not
   codes.add(currentLang()); // always offer the language being viewed
   const options = READING_LANGUAGES.filter((l) => codes.has(l.code));
 
@@ -348,11 +363,15 @@ export function renderDictionary(root, { filter } = {}) {
   const chips = document.createElement('div');
   chips.className = 'dict-chips';
   const chipButtons = {};
-  for (const f of ['all', 'known', 'learning', 'discarded', 'built']) {
+  // "Missing" is the honest counterpart of "Built": the words the server asked every
+  // dictionary about and that simply do not exist in any of them. Without it they
+  // are counted as processed and then visible nowhere, which reads as data loss.
+  const CHIP_LABELS = { missing: 'Not in any dictionary' };
+  for (const f of ['all', 'known', 'learning', 'discarded', 'built', 'missing']) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'chip';
-    chip.textContent = f[0].toUpperCase() + f.slice(1);
+    chip.textContent = CHIP_LABELS[f] || f[0].toUpperCase() + f.slice(1);
     chip.addEventListener('click', () => {
       state.filter = f;
       updateChips();
@@ -448,12 +467,67 @@ export function renderDictionary(root, { filter } = {}) {
     windowInto(words, kbRow);
   };
 
+  // "Not in any dictionary": the build's honest residue — invented names, dialect
+  // spellings, ingest artifacts. Shown so they are accounted for, never marked:
+  // Discarded stays a deliberate act, and each row is a plain word (tap it to look
+  // it up like any other) rather than a button that decides for the reader.
+  const renderMissing = async () => {
+    const loading = document.createElement('p');
+    loading.className = 'dash__empty';
+    loading.textContent = 'Loading…';
+    list.appendChild(loading);
+
+    const words = await listMissingWords(lang);
+    if (state.filter !== 'missing') return; // user switched away while loading
+    list.replaceChildren();
+
+    if (words === null) {
+      const msg = document.createElement('p');
+      msg.className = 'dash__empty';
+      msg.textContent = 'Dictionary service not reachable. Start it (npm run server) to see these.';
+      list.appendChild(msg);
+      return;
+    }
+    const q = state.search.trim().toLowerCase();
+    const shown = q ? words.filter((w) => w.word.includes(q)) : words;
+    if (!shown.length) {
+      const empty = document.createElement('p');
+      empty.className = 'dash__empty';
+      empty.textContent = q
+        ? 'No match.'
+        : 'Nothing here — every word of your books was found in a dictionary.';
+      list.appendChild(empty);
+      return;
+    }
+
+    const note = document.createElement('p');
+    note.className = 'dash__empty';
+    note.textContent =
+      `${shown.length.toLocaleString()} words no dictionary has — mostly proper nouns, ` +
+      'dialect spellings and scanning artifacts. They count as processed, so a book can reach 100%.';
+    list.appendChild(note);
+    windowInto(shown, (m) => {
+      const row = document.createElement('div');
+      row.className = 'dict-row';
+      const w = document.createElement('span');
+      w.className = 'dict-row__word word';
+      w.dataset.state = getState(m.word);
+      w.textContent = m.word;
+      row.appendChild(w);
+      return row;
+    });
+  };
+
   const renderList = () => {
     if (state._io) state._io.disconnect();
     list.replaceChildren();
 
     if (state.filter === 'built') {
       renderBuilt();
+      return;
+    }
+    if (state.filter === 'missing') {
+      renderMissing();
       return;
     }
 

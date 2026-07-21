@@ -145,7 +145,12 @@ published one should not drift apart.
   boundary callbacks; `src/readAloud.js` — the continuous paragraph-by-paragraph
   read-aloud session.
 - `src/definitions/` — provider chain: `localDict` → `kbApi` (home-server KB) →
-  `dictionaryApi` (dictionaryapi.dev); `serverAi` (server-brokered explanations);
+  `nativeWiktionary` (a MONOLINGUAL definition from the book language's own
+  Wiktionary edition via its CORS-open MediaWiki API — so a Spanish book gets a
+  Spanish definition, not an English gloss; parser validated for `es`, others fall
+  through) → `freeDict` (freedictionaryapi.com — English Wiktionary, so its answer
+  for a non-English word is an English translation; carries IPA); `serverAi`
+  (server-brokered explanations);
   `ollama.js` only decomposes contractions. `src/definitionsCache.js` caches per
   `<lang>:<word>`.
 - `src/kbDetails.js` — the **family card**: a word is never shown loose when the KB
@@ -178,7 +183,10 @@ published one should not drift apart.
   swiper`) and wiring.
 - `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,
   position, aiDefine, appUpdate — the OTA bundle, published by `publishApp.js`),
-  `generate/` (refine + explain pipelines, book CLI, `audit.js`,
+  `generate/` (refine + explain pipelines, book CLI, `audit.js`;
+  `gapfill.js` — seeds words the dump lacks from public dictionaries: `en` from
+  freedictionaryapi, `es`/`fr`/`it`/`pt` from their OWN Wiktionary edition, so a
+  non-English book gets same-language definitions and is `seeded`, never refined;
   `bookJob.js` — per-book coverage + the in-app build job), `ingest/` (Kaikki +
   `forms.js` + `epubText.js`), `db.js` / `library-db.js` (schemas), `lemma.js` (the
   lemma layer: formOf / family / verbForms grounding), `paradigms.js` (curated).

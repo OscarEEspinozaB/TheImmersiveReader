@@ -12,7 +12,7 @@
     <!-- Top bar: title + menu. Auto-hides while reading; a tap (mobile) or mouse
          move (desktop) brings it back, together with the bottom pager. -->
     <header id="topbar" class="topbar">
-      <button id="shelf-button" class="menu-toggle" type="button" aria-label="Back to library" title="Library">
+      <button id="shelf-button" class="menu-toggle" type="button" aria-label="Back" title="Back">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         </svg>
@@ -42,6 +42,10 @@
         <label class="menu__field">
           <span>Size</span>
           <select id="reading-size-select"></select>
+        </label>
+        <label class="menu__field">
+          <span>Line spacing</span>
+          <select id="reading-linespacing-select"></select>
         </label>
         <label class="menu__field" id="voice-field">
           <span>Voice</span>
@@ -146,34 +150,117 @@
       <div class="menu__version" id="app-version" hidden></div>
     </nav>
 
-    <!-- Bookshelf: the home screen. Lists saved books; open one to read. -->
+    <!-- My Books: the home screen. Lists the books saved on this device; open one
+         to read. Books enter only by file and are read-only (see Notes for the
+         editable kind). -->
     <section id="shelf" class="shelf" hidden>
       <header class="shelf__bar">
-        <span class="shelf__heading">My Library</span>
+        <span class="shelf__heading">My Books</span>
         <div class="shelf__actions">
           <select id="sort-select" class="shelf__sort" title="Sort by"></select>
-          <label class="file-button" title="Add book">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 5v14" /><path d="M5 12h14" />
-            </svg>
-            <input id="add-book" type="file" accept=".txt,.md,.pdf,.epub,.tir" hidden />
-          </label>
-          <button id="view-toggle" class="menu-toggle" type="button" title="List / grid" aria-label="Toggle view">
+          <button id="view-toggle" class="file-button" type="button" title="List / grid" aria-label="Toggle view">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
               <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
             </svg>
           </button>
+          <label class="file-button file-button--accent" title="Add book from a file">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" /><path d="M12 11v6" /><path d="M9 14h6" />
+            </svg>
+            <input id="add-book" type="file" accept=".txt,.md,.pdf,.epub,.tir" hidden />
+          </label>
         </div>
       </header>
       <div id="shelf-grid" class="shelf__grid" data-view="grid"></div>
     </section>
 
-    <!-- Server Library: the home server's catalog; download books into the local
-         library, or remove them from the server. -->
+    <!-- Notes: editable text documents the reader writes or pastes. "New" opens the
+         editor; a note opens in the same reader as a book and can be edited. -->
+    <section id="notes" class="shelf" hidden>
+      <header class="shelf__bar">
+        <span class="shelf__heading">Notes</span>
+        <div class="shelf__actions">
+          <select id="notes-sort-select" class="shelf__sort" title="Sort by"></select>
+          <button id="notes-view-toggle" class="file-button" type="button" title="Cards / list" aria-label="Toggle view">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+            </svg>
+          </button>
+          <label class="file-button" title="Import a .md or .txt as a note">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" /><path d="M12 11v6" /><path d="M9 14h6" />
+            </svg>
+            <input id="import-note" type="file" accept=".txt,.md,.markdown,.text" hidden />
+          </label>
+          <button id="new-note" class="file-button file-button--accent" type="button" title="New note" aria-label="New note">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" />
+            </svg>
+          </button>
+        </div>
+      </header>
+      <div id="notes-grid" class="shelf__grid notes-grid" data-view="cards"></div>
+    </section>
+
+    <!-- Note editor: write or paste, then Save. A blank editor for a new note, or
+         a note's own text reopened for editing. Not a hub — it hides the nav. -->
+    <section id="editor" class="editor" hidden>
+      <header class="editor__bar">
+        <button id="editor-back" class="menu-toggle" type="button" aria-label="Back" title="Back">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <span id="editor-heading" class="editor__heading">New note</span>
+        <button id="editor-settings" class="menu-toggle" type="button" aria-label="Note settings" title="Note settings">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+        <button id="editor-save" class="editor__save" type="button">Save</button>
+      </header>
+      <div class="editor__doc">
+        <input id="editor-title" class="editor__title" type="text" placeholder="Title (optional)" autocomplete="off" />
+        <textarea id="editor-text" class="editor__text" placeholder="Write your note, or paste a text to listen to it…" spellcheck="false"></textarea>
+      </div>
+      <div class="editor__toolbar">
+        <button id="editor-paste" class="editor__paste" type="button">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="2" width="8" height="4" rx="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+          </svg>
+          <span>Paste</span>
+        </button>
+        <span id="editor-count" class="editor__count">0 words</span>
+      </div>
+
+      <!-- Note settings popover: opened by the gear in the editor bar. -->
+      <div id="editor-settings-menu" class="editor-settings" hidden>
+        <label class="editor-settings__field">
+          <span>Note language</span>
+          <select id="editor-lang-select"></select>
+        </label>
+        <label class="editor-settings__field">
+          <span>Editor font</span>
+          <select id="editor-font-select"></select>
+        </label>
+        <label class="editor-settings__field">
+          <span>Text size</span>
+          <select id="editor-size-select"></select>
+        </label>
+        <label class="editor-settings__field">
+          <span>Line spacing</span>
+          <select id="editor-linespacing-select"></select>
+        </label>
+      </div>
+    </section>
+
+    <!-- Library: the home server's shared catalog; add books into My Books, or
+         remove them from the Library. -->
     <section id="server-shelf" class="shelf" hidden>
       <header class="shelf__bar">
-        <span class="shelf__heading">Server Library</span>
+        <span class="shelf__heading">Library Server</span>
         <div class="shelf__actions">
           <button id="server-refresh" class="menu-toggle" type="button" title="Refresh" aria-label="Refresh">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -213,13 +300,19 @@
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         </svg>
-        <span>Library</span>
+        <span>My Books</span>
+      </button>
+      <button id="nav-notes" class="nav-item" type="button">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" /><path d="M9 13h6" /><path d="M9 17h4" />
+        </svg>
+        <span>Notes</span>
       </button>
       <button id="nav-server" class="nav-item" type="button">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 16.7A5 5 0 0 0 18 9h-1.3A8 8 0 1 0 4 15.2" /><path d="M12 12v9" /><path d="M8 16l4-4 4 4" />
+          <path d="M12 3 3 8h18z" /><path d="M5 8v10M9 8v10M15 8v10M19 8v10" /><path d="M3 21h18" />
         </svg>
-        <span>Server</span>
+        <span>Library</span>
       </button>
       <button id="nav-dictionary" class="nav-item" type="button">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

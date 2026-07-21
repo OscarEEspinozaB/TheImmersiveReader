@@ -107,6 +107,14 @@ plugin for each native gap below.
   HTTPS from the home server with a self-signed CA installed once per device).
   For Android specifically, the install story is now the Capacitor app (§2a); a
   PWA revisit would target desktop and non-Android devices.
+- **PDF de-hyphenation joins real compounds.** `src/ingest/pdf.js` de-hyphenates a
+  line wrap by dropping the hyphen and gluing the halves — right for `un-\nfortunate`,
+  wrong when the hyphen is lexical, which is where `emerald-green` becomes
+  `emeraldgreen` and `You-Know-Who` becomes `youknow`. Found while auditing the
+  words the server's gap-fill could not define: these artifacts sit in that list
+  permanently because no dictionary will ever have them. Likely fix: only glue when
+  the joined form is a word the KB knows (or the second half is not a standalone
+  word); otherwise keep the hyphen.
 
 ## 4. Dictionary knowledge base (server)
 
@@ -117,7 +125,23 @@ design (schema support already exists where noted):
   (EN→ES first). The `translations` table already exists (keyed by `sense_id`,
   `target_lang` — open to N languages); what's missing is the generation pass
   (a purpose-built model such as `translategemma`, run as a separate batch) and
-  surfacing translations in the popup/Dictionary hub.
+  surfacing translations in the popup/Dictionary hub. **Cheaper source now wired
+  (*Fase 3 — done on the client*):** freedictionaryapi.com returns ready-made
+  Wiktionary translations (`?translations=true`) for an English word into ~hundreds
+  of languages; the reader filters them to the native language in an on-demand
+  **"Translate to `<native>`"** button (`freeDictTranslate`), the away-from-home path
+  to a native answer with no home server (docs/design.md). Still open: English-source
+  only (no ES→native yet), no lemma resolution for inflected forms, and the
+  `translategemma` batch stays the higher-quality, offline, all-direction path.
+- **Gap-fill parsers for the remaining editions.** The server now seeds missing
+  words from public dictionaries (`generate/gapfill.js`, see docs/home-server.md):
+  `en` from freedictionaryapi.com, `es`/`fr`/`it`/`pt` from their own Wiktionary
+  editions. **German and Korean still have none** — de.wiktionary lays definitions
+  out as `<dl>`/`<dd>` under *Bedeutungen* rather than the `<ol>`/`<li>` the other
+  editions use, so it needs its own parser; until then those words stay `absent`.
+  Also open: seeding stores only the FIRST sense for the Wiktionary editions (the
+  refiner reads up to eight for English), and no inflections for them, so a seeded
+  language has no word families yet.
 - **Field locking + manual edits.** Provenance rows are already stamped (with a
   `locked` guard in SQL), but nothing sets `locked = 1` yet: there is no UI to
   edit an entry by hand. The contract to build: a manual edit locks that field
@@ -133,21 +157,30 @@ design (schema support already exists where noted):
   entries) per language, mirroring the `.tir` book format, so a generated KB can
   be carried to a machine that never talks to the server. Lower priority now that
   the LAN service exists; useful for true offline travel.
-- **LLM-from-scratch entries.** Words absent from the Kaikki dump (slang,
-  in-universe coinages like *Quidditch*, *Muggle*) currently report `absent` and
-  fall through to the on-demand chain. A gap-fill pass could generate and store
-  KB entries for them (provenance `ai`, no offline source).
+- **LLM-from-scratch entries.** In-universe coinages (*Quidditch*, *Muggle*) are
+  now covered by the external gap-fill above. What is left is the word absent from
+  the dump AND from every public dictionary — invented names, heavy slang. For
+  those an LLM pass could still generate and store an entry (provenance `ai`, no
+  offline source).
 
 ### 4a. More languages
 
-The schema is multilingual by construction (`lang` on every entry); each new
-language needs a Kaikki/Wiktextract dump plus tokenizer work where noted:
+The schema is multilingual by construction (`lang` on every entry). A dump is no
+longer the price of entry: **es/fr/it/pt already have a KB**, seeded on demand from
+their own Wiktionary editions by the server's gap-fill, and the client answers them
+directly too (`nativeWiktionary` for Spanish, `freeDict`'s English translation
+elsewhere). What a full **Kaikki/Wiktextract dump** would still add is bulk offline
+coverage (no network per word), many senses instead of one, and the inflection data
+that word families need — which is what the table's "Status" tracks, alongside the
+tokenizer work noted per language.
 
 | Code | Language | Tokenizer readiness | Status |
 | --- | --- | --- | --- |
-| `es` | Spanish | `Intl.Segmenter` — ready today | Next |
-| `pt-BR` | Portuguese | `Intl.Segmenter` — ready today | Planned |
-| `ko` | Korean | boundaries OK; agglutination needs review | Planned |
+| `es` | Spanish | `Intl.Segmenter` — ready today | Seeded (gap-fill); dump next |
+| `pt-BR` | Portuguese | `Intl.Segmenter` — ready today | Seeded (gap-fill) |
+| `fr` / `it` | French / Italian | `Intl.Segmenter` — ready today | Seeded (gap-fill) |
+| `de` | German | `Intl.Segmenter` — ready today | No gap-fill parser yet (see §4) |
+| `ko` | Korean | boundaries OK; agglutination needs review | No gap-fill parser yet |
 | `cmn` | Mandarin | `Intl.Segmenter` does **not** do real Chinese segmentation — needs a dedicated (WASM) segmenter, loaded lazily | Planned |
 | `tlh` | Klingon (pIqaD) | no open structured dataset; custom affix-aware tokenizer | Curation-only, experimental |
 

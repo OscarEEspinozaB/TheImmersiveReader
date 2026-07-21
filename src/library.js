@@ -4,6 +4,8 @@
 
 import { idbGet, idbGetAll, idbSet, idbDelete } from './idb.js';
 import { documentCover } from './cover.js';
+import { parseMarkdown } from './ingest/md.js';
+import { bookWordData } from './deck.js';
 
 function uuid() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -13,7 +15,12 @@ function uuid() {
  * @typedef {{ id: string, title: string, addedAt: number, lastOpenedAt: number,
  *   progressParagraph: number, progressWord: number, progressUpdatedAt: number,
  *   progressWordIndex?: number, cover: Blob | null, coverSource?: 'document'|'uploaded',
- *   coverWidth?: number, coverHeight?: number, lang?: string }} BookMeta
+ *   coverWidth?: number, coverHeight?: number, lang?: string, kind?: 'book'|'note' }} BookMeta
+ *   `kind` separates the two things this store holds: 'book' (the default, and what
+ *   everything saved before notes existed is) — an imported document, read-only; and
+ *   'note' — a text the reader wrote or pasted, editable. Notes are kept out of the
+ *   book shelf and out of book-level stats (see listBooks); they open in the same
+ *   reader and share the same reading mechanics.
  *   Reading position is stored PARAGRAPH-anchored (`progressParagraph` +
  *   `progressWord`, the Nth word inside it) so it survives moving to another device;
  *   `progressUpdatedAt` drives last-write-wins against the server. `progressWordIndex`
@@ -42,7 +49,7 @@ const WORDS_VERSION = 5;
 
 export async function addBook({
   id, title, text, images = [], blocks = [], cover = null, coverSource, coverWidth, coverHeight,
-  wordData = null, lang, addedAt,
+  wordData = null, lang, addedAt, kind, source,
 }) {
   // `id`/`addedAt` may be supplied when importing a `.tir` so the book keeps its
   // stable identity across devices (the same logical book is not duplicated). New
@@ -54,12 +61,62 @@ export async function addBook({
     id, title, addedAt: addedAt || now, lastOpenedAt: now,
     progressParagraph: 0, progressWord: 0, progressUpdatedAt: 0,
     cover, coverSource: coverSource || (cover ? 'document' : undefined),
-    coverWidth, coverHeight, lang,
+    coverWidth, coverHeight, lang, kind,
   };
   await idbSet('books', id, meta);
-  await idbSet('content', id, { text, images, blocks });
+  // `source` (a note's raw, unparsed text) is kept alongside the parsed reading text
+  // so the editor can reopen exactly what was typed. Books have no source.
+  await idbSet('content', id, { text, images, blocks, source });
   if (wordData) await setBookWords(id, wordData);
   return id;
+}
+
+/**
+ * Create a note from raw text the reader wrote or pasted. The text is parsed as
+ * Markdown so its symbols (**, #, `) never reach the reader or the voice, while the
+ * original is kept as `source` for later editing.
+ * @param {{ title: string, text: string, lang?: string }} note
+ * @returns {Promise<string>} the new note id
+ */
+export async function addNote({ title, text, lang }) {
+  const { text: clean, blocks } = parseMarkdown(text);
+  return addBook({
+    title: title || firstLineTitle(text),
+    text: clean, blocks, source: text, lang,
+    kind: 'note', wordData: bookWordData(clean),
+  });
+}
+
+/**
+ * Replace a note's text (and optionally its title), re-parsing the Markdown and
+ * refreshing the reading text, structure, word data and `source`.
+ * @param {string} id
+ * @param {{ title?: string, text: string }} patch
+ */
+export async function updateNote(id, { title, text }) {
+  const book = await idbGet('books', id);
+  const content = await idbGet('content', id);
+  if (!book || !content) return;
+  const { text: clean, blocks } = parseMarkdown(text);
+  content.text = clean;
+  content.blocks = blocks;
+  content.source = text;
+  await idbSet('content', id, content);
+  if (title != null) book.title = title;
+  book.lastOpenedAt = Date.now();
+  await idbSet('books', id, book);
+  await setBookWords(id, bookWordData(clean));
+  // The reading position may now point past the shortened text; reset it to the top
+  // rather than leave it dangling.
+  book.progressParagraph = 0;
+  book.progressWord = 0;
+  await idbSet('books', id, book);
+}
+
+/** A note's title when the writer gave none: its first non-empty line, trimmed. */
+function firstLineTitle(text) {
+  const line = (text || '').split('\n').map((l) => l.replace(/^#+\s*/, '').trim()).find(Boolean) || 'Untitled note';
+  return line.length > 80 ? `${line.slice(0, 80)}…` : line;
 }
 
 /**
@@ -91,10 +148,16 @@ export function setBookWords(id, data) {
   return idbSet('bookwords', id, { v: WORDS_VERSION, ...data });
 }
 
-/** @returns {Promise<BookMeta[]>} books, most recently opened first */
+/** @returns {Promise<BookMeta[]>} books (never notes), most recently opened first */
 export async function listBooks() {
   const all = await idbGetAll('books');
-  return all.sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0));
+  return all.filter((b) => b.kind !== 'note').sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0));
+}
+
+/** @returns {Promise<BookMeta[]>} notes only, most recently opened first */
+export async function listNotes() {
+  const all = await idbGetAll('books');
+  return all.filter((b) => b.kind === 'note').sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0));
 }
 
 /** @returns {Promise<BookMeta | undefined>} */
@@ -189,6 +252,10 @@ export async function renameBook(id, title) {
     await idbSet('books', id, book);
   }
 }
+
+// A note is stored in the same "books" store, so renaming it is the same operation;
+// the alias keeps the notes code reading in its own vocabulary.
+export const renameNote = renameBook;
 
 export async function deleteBook(id) {
   await idbDelete('books', id);

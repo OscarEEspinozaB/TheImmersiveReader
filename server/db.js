@@ -87,6 +87,24 @@ CREATE TABLE IF NOT EXISTS provenance (
   PRIMARY KEY (entry_id, field_path)
 );
 
+-- Words asked of the external gap-fill (generate/gapfill.js) that no public
+-- dictionary had. Two jobs:
+--   1. Stop re-asking. A Harry Potter build hits ~150 of these per book (Gringotts,
+--      Quirrell, Hagrid's "yeh'll", stutters like "bbook"); without this every
+--      rebuild would spend the same network round trips to learn the same nothing.
+--   2. Be reviewable. This is the "not processed" list — mostly proper nouns and
+--      dialect spellings, i.e. exactly the words a reader may want to mark
+--      Discarded. It NEVER sets that state itself: Discarded is manual-only, and
+--      never inferred from a missing dictionary entry (the red-sea invariant).
+CREATE TABLE IF NOT EXISTS gapfill_misses (
+  lang     TEXT NOT NULL,
+  word     TEXT NOT NULL,
+  tried_at INTEGER NOT NULL,
+  tries    INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (lang, word)
+);
+CREATE INDEX IF NOT EXISTS idx_gapfill_misses_lang ON gapfill_misses(lang);
+
 CREATE TABLE IF NOT EXISTS generation_progress (
   lang   TEXT PRIMARY KEY,
   cursor INTEGER NOT NULL, total INTEGER NOT NULL,

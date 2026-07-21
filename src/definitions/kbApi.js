@@ -139,6 +139,29 @@ export async function listKbWords({ lang, q = '', sort = 'a-z', limit = 5000 } =
 }
 
 /**
+ * The words a build asked of every public dictionary and never got an answer for —
+ * proper nouns, dialect spellings, ingest artifacts. They are NOT in the dictionary
+ * and never will be, so the Dictionary hub shows them as their own list rather than
+ * letting them look like they vanished. Returns null if the KB is off / unreachable.
+ * @param {string} [lang]
+ * @returns {Promise<{ word: string, triedAt: number, tries: number }[] | null>}
+ */
+export async function listMissingWords(lang) {
+  const base = getKbUrl();
+  if (!base) return null;
+  const params = new URLSearchParams({ lang: lang || getReadingLang() });
+  let res;
+  try {
+    res = await fetchWithTimeout(`${base}/words/missing?${params}`, LIST_TIMEOUT);
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  const data = await res.json();
+  return Array.isArray(data?.words) ? data.words : [];
+}
+
+/**
  * Counts about the dictionary data for the Dictionary stats card (built words,
  * with synonyms/antonyms, recent activity, base KB size). Returns null if the KB
  * is off / unreachable.
@@ -188,7 +211,10 @@ export async function requestKbBuild(word) {
     }
     const data = await res.json();
     const status = data?.results?.[0]?.status;
-    return status === 'refined' || status === 'skipped';
+    // "seeded" = the server fetched the word from a public dictionary and stored it
+    // (non-English books are seeded, never AI-refined) — the KB has it now, so the
+    // reader should re-query just as it does after a refine.
+    return status === 'refined' || status === 'skipped' || status === 'seeded';
   } catch {
     buildRequested.delete(word); // unreachable — allow a retry next time
     return false;

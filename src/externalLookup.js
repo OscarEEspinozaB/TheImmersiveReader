@@ -65,6 +65,14 @@ const DICTIONARIES = {
       { label: 'Dicio', url: `https://www.dicio.com.br/${w}` },
     ],
   },
+  ko: {
+    wiktionary: 'ko',
+    searchHint: '뜻',
+    links: (w) => [
+      { label: 'Naver', url: `https://ko.dict.naver.com/#/search?query=${w}` },
+      { label: 'Daum', url: `https://dic.daum.net/search.do?q=${w}` },
+    ],
+  },
 };
 
 /**

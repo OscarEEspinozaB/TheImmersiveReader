@@ -4,12 +4,14 @@
 // can change without touching the UI.
 
 import { lookupLocal } from './localDict.js';
-import { lookupKB, requestKbBuild, reRefineWord, listKbWords, getKbStats } from './kbApi.js';
-import { lookupDictionaryApi } from './dictionaryApi.js';
+import { lookupKB, requestKbBuild, reRefineWord, listKbWords, listMissingWords, getKbStats } from './kbApi.js';
+import { lookupNativeWiktionary } from './nativeWiktionary.js';
+import { lookupFreeDict, freeDictTranslate } from './freeDict.js';
 import { decompose } from './ollama.js';
 import { serverAiDefine, serverAiExplain, serverAiAvailable, listAiModels } from './serverAi.js';
 
-export { requestKbBuild, reRefineWord, listKbWords, getKbStats, listAiModels };
+export { requestKbBuild, reRefineWord, listKbWords, listMissingWords, getKbStats, listAiModels };
+export { freeDictTranslate };
 
 /**
  * Whether AI explanations are currently available. Context-aware explanations are
@@ -23,7 +25,8 @@ export function isAiAvailable() {
 /**
  * @typedef {Object} Definition
  * @property {string} explanation
- * @property {string} source  e.g. "dictionary" | "ollama" | "local" | "kb"
+ * @property {string} source  e.g. "contraction" | "local" | "kb" | "wiktionary" | "freedict"
+ * @property {string} [pronunciation]  IPA, when the provider carries one (freedict)
  * @property {boolean} [refined]  for `kb` source: whether the entry is the
  *   AI-refined one (true) or still the raw Kaikki data (false, build pending)
  * @property {import('../definitionsCache.js').KbDetails} [kb]  rich data from the
@@ -40,7 +43,7 @@ export function isAiAvailable() {
  * @returns {Promise<Definition | null>}
  */
 export async function getQuickDefinition(word, sentence) {
-  for (const provider of [lookupLocal, lookupKB, lookupDictionaryApi]) {
+  for (const provider of [lookupLocal, lookupKB, lookupNativeWiktionary, lookupFreeDict]) {
     try {
       const res = await provider(word, sentence);
       if (res && res.explanation) return res;

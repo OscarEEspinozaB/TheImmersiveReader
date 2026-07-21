@@ -149,7 +149,7 @@ function bookCard(book, container, opts) {
   });
 
   const upload = iconButton(
-    'Upload to server',
+    'Upload to Library',
     'M12 12v9 M8 16l4-4 4 4 M20 16.7A5 5 0 0 0 18 9h-1.3A8 8 0 1 0 4 15.2',
   );
   upload.addEventListener('click', async () => {
@@ -158,8 +158,8 @@ function bookCard(book, container, opts) {
       const r = await uploadBook(book.id);
       await alertDialog(
         r.duplicate
-          ? `"${r.title}" is already in the server library.`
-          : `"${r.title}" was uploaded to the server library.`,
+          ? `"${r.title}" is already in the Library.`
+          : `"${r.title}" was uploaded to the Library.`,
       );
     } catch (err) {
       console.error(err);

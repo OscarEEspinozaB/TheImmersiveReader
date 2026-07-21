@@ -40,12 +40,20 @@ language.
 
 ## 4. Dictionary hub
 
-- Search box, filter chips **All / Known / Learning / Discarded / Built**
-  (`aria-pressed`), and a Recent ⇆ A–Z sort toggle. Search/sort/filter persist
-  across hub switches. The **Discarded** filter browses exempt words so a wrong
-  mark can be moved back to known/learning via each row's state selector.
+- Search box, filter chips **All / Known / Learning / Discarded / Built / Not in
+  any dictionary** (`aria-pressed`), and a Recent ⇆ A–Z sort toggle.
+  Search/sort/filter persist across hub switches. The **Discarded** filter browses
+  exempt words so a wrong mark can be moved back to known/learning via each row's
+  state selector.
 - The **Built** filter browses the home server's refined dictionary as it grows
   (`/words`), independent of what the user has marked.
+- **Not in any dictionary** (`/words/missing`) is the counterpart of Built: the
+  words the server asked every source about and that exist in none of them —
+  invented names, dialect spellings, scanning artifacts. They count as *processed*
+  in a book's coverage (so a book can reach 100%), and this list is where they
+  remain accountable instead of appearing to vanish. It only shows them: nothing
+  here marks anything **Discarded**, which stays a deliberate act and is never
+  inferred from a missing dictionary entry.
 - A **dictionary-data stats card** (`/stats`): words built, with
   synonyms/antonyms, built today/this week, by model, recent builds, raw KB base
   size.

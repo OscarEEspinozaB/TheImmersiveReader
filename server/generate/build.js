@@ -7,6 +7,11 @@
 // one simple-English definition (see generate/ollama.js); it does not touch the
 // raw senses/inflections, so it is safe to re-run with a better model later.
 //
+// A word the dump never had is not a dead end any more: it is fetched from a public
+// dictionary first (generate/gapfill.js) and stored, then refined. That is also how
+// languages with no dump here (es/fr/it/pt) get a KB at all — those are SEEDED and
+// never refined, because their definitions already arrive in their own language.
+//
 // REFINED ENTRIES ARE KEYED BY LEMMA. Asking to build "aimed" builds "aim": an
 // inflected form is not a word of its own, it is a form of one, and /define serves
 // it the lemma's entry under a banner ("Past tense of aim"). Refining each form
@@ -16,6 +21,7 @@
 
 import { normalize } from '../../src/normalize.js';
 import { formOf } from '../lemma.js';
+import { gapFill, isRefinedLanguage } from './gapfill.js';
 import { refineEntry, REFINE_MODEL, REFINE_REV } from './ollama.js';
 
 // Pull the raw data the refiner needs for one entry, or null if the word is not
@@ -100,12 +106,34 @@ export async function refineWords({ db, lang, words, force = false, model = REFI
       results.push(r); onResult?.(r);
       continue;
     }
-    const raw = readRaw(db, lang, word);
+    let raw = readRaw(db, lang, word);
     if (!raw) {
-      const r = { word, status: 'absent' }; // not in KB — a true miss (future LLM-from-scratch)
+      // Not in the offline dump. Before giving up, ask a public dictionary and
+      // store what it says (generate/gapfill.js): this is what fills the English
+      // dump's holes ("Quidditch") and what seeds a language that has no dump here
+      // at all (es/fr/it/pt read their OWN Wiktionary edition, so the definition
+      // comes back in that language). A language with no validated source stays
+      // absent rather than storing something wrong.
+      // A word already on the miss list costs nothing here — it is skipped without
+      // a network call. `force` is the way to make it try the sources again.
+      if (await gapFill(db, lang, word, { retry: force })) raw = readRaw(db, lang, word);
+    }
+    if (!raw) {
+      const r = { word, status: 'absent' }; // a true miss — nothing anywhere
       results.push(r); onResult?.(r);
       continue;
     }
+
+    // Refinement rewrites an entry into simple ENGLISH, so it only speaks for
+    // English books. A seeded Spanish/French entry is already a clean definition
+    // in its own language — serving it raw is the right answer, and running the
+    // English refiner over it would replace it with a translation.
+    if (!isRefinedLanguage(lang)) {
+      const r = { word, status: 'seeded' };
+      results.push(r); onResult?.(r);
+      continue;
+    }
+
     onStart?.(word);
     const refined = await refineEntry({ word, ...raw }, model);
     if (!refined) {

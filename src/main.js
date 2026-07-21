@@ -21,12 +21,14 @@ import {
 } from './sentences.js';
 import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
+import { renderNotesShelf } from './notes.js';
+import { initNoteEditor, openNoteEditor } from './notesEditor.js';
 import { renderServerShelf } from './serverShelf.js';
 import { initVocabSync, syncNow } from './vocabSync.js';
 import { pullPosition, pushPosition } from './positionSync.js';
 import { buildParagraphs, wordStartsOf, wordIndexToPosition, positionToWordIndex } from './reader/position.js';
 import { recolorWord } from './reader/render.js';
-import { renderProgress, renderDictionary } from './dashboard.js';
+import { renderProgress, renderDictionary, refreshBookLanguages } from './dashboard.js';
 import { buildDeck, bookWordData } from './deck.js';
 import { importTir } from './tir.js';
 import { prepareCover, documentCover, imagesWithCover } from './cover.js';
@@ -37,6 +39,8 @@ import { canSpeak, voiceGroupsForLang } from './speech.js';
 import { stopReading } from './readAloud.js';
 import {
   addBook,
+  addNote,
+  listNotes,
   getBook,
   getBookContent,
   findBookByTitle,
@@ -70,15 +74,20 @@ import {
   SORT_OPTIONS,
   getSortBy,
   setSortBy,
+  getNotesSortBy,
+  setNotesSortBy,
   getReadingMode,
   setReadingMode,
   FONT_OPTIONS,
   FONT_SIZE_OPTIONS,
+  LINE_SPACING_OPTIONS,
   getReadingFont,
   setReadingFont,
   getReadingFontOption,
   getReadingFontSize,
   setReadingFontSize,
+  getReadingLineHeight,
+  setReadingLineHeight,
 } from './settings.js';
 
 const reader = document.getElementById('reader');
@@ -88,11 +97,18 @@ const shelf = document.getElementById('shelf');
 const shelfGrid = document.getElementById('shelf-grid');
 const shelfButton = document.getElementById('shelf-button');
 const dashboard = document.getElementById('dashboard');
+const notesSection = document.getElementById('notes');
+const notesGrid = document.getElementById('notes-grid');
+const notesSortSelect = document.getElementById('notes-sort-select');
+const newNoteButton = document.getElementById('new-note');
+const importNoteInput = document.getElementById('import-note');
+const editorSection = document.getElementById('editor');
 const serverShelf = document.getElementById('server-shelf');
 const serverShelfGrid = document.getElementById('server-shelf-grid');
 const serverRefresh = document.getElementById('server-refresh');
 const primaryNav = document.getElementById('primary-nav');
 const navLibrary = document.getElementById('nav-library');
+const navNotes = document.getElementById('nav-notes');
 const navServer = document.getElementById('nav-server');
 const navDictionary = document.getElementById('nav-dictionary');
 const navProgress = document.getElementById('nav-progress');
@@ -100,9 +116,11 @@ const swiperEl = document.getElementById('swiper');
 const addBookInput = document.getElementById('add-book');
 const viewToggle = document.getElementById('view-toggle');
 const sortSelect = document.getElementById('sort-select');
+const notesViewToggle = document.getElementById('notes-view-toggle');
 const readingModeSelect = document.getElementById('reading-mode-select');
 const readingFontSelect = document.getElementById('reading-font-select');
 const readingSizeSelect = document.getElementById('reading-size-select');
+const readingLineSpacingSelect = document.getElementById('reading-linespacing-select');
 const prevButton = document.getElementById('prev-page');
 const nextButton = document.getElementById('next-page');
 const pageIndicator = document.getElementById('page-indicator');
@@ -135,6 +153,7 @@ let currentParagraphs = [];
 let currentWordStarts = [];
 let lastSavedPosKey = ''; // "paragraph:word" last persisted, to skip redundant saves
 let currentView = 'grid';
+let notesView = 'cards'; // the Notes shelf layout: 'cards' (wide) | 'list' (compact)
 
 initTheme();
 // Enable edge-to-edge (WebView under the status bar) on native, then push the
@@ -160,11 +179,14 @@ initVocabSync({
   },
 });
 
-// --- View switching: shelf / reader / dictionary / progress / swiper ---
-// The nav view currently on screen ('shelf' | 'server' | 'dictionary' |
-// 'progress' | 'reader' | 'swiper'). Distinct from `currentView`, which is the
-// shelf's grid/list layout. Drives the hardware back button (see below).
+// --- View switching: shelf / notes / editor / reader / dictionary / progress / swiper ---
+// The nav view currently on screen ('shelf' | 'notes' | 'editor' | 'server' |
+// 'dictionary' | 'progress' | 'reader' | 'swiper'). Distinct from `currentView`,
+// which is the shelf's grid/list layout. Drives the hardware back button (see below).
 let activeView = 'shelf';
+// Which hub a reader/editor session was entered from, so "back" returns there
+// (a note goes back to Notes, a book to My Books).
+let readerOrigin = 'shelf';
 
 function setView(view) {
   activeView = view;
@@ -178,17 +200,25 @@ function setView(view) {
     swiperEl._cleanup = null;
   }
   shelf.hidden = view !== 'shelf';
+  notesSection.hidden = view !== 'notes';
+  editorSection.hidden = view !== 'editor';
   serverShelf.hidden = view !== 'server';
   dashboard.hidden = !(view === 'dictionary' || view === 'progress');
   swiperEl.hidden = view !== 'swiper';
   readerWrap.hidden = !reading;
   pager.hidden = !reading;
-  shelfButton.hidden = !reading; // "back to library" only while reading
+  shelfButton.hidden = !reading; // "back" button only while reading
 
-  // Primary nav: shown only on the hub views, hidden in the immersive ones.
-  const hub = view === 'shelf' || view === 'server' || view === 'dictionary' || view === 'progress';
+  // Primary nav: shown only on the hub views, hidden in the immersive ones (reader,
+  // swiper) and in the editor (a focused writing surface).
+  const hub =
+    view === 'shelf' || view === 'notes' || view === 'server' ||
+    view === 'dictionary' || view === 'progress';
   document.body.classList.toggle('nav-hidden', !hub);
+  // The editor supplies its own top bar; hide the global one so they don't overlap.
+  document.body.classList.toggle('editor-active', view === 'editor');
   navLibrary.classList.toggle('is-active', view === 'shelf');
+  navNotes.classList.toggle('is-active', view === 'notes');
   navServer.classList.toggle('is-active', view === 'server');
   navDictionary.classList.toggle('is-active', view === 'dictionary');
   navProgress.classList.toggle('is-active', view === 'progress');
@@ -221,16 +251,28 @@ async function openSwiper(id) {
   renderSwiper(swiperEl, { deck: cards, stats, onExit: showShelf });
 }
 
+// The hubs' language switcher offers the languages of the SHELF as well as of the
+// marked vocabulary (an all-unknown Spanish book has no vocabulary rows yet), so the
+// shelf's languages are read before painting and the view is drawn again once they
+// are in — the first paint must not wait on IndexedDB.
 function showProgress() {
   setMenuOpen(false);
   setView('progress');
-  renderProgress(dashboard, { onOpenDictionary: showDictionary });
+  const paint = () => renderProgress(dashboard, { onOpenDictionary: showDictionary });
+  paint();
+  refreshBookLanguages().then(() => {
+    if (activeView === 'progress') paint();
+  });
 }
 
 function showDictionary(filter) {
   setMenuOpen(false);
   setView('dictionary');
-  renderDictionary(dashboard, { filter });
+  const paint = () => renderDictionary(dashboard, { filter });
+  paint();
+  refreshBookLanguages().then(() => {
+    if (activeView === 'dictionary') paint();
+  });
 }
 
 function renderLibrary() {
@@ -252,6 +294,12 @@ async function showShelf() {
   await renderLibrary();
 }
 
+// Leave the reader for the hub it was opened from — a note returns to Notes, a book
+// to My Books — so "back" is never surprising.
+function backFromReader() {
+  return readerOrigin === 'notes' ? showNotes() : showShelf();
+}
+
 async function showServerLibrary() {
   setMenuOpen(false);
   setView('server');
@@ -259,6 +307,41 @@ async function showServerLibrary() {
   // up to date the next time the user switches back to it.
   await renderServerShelf(serverShelfGrid, { onDownloaded: renderLibrary });
 }
+
+function renderNotes() {
+  return renderNotesShelf(notesGrid, {
+    view: notesView,
+    sortBy: getNotesSortBy(),
+    onOpen: (id) => openBook(id, 'notes'),
+    onEdit: openNoteForEdit,
+    onNew: openNewNote,
+  });
+}
+
+async function showNotes() {
+  setMenuOpen(false);
+  currentBookId = null;
+  currentBookTitle = '';
+  readingLangSelect.value = getDefaultReadingLang(); // no note open → edits the default
+  setView('notes');
+  await renderNotes();
+}
+
+// The editor is entered from Notes (New, or Edit on a card). Saving returns to the
+// Notes list; backing out does too, discarding an unsaved draft.
+async function openNewNote() {
+  setMenuOpen(false);
+  setView('editor');
+  await openNoteEditor(null);
+}
+
+async function openNoteForEdit(id) {
+  setMenuOpen(false);
+  setView('editor');
+  await openNoteEditor(id);
+}
+
+initNoteEditor({ onSaved: showNotes, onExit: showNotes, onStyleChange: applyReadingFont });
 
 /** Ask the user to pick a reading language. @returns {Promise<string|null>} */
 function pickReadingLang(message, defaultCode) {
@@ -269,7 +352,8 @@ function pickReadingLang(message, defaultCode) {
   );
 }
 
-async function openBook(id) {
+async function openBook(id, origin = 'shelf') {
+  readerOrigin = origin;
   const [book, content] = await Promise.all([getBook(id), getBookContent(id)]);
   if (!content) return;
   // Older books have no language; ask once and persist it before rendering.
@@ -711,12 +795,14 @@ function applyRedSeaSuppression() {
 }
 
 // Push the selected reader typeface into the CSS variables the reading flow reads.
+// These same variables style the note editor, so reader and editor stay consistent.
 function applyReadingFont() {
   const { stack, weight } = getReadingFontOption();
   const root = document.documentElement.style;
   root.setProperty('--reader-font', stack);
   root.setProperty('--reader-weight', weight);
   root.setProperty('--reader-font-size', String(getReadingFontSize() / 100)); // unitless multiplier
+  root.setProperty('--reader-line-height', String(getReadingLineHeight()));
 }
 
 // Follow the voice during a continuous read-aloud (`paginator` is the
@@ -829,7 +915,12 @@ function handleBackButton() {
     return;
   }
   if (activeView === 'reader') {
-    showShelf(); // saves the reading position, same as the "library" button
+    backFromReader(); // saves the reading position, same as the "back" button
+    return;
+  }
+  // The editor backs out to Notes (discarding an unsaved draft, like its own Back).
+  if (activeView === 'editor') {
+    showNotes();
     return;
   }
   if (activeView !== 'shelf') {
@@ -849,11 +940,74 @@ if (globalThis.Capacitor?.isNativePlatform?.()) {
 }
 
 // --- Shelf / add-book wiring ---
-shelfButton.addEventListener('click', showShelf);
+shelfButton.addEventListener('click', backFromReader);
 navLibrary.addEventListener('click', showShelf);
+navNotes.addEventListener('click', showNotes);
 navServer.addEventListener('click', showServerLibrary);
 navDictionary.addEventListener('click', () => showDictionary());
 navProgress.addEventListener('click', showProgress);
+
+// --- Notes wiring ---
+newNoteButton.addEventListener('click', openNewNote);
+importNoteInput.addEventListener('change', (e) => addNoteFromFile(e.target.files[0]));
+notesViewToggle.addEventListener('click', () => {
+  notesView = notesView === 'cards' ? 'list' : 'cards';
+  renderNotes();
+});
+
+for (const { value, label } of SORT_OPTIONS) {
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = label;
+  notesSortSelect.appendChild(opt);
+}
+notesSortSelect.value = getNotesSortBy();
+notesSortSelect.addEventListener('change', () => {
+  setNotesSortBy(notesSortSelect.value);
+  renderNotes();
+});
+
+// Importing a .md/.txt as a NOTE (editable), as opposed to a book: read the file's
+// text and save it through the note path (which parses the Markdown), then land on
+// the Notes list rather than opening the reader.
+async function addNoteFromFile(file) {
+  if (!file) return;
+  importNoteInput.value = ''; // so the same file can be picked again
+  try {
+    const text = await file.text();
+    if (!text.trim()) return;
+    let title = file.name.replace(/\.[^.]+$/, '');
+    // A note with this title already exists: confirm before making a second copy,
+    // and save it under a distinct name ("Title (2)") so the two never collide.
+    const existing = await listNotes();
+    if (existing.some((n) => sameTitle(n.title, title))) {
+      const again = await confirmDialog(
+        `A note called “${title}” already exists. Import another copy?`,
+        { confirmLabel: 'Add a copy' },
+      );
+      if (!again) return;
+      title = uniqueNoteTitle(title, existing.map((n) => n.title));
+    }
+    // Ask the note's language, the same as importing a book — never assume the default.
+    const lang = (await pickReadingLang('What language is this note in?', getDefaultReadingLang())) || getDefaultReadingLang();
+    await addNote({ title, text, lang });
+    await renderNotes();
+  } catch (err) {
+    console.error(err);
+    await alertDialog(`Could not import this file as a note: ${err.message}`);
+  }
+}
+
+const sameTitle = (a, b) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+
+// "Title" → "Title (2)", "Title (3)", … — the first form not already taken.
+function uniqueNoteTitle(base, taken) {
+  const lower = taken.map((t) => (t || '').trim().toLowerCase());
+  for (let n = 2; ; n += 1) {
+    const candidate = `${base} (${n})`;
+    if (!lower.includes(candidate.toLowerCase())) return candidate;
+  }
+}
 serverRefresh.addEventListener('click', () =>
   renderServerShelf(serverShelfGrid, { onDownloaded: renderLibrary }),
 );
@@ -907,6 +1061,21 @@ for (const { value, label } of FONT_SIZE_OPTIONS) {
 readingSizeSelect.value = String(getReadingFontSize());
 readingSizeSelect.addEventListener('change', () => {
   setReadingFontSize(readingSizeSelect.value);
+  applyReadingFont();
+  reRenderAtCurrentSpot();
+});
+
+// Line spacing: applies via a CSS variable (no re-pagination needed — but a re-render
+// keeps paged breaks honest at the new line height).
+for (const { value, label } of LINE_SPACING_OPTIONS) {
+  const opt = document.createElement('option');
+  opt.value = String(value);
+  opt.textContent = label;
+  readingLineSpacingSelect.appendChild(opt);
+}
+readingLineSpacingSelect.value = String(getReadingLineHeight());
+readingLineSpacingSelect.addEventListener('change', () => {
+  setReadingLineHeight(readingLineSpacingSelect.value);
   applyReadingFont();
   reRenderAtCurrentSpot();
 });

@@ -13,11 +13,13 @@ import { kbLog, KB_COLORS as C } from '../log.js';
 export const buildRouter = Router();
 
 // Map a per-word build result to a colored screen log so the read-through process
-// is visible: BUILT (just stored), SKIPPED (already refined), ABSENT/FAILED.
+// is visible: BUILT (just stored), SEEDED (fetched from a public dictionary — how
+// non-English books are built), SKIPPED (already refined), ABSENT/FAILED.
 const RESULT_LOG = {
   refined: (r) => kbLog(C.green, 'BUILT', r.word, r.definition),
+  seeded: (r) => kbLog(C.green, 'SEEDED', r.word, 'from a public dictionary'),
   skipped: (r) => kbLog(C.dim, 'SKIPPED', r.word, 'already refined'),
-  absent: (r) => kbLog(C.dim, 'ABSENT', r.word, 'not in KB'),
+  absent: (r) => kbLog(C.dim, 'ABSENT', r.word, 'not in KB or any source'),
   failed: (r) => kbLog(C.red, 'FAILED', r.word, 'Ollama unreachable?'),
 };
 
