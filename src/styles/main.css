@@ -362,6 +362,15 @@ body.chrome-hidden .reader-wrap--scroll {
   padding-bottom: calc(var(--sab) + 0.5rem);
 }
 
+/* On Android the system status bar hides with the chrome (src/statusBar.js), so
+   the inset it reserved is dead space — reclaim it, same trade as the rule above.
+   Harmless when Android already reports the inset as 0. Deliberately NOT applied
+   to paged mode, and NOT done by zeroing `--sat` globally: that would move the
+   text column and repaginate the book every time the bars time out. */
+body.immersive .reader-wrap--scroll {
+  padding-top: 0.5rem;
+}
+
 /* Reader viewport: clips the flowing columns; one column == one page.
    It must have NO horizontal padding so column width == clientWidth exactly. */
 .reader {

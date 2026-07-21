@@ -239,6 +239,8 @@ becomes another hidden gesture:
   (there are no pages to step through); its percentage is the scroll position.
   In continuous mode the text reclaims the bars' space while they are hidden;
   paged mode keeps constant margins so toggling the chrome never repaginates.
+  On Android the phone's own status bar hides and returns along with this chrome
+  (see [android.md](android.md)), so an untouched page shows only text.
 
 Themes (dark + light variants) via `reader/theme.js`; a selectable reader
 typeface (bundled Literata variable font + system stacks) applies through CSS

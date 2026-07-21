@@ -28,6 +28,39 @@ export async function initStatusBar() {
   }
 }
 
+// Immersive reading: the system bar hides along with the app's own chrome, so a
+// page of text has nothing but text on it. `hide()` leaves Android in
+// show-transient-bars-by-swipe, so a swipe from the top edge still reveals the
+// clock and notifications, and the bar slides away again on its own.
+let immersive = false;
+
+/**
+ * Hide (or restore) the system status bar. Native-only; the web has no say over
+ * browser chrome. Repeated calls with the same value are dropped — this runs off
+ * the chrome auto-hide timer, and each call crosses the JS/native bridge.
+ * @param {boolean} on
+ */
+export async function setImmersive(on) {
+  if (!NATIVE || !StatusBar || immersive === on) return;
+  immersive = on;
+  // The layout reserves the bar's height via `--sat`; with the bar gone that
+  // space would read as a dead band, so the class collapses it (see main.css).
+  document.body.classList.toggle('immersive', on);
+  try {
+    await (on ? StatusBar.hide() : StatusBar.show());
+  } catch {
+    /* ignore — non-fatal cosmetic call */
+  }
+}
+
+/** Re-assert the bar's state, for when Android restores it on its own. */
+export function refreshImmersive() {
+  if (!NATIVE || !StatusBar) return;
+  const want = immersive;
+  immersive = !want; // force setImmersive past its no-op guard
+  setImmersive(want);
+}
+
 /**
  * Match the status-bar icon color to the active theme mode.
  * @param {'dark'|'light'} mode

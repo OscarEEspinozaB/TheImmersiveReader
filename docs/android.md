@@ -181,6 +181,21 @@ on are missing or behave differently. Each is bridged to a native equivalent:
   follows the theme: `src/reader/theme.js` calls `syncStatusBarStyle(mode)` on every
   theme change — light themes get dark icons, dark themes get light icons. No-op on
   the web, where the browser owns the chrome.
+- **Immersive reading.** In the reader the phone's status bar hides *with* the app's
+  own chrome and comes back with it, so a page of text has nothing on screen but
+  text — no clock, no notification icons. `setImmersive()` in `src/statusBar.js`
+  drives `StatusBar.hide()/show()` off the same auto-hide timer as the top/bottom
+  bars (`showChrome`/`hideChrome` in `main.js`); leaving the reader always restores
+  it. Android keeps the bar reachable by a swipe from the top edge, and it slides
+  away again on its own. Two details worth keeping:
+  - Restoring is **unconditional** — `showChrome` also runs outside the reader —
+    so the bar can never be stranded hidden over a hub view. Coming back from the
+    background re-asserts it (`appStateChange`), because Android restores the
+    system bars on resume by itself.
+  - The freed inset is reclaimed **only in continuous mode** (`body.immersive
+    .reader-wrap--scroll`), mirroring the chrome's own rule. Zeroing `--sat`
+    globally would shift the text column and **repaginate the book every time the
+    bars time out**.
 
 ## Talking to the home-server from the phone
 

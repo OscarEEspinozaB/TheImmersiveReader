@@ -9,7 +9,7 @@ import { Paginator } from './reader/paginator.js';
 import { Scroller } from './reader/scroller.js';
 import { attachPageTurn } from './reader/pageTurn.js';
 import { initTheme, setTheme, getTheme, THEMES, refreshStatusBarStyle } from './reader/theme.js';
-import { initStatusBar } from './statusBar.js';
+import { initStatusBar, setImmersive, refreshImmersive } from './statusBar.js';
 import { initAppUpdate, isNativeApp, currentBundle, checkNow, rollbackToPrevious } from './appUpdate.js';
 import { attachMarking, hidePopup } from './marking.js';
 import { hideGloss } from './gloss.js';
@@ -232,6 +232,7 @@ function setView(view) {
     showChrome();
   } else {
     document.body.classList.remove('chrome-hidden');
+    setImmersive(false); // never leave the phone's bar hidden outside the reader
     clearTimeout(hideTimer);
   }
 }
@@ -488,13 +489,19 @@ const HIDE_DELAY = 2500;
 let hasDocument = false;
 let hideTimer = null;
 
+// The phone's own status bar follows the app's bars: a page of text ends up with
+// nothing on screen but text, and one tap brings back the whole chrome — clock
+// included. Restoring it is unconditional (showChrome also runs outside the
+// reader), so the bar can never be left hidden over a hub view.
 function hideChrome() {
   if (!hasDocument || !menu.hidden) return;
   document.body.classList.add('chrome-hidden');
+  setImmersive(true);
 }
 
 function showChrome() {
   document.body.classList.remove('chrome-hidden');
+  setImmersive(false);
   clearTimeout(hideTimer);
   hideTimer = setTimeout(hideChrome, HIDE_DELAY);
 }
@@ -934,6 +941,11 @@ if (globalThis.Capacitor?.isNativePlatform?.()) {
   // runs later in this module). Degrade to no back-button handling instead.
   try {
     CapacitorApp.addListener('backButton', handleBackButton);
+    // Android restores the system bars when the app comes back to the foreground,
+    // so a reader left immersive would reappear with the clock over it.
+    CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) refreshImmersive();
+    });
   } catch (err) {
     console.error('backButton listener failed:', err);
   }
