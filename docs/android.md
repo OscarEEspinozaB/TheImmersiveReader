@@ -39,8 +39,8 @@ cd android && ./gradlew assembleDebug # → android/app/build/outputs/apk/debug/
 `npm run cap:open` opens the same project in Android Studio instead, if you prefer
 Run/Build from the IDE.
 
-Two settings differ from Capacitor 6's defaults, both forced by the OTA updater
-plugin and both in build files that are committed:
+Three settings differ from Capacitor 6's defaults, all in build files that are
+committed. The first two are forced by the OTA updater plugin:
 
 - `minSdkVersion = 23` (was 22) in [variables.gradle](../android/variables.gradle) —
   the plugin pulls Play-services libraries that declare 23.
@@ -48,6 +48,10 @@ plugin and both in build files that are committed:
   [app/build.gradle](../android/app/build.gradle) — the plugin hardcodes 2.10.5,
   which refuses any project compiling below SDK 35, and this one is on 34. Drop the
   pin when the project moves to compileSdk 35+.
+- `ndk.abiFilters = arm64-v8a, armeabi-v7a` in the same file — ML Kit's translator
+  ships a ~15MB native library **per ABI**, which took the side-loaded APK from ~7MB
+  to 67MB. Dropping the two x86 ABIs (emulator-only; this project builds for a real
+  device) brings it back to ~34MB. Add them back there if an emulator is ever needed.
 
 Day to day you rarely run any of this: a **web** change ships with
 `npm run app:publish` (see OTA below) and reaches the installed APK by itself. The
@@ -163,6 +167,33 @@ on are missing or behave differently. Each is bridged to a native equivalent:
   [`@capacitor-community/text-to-speech`](https://github.com/capacitor-community/text-to-speech)
   (the OS TTS engine) instead; the web keeps using Web Speech. `canSpeak()` is true
   on both. The voice picker lists the OS voices via `getSupportedVoices()`.
+- **On-device translation.** Away from home the AI explanation is unreachable, and
+  the web build's fallback (freedictionaryapi's Wiktionary translation list) misses
+  exactly the words a learner taps most — `their` returns four definitions and zero
+  translations. On native, `src/definitions/mlkitTranslate.js` uses
+  [`@capacitor-mlkit/translation`](https://github.com/capawesome-team/capacitor-mlkit)
+  ([ML Kit](https://developers.google.com/ml-kit/language/translation)), which
+  translates arbitrary **text** rather than looking up entries: it answers for every
+  word, and for the dictionary's **explanation** of it (the book's own sentence is
+  deliberately not translated in the word bubble — see design.md §6). Free, no key, and once its ~30MB
+  models are downloaded (the plugin requires WiFi for that, so it happens at home)
+  it needs no network at all — the metro case, without data. That download is
+  implicit and therefore opaque: when nothing comes back there is no way to tell "the
+  model never arrived" from "the app is broken", and it can differ between two phones
+  on the same WiFi. Settings → **Offline translation** answers it in one line — which
+  models are on the device — and offers a deliberate *Download* per missing language
+  whose **error message is shown**, instead of being swallowed by a translation that
+  quietly returns nothing. The model list also rides along in every exported log.
+  Like the OTA updater it
+  is never a dependency: on the web, on a first press away from WiFi, or on any
+  plugin error it returns null and the freedictionaryapi path answers instead. That
+  fallback is English-books-only, so the "Translate to `<native>`" button covers
+  every language pair on the phone and only English books in a browser.
+- **No devtools.** Nothing on the phone can open a console, so a failure there is
+  invisible from the desk. Settings → **Diagnostics** captures the app's own errors
+  and dumps them into a note that can be read, copied and sent — see
+  [design.md §8](design.md#8-diagnostics-in-app-log). It is the first thing to reach
+  for when something works in the browser and not in the APK.
 - **Hardware back button.** Capacitor's default is to exit the app. `src/main.js`
   registers an `@capacitor/app` `backButton` handler that instead: closes an open
   menu/bubble/popup first, else steps the reader or a hub back to the library, and

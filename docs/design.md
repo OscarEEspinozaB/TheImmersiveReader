@@ -218,7 +218,22 @@ becomes another hidden gesture:
   end, on the bubble's `⏹ Stop`, on the pill (below), when any other speech
   starts (a word's 🔊), or on leaving the reader / re-rendering the book. Plus
   copy the paragraph (always the whole paragraph) and copy the word (clipboard
-  with a legacy fallback for non-HTTPS LAN contexts, `src/copy.js`). While any
+  with a legacy fallback for non-HTTPS LAN contexts, `src/copy.js`).
+  **`Translate this sentence`** (on-device, so Android only) is here and **only**
+  here: translating running text is the reader deliberately checking *"did I
+  understand this?"* after reading it, never something a word tap does on its own.
+  Its scope is **one sentence** — the tapped word's own, period to period — while
+  every other action in this bubble works on the whole paragraph. That gap is the
+  point: **translation is kept expensive on purpose**. One double tap buys one
+  sentence, so a reader can check a passage they struggled with and cannot sweep the
+  book into their own language a paragraph at a time — the aim is a reader who leans
+  on the English, using translation as a check rather than a crutch. (It is also what
+  the small on-device model translates best.) The translation appears **under** the
+  text, which stays where it is, so the reader compares their own reading against it.
+  Asking for one **pins the bubble open**: the idle timeout is right for a bubble that
+  was only glanced at and wrong the moment it is asked a question — a slow first answer
+  would time out under the await, and a long one would vanish while it was still being
+  read. It closes on a tap outside, as always. While any
   read-aloud is playing, a fixed **`⏹ Stop reading` pill** shows at the bottom —
   the playback indicator and stop control that survives the bubble's auto-hide
   (it lingers through the inter-paragraph gap instead of blinking, and stopping
@@ -270,13 +285,44 @@ change without touching the UI (`src/definitions/index.js`).
   is stored per exact sentence; a failed lookup can be retried, and a **↻
   regenerate** button re-does an answer that came out wrong (below).
   An on-demand **"Explain in &lt;native language&gt;"** rescue works the same way.
-  **Away from home** (server unreachable) that AI rescue is replaced by an on-demand
-  **"Translate to &lt;native language&gt;"** button: a plain dictionary translation
-  straight from freedictionaryapi over any internet — no home server — so a reader on
-  mobile data still gets a native-language answer. It is English-book only (that
-  API's translations are English-source) and fires only on press (the metro case:
-  never spend data until asked); the translation carries no ↻ (there is no model to
-  re-run).
+- **"Translate to &lt;native language&gt;"** — the other native-language answer, and a
+  **separate** one, not a fallback. It is offered whenever it can answer, including
+  at home with the AI up, and sits **above** "Explain in…" because it is the cheaper
+  question: the word plus what the dictionary says it means, on-device or one
+  dictionary call, no home server, no model. The two write into **separate slots**, so
+  asking for both keeps both. It carries no ↻ (there is no model to re-run) and fires
+  only on press — away from home that makes it the whole native-language path (the
+  metro case: never spend data until asked), and at home it is simply the answer to
+  reach for before spending a model run.
+
+  **What it translates is a teaching decision, not a technical one:** the word and
+  the **dictionary's explanation of it** — never the book's sentence. The aim is a
+  reader who understands the words and then reads the English; translating the
+  sentence here would quietly turn every tap into a translated book. Checking a
+  passage is a different, deliberate act and lives behind its own button in the
+  **paragraph bubble** (§5).
+
+  A dictionary's answer for an **inflected form is not a meaning** — it is a pointer
+  ("was" → *first-person singular simple past indicative of be*). Translating that
+  sentence teaches a learner nothing, so the second line follows the pointer and
+  translates the **lemma** instead: tapping `was` gives **fue** and `be → ser`, and
+  the grammar sentence is never sent to the model at all. A definition that IS a
+  meaning is translated whole. (Same "form of" rule as the lemma hop above, read from
+  the prose so it also works offline.)
+
+  Two providers, best first:
+  - **On-device** ([ML Kit](android.md), Android only): translates the word **and its
+    meaning**, works with no network once its models are downloaded, and answers for
+    every word in every language pair the app reads. Its models are small: given
+    out-of-domain text they return the **input copied**, so an answer identical to
+    what was sent is discarded rather than printed as a translation — an English line
+    under a Spanish heading is worse than admitting there is none.
+  - **freedictionaryapi** (the web build's only option): Wiktionary's per-sense
+    translation list, so it needs internet, is English-book only, and can only
+    translate the word itself. Its coverage is uneven — common function words like
+    `their` carry no translations at all — and it keeps them on the **lemma** only,
+    so a tapped inflection (`grunted`) follows its own "form of" definition one hop
+    to the lemma (`grunt`) and shows that lemma next to the answer.
 - **Regenerate (↻)** in the full popup: when an AI answer is weak, one press re-does
   it in place. Three of them — one on the refined **dictionary** definition (re-runs
   the KB refinement, resolved to the lemma), one on the reading-language **AI
@@ -346,7 +392,11 @@ src/
   contractions.js    registry, color aggregation, AI-grown entries, migrations
   sentences.js       sentence / paragraph / paragraph-speech-slice lookup per
                      word index (the slice: text from a word to the paragraph
-                     end + per-word offsets for the follow-along highlight)
+                     end + per-word offsets for the follow-along highlight).
+                     Sentences merge the breaks Intl.Segmenter makes at an
+                     ABBREVIATION's period: "Mr. Dursley was the director…"
+                     is one sentence, not "Mr." plus the rest — which would be
+                     useless as a definition's context and nonsense to translate
   reader/            render, paginator, scroller, pageTurn, theme,
                      position.js (word index ↔ paragraph-anchored reading position)
   marking.js         hold/tap gestures, popup wiring   popup.js  the word popup
@@ -358,7 +408,9 @@ src/
   readAloud.js       continuous read-aloud session: paragraph-by-paragraph
                      chaining with a breathing gap, stop-anywhere semantics
   definitions/       index (chain), localDict, kbApi, freeDict, serverAi,
+                     mlkitTranslate (on-device translation, Android — §6),
                      ollama (contraction decomposition only), prompts
+  diagnostics.js     in-app log capture → a note (§8)
   definitionsCache.js  per-language word cache (dict + AI history + native)
   library.js/shelf.js/tir.js        local library, shelf UI, .tir format  → docs/library.md
   serverLibrary.js/serverShelf.js   server catalog + Server hub           → docs/home-server.md
@@ -380,3 +432,33 @@ src/
   main.js            view switching (shelf | server | dictionary | progress |
                      reader | swiper) and wiring
 ```
+
+## 8. Diagnostics (in-app log)
+
+A WebView has no address bar and no devtools, so a failure on the phone is written
+to a console nobody can open and the only report that reaches the desk is "it didn't
+work". `src/diagnostics.js` keeps a bounded ring of what the app said about itself
+and hands it over as text. Settings → **Diagnostics**: *Save log to Notes*, *Copy
+log*, *Clear log*, and a **Detailed log** toggle.
+
+- **Errors and warnings are captured always.** A capture switch that is off when the
+  bug happens is worth nothing, and `console.error`/`warn` are low volume. The toggle
+  only adds the chatty levels (`log`/`info`) while reproducing something. It also
+  captures what no console call reports: uncaught `error` events and unhandled
+  promise rejections.
+- **It goes into a note**, not a file. A note is already an editable, readable,
+  copyable document, and on a phone "save a file somewhere" is the step that loses
+  the report. The note is saved in the user's **own** language so the reader does not
+  paint a log red — it is diagnostics, not vocabulary. The dump carries a header with
+  the context a bare log lacks: platform, app bundle version, both languages, and the
+  home-server URL.
+- **Bounded and durable.** A ring of 400 entries, each truncated, written through a
+  throttled `localStorage` write that is also forced on `pagehide`/hidden — Android
+  kills a backgrounded WebView without warning, and the last seconds before that are
+  exactly what a crash report needs. On quota exhaustion it halves itself rather than
+  failing.
+- **It never throws**, and it is imported **first** in `main.js`: modules evaluate in
+  import order and capture starts in `diagnostics.js`'s own body, so an error during
+  boot lands in the log too. Code that would otherwise swallow a reason in a `catch`
+  reports it with `logDiag`/`logDiagError` (the on-device translator does — that is
+  how "model not downloaded" is told apart from "plugin missing").

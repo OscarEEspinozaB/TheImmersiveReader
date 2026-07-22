@@ -6,12 +6,19 @@
 import { lookupLocal } from './localDict.js';
 import { lookupKB, requestKbBuild, reRefineWord, listKbWords, listMissingWords, getKbStats } from './kbApi.js';
 import { lookupNativeWiktionary } from './nativeWiktionary.js';
-import { lookupFreeDict, freeDictTranslate } from './freeDict.js';
+import { lookupFreeDict, freeDictTranslate, lemmaFromFormOf } from './freeDict.js';
+import {
+  translateText,
+  isMlkitAvailable,
+  downloadedModels,
+  downloadModel,
+  modelCodeFor,
+} from './mlkitTranslate.js';
 import { decompose } from './ollama.js';
 import { serverAiDefine, serverAiExplain, serverAiAvailable, listAiModels } from './serverAi.js';
 
 export { requestKbBuild, reRefineWord, listKbWords, listMissingWords, getKbStats, listAiModels };
-export { freeDictTranslate };
+export { freeDictTranslate, isMlkitAvailable, downloadedModels, downloadModel, modelCodeFor };
 
 /**
  * Whether AI explanations are currently available. Context-aware explanations are
@@ -25,7 +32,10 @@ export function isAiAvailable() {
 /**
  * @typedef {Object} Definition
  * @property {string} explanation
- * @property {string} source  e.g. "contraction" | "local" | "kb" | "wiktionary" | "freedict"
+ * @property {string} source  e.g. "contraction" | "local" | "kb" | "wiktionary" |
+ *   "freedict" | "translation" | "mlkit"
+ * @property {string} [note]  a secondary line under the answer; today the
+ *   translated DEFINITION that goes with a translated word (`mlkit`)
  * @property {string} [pronunciation]  IPA, when the provider carries one (freedict)
  * @property {boolean} [refined]  for `kb` source: whether the entry is the
  *   AI-refined one (true) or still the raw Kaikki data (false, build pending)
@@ -88,6 +98,107 @@ export async function getAiDefinitionInLanguage(word, sentence, language, book, 
     return await serverAiExplain(word, sentence, language, book, opts);
   } catch (err) {
     console.warn('AI native-language explanation failed:', err);
+    return null;
+  }
+}
+
+/**
+ * The second line under a translated word: what the dictionary says it MEANS, in the
+ * reader's language.
+ *
+ * A dictionary's answer for an inflected form is not a meaning — it is a pointer:
+ * "was" resolves to *first-person singular simple past indicative of be*. Translating
+ * that sentence is doubly useless: grammar metalanguage teaches a learner nothing
+ * about the word, and the small on-device model copies it through untranslated
+ * anyway. So when the definition is a form-of pointer, follow it and translate the
+ * **lemma** — "was → fue" plus "be → ser" is the answer the reader asked for.
+ *
+ * @param {string} surface the word as written
+ * @param {string} explanation the definition currently shown ('' if none yet)
+ * @param {string} language e.g. "Spanish"
+ * @returns {Promise<string>} '' when there is nothing worth showing
+ */
+async function translateMeaning(surface, explanation, language) {
+  const text = (explanation || '').trim();
+  // Nothing yet, or an "explanation" that is just the word again: repeating the
+  // answer back at the reader is noise.
+  if (!text || text.toLowerCase() === surface.trim().toLowerCase()) return '';
+
+  const lemma = lemmaFromFormOf(text);
+  if (lemma && lemma.toLowerCase() !== surface.trim().toLowerCase()) {
+    const translatedLemma = await translateText(lemma, language);
+    // Name the lemma: the reader tapped "was", and "ser" is the meaning of "be" —
+    // hiding that link would look like a wrong translation of the word they tapped.
+    return translatedLemma ? `${lemma} → ${translatedLemma}` : '';
+  }
+  return (await translateText(text, language)) || '';
+}
+
+/**
+ * Plain TRANSLATION into the reader's native language — the away-from-home rescue,
+ * offered when the AI explanation is unreachable.
+ *
+ * **What it translates is a teaching decision, not a technical one.** It takes the
+ * word and the DICTIONARY'S EXPLANATION of it — never the book's sentence. The goal
+ * is a student who understands the words and then reads the English, not one who is
+ * handed the book in their own language; translating the sentence in the word bubble
+ * would quietly turn every tap into that. Checking a passage is a different, explicit
+ * act, and it lives behind its own button — see `translateFragment`.
+ *
+ * Two providers, best first:
+ *   1. `translateText` — on-device (Android), works with no network once its model is
+ *      downloaded, answers for ANY word, and can translate the explanation too.
+ *   2. `freeDictTranslate` — freedictionaryapi's Wiktionary translation list. Needs
+ *      internet, is English-source only, misses common function words (`their` has
+ *      none) and can only translate the word itself, but it is all the web build has.
+ *
+ * @param {string} word normalized word (the dictionary key)
+ * @param {string} surface the word as written in the book
+ * @param {string} explanation the definition currently shown for it ('' if none yet)
+ * @param {string} language e.g. "Spanish" (settings.getLanguage())
+ * @returns {Promise<Definition | null>}
+ */
+export async function translateToNative(word, surface, explanation, language) {
+  try {
+    // The surface form, not the key: the translator reads real text, and an
+    // inflection carries the tense/number the reader is actually looking at.
+    // Sequential on purpose — the first call is the one that may download the model,
+    // and two parallel downloads of the same pair race for the same files.
+    const translatedWord = await translateText(surface || word, language);
+    if (translatedWord) {
+      return {
+        explanation: translatedWord,
+        note: await translateMeaning(surface || word, explanation, language),
+        source: 'mlkit',
+      };
+    }
+  } catch (err) {
+    console.warn('On-device translation failed:', err);
+  }
+  try {
+    const res = await freeDictTranslate(word, language);
+    if (!res) console.warn(`No translation for "${word}" in freedictionaryapi (${language})`);
+    return res;
+  } catch (err) {
+    console.warn('Dictionary translation failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Translate a PASSAGE — the comprehension check. Separate from `translateToNative`
+ * on purpose: this is the reader deliberately asking "did I understand this?" after
+ * reading it, from the paragraph bubble, not something a word tap ever does by
+ * itself. On-device only; there is no web fallback that can translate free text.
+ * @param {string} text the paragraph (or fragment) as written
+ * @param {string} language e.g. "Spanish" (settings.getLanguage())
+ * @returns {Promise<string | null>}
+ */
+export async function translateFragment(text, language) {
+  try {
+    return await translateText(text, language);
+  } catch (err) {
+    console.warn('Fragment translation failed:', err);
     return null;
   }
 }

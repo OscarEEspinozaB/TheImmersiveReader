@@ -139,6 +139,49 @@
         </button>
       </details>
 
+      <!-- Android only (src/main.js unhides it on native): which on-device
+           translation models are installed, and a way to fetch one on purpose.
+           Downloading happens by itself on WiFi, but only VISIBLY here — a model
+           that never arrives is otherwise indistinguishable from a broken app. -->
+      <details class="menu__section" id="translation-section" hidden>
+        <summary class="menu__section-label">Offline translation</summary>
+        <p class="menu__hint" id="model-status">Checking…</p>
+        <div id="model-buttons"></div>
+      </details>
+
+      <!-- A WebView has no devtools, so a failure on the phone is invisible. This
+           captures what the app said about itself and dumps it into a note, which
+           is already an editable, readable, copyable document (src/diagnostics.js). -->
+      <details class="menu__section">
+        <summary class="menu__section-label">Diagnostics</summary>
+        <label class="menu__item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m9 18 6-6-6-6" /><path d="M13 20h6" />
+          </svg>
+          <span>Detailed log</span>
+          <input id="verbose-log" type="checkbox" class="menu__toggle" />
+        </label>
+        <button id="log-to-note" class="menu__item" type="button">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" /><path d="M9 13h6" /><path d="M9 17h3" />
+          </svg>
+          <span>Save log to Notes</span>
+        </button>
+        <button id="copy-log" class="menu__item" type="button">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          <span>Copy log</span>
+        </button>
+        <button id="clear-log" class="menu__item menu__item--danger" type="button">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18" /><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" />
+          </svg>
+          <span>Clear log</span>
+        </button>
+        <p class="menu__hint" id="log-count"></p>
+      </details>
+
       <details class="menu__section">
         <summary class="menu__section-label">Theme</summary>
         <div id="theme-swatches" class="menu__themes"></div>

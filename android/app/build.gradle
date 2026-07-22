@@ -10,6 +10,14 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // ML Kit's on-device translator ships a ~15MB native library per ABI, which
+        // took the hand-installed APK from ~7MB to 67MB. Keep only the two ABIs real
+        // phones use; the x86 pair exists for emulators, which this project does not
+        // use (it is built for one device and side-loaded). Add them back here if an
+        // emulator is ever needed.
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61

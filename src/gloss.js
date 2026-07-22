@@ -13,16 +13,22 @@
 //  • Paragraph bubble — visible actions on the tapped word's paragraph:
 //    read aloud FROM THE TAPPED WORD, continuously to the end of the book
 //    (paragraph by paragraph, readAloud.js), with each word highlighted as it
-//    is spoken and the page following the voice; copy paragraph; copy word.
+//    is spoken and the page following the voice; copy paragraph; copy word;
+//    and TRANSLATE the tapped word's SENTENCE — one sentence, never the
+//    paragraph. That lives here, and only here, on purpose: it is the reader
+//    deliberately checking "did I understand this?" after reading, and it is kept
+//    expensive (one double tap buys one sentence) so the book cannot be swept
+//    into the reader's own language a paragraph at a time. The word bubble
+//    translates the word and its dictionary explanation, never the book.
 //  • Link bubble — a URL/e-mail token was tapped: open it (new tab) or copy it.
 //    Navigation only ever happens from the visible button, never from the tap.
 //
 // The bubble only INFORMS and marks on explicit button press — same invariant
 // as the popup. It points at its anchor with a tail and auto-hides when idle.
 
-import { getQuickDefinition } from './definitions/index.js';
+import { getQuickDefinition, translateFragment, isMlkitAvailable } from './definitions/index.js';
 import { renderFamilyStrip, posSummary } from './kbDetails.js';
-import { getReadingLang } from './settings.js';
+import { getReadingLang, getReadingLangName, getLanguage } from './settings.js';
 import { canSpeak, speak, isSpeaking, stopSpeaking } from './speech.js';
 import { isReading, startReading, stopReading } from './readAloud.js';
 import { copyWithToast } from './copy.js';
@@ -33,6 +39,7 @@ const AUTO_HIDE_MS = 8000; // idle timeout; any interaction inside restarts it
 let el = null;
 let hideTimer = null;
 let showId = 0; // invalidates stale async fills after hide/re-show
+let pinned = false; // an answer was requested: this bubble no longer auto-hides
 
 function ensureEl() {
   if (el) return;
@@ -52,7 +59,22 @@ function ensureEl() {
 
 function armAutoHide() {
   if (hideTimer) clearTimeout(hideTimer);
+  hideTimer = null;
+  if (pinned) return; // an answer the reader asked for is on screen: it stays
   hideTimer = setTimeout(hideGloss, AUTO_HIDE_MS);
+}
+
+/**
+ * Stop auto-hiding for good, until this bubble is dismissed. The idle timeout is
+ * right for a bubble the reader only glanced at, and wrong the moment they ask it a
+ * question: a slow first answer (a model download) would time out under the await,
+ * and a long one would vanish while they were still reading it. Cleared by show()
+ * and hideGloss(), so it never leaks into the next bubble.
+ */
+function pinOpen() {
+  pinned = true;
+  if (hideTimer) clearTimeout(hideTimer);
+  hideTimer = null;
 }
 
 // Place the bubble near the anchor word, tail pointing at it: below the word
@@ -84,6 +106,7 @@ function show(anchor) {
   ensureEl();
   el.replaceChildren();
   el.hidden = false;
+  pinned = false; // a fresh bubble is a glance again until something is asked of it
   armAutoHide();
   return ++showId;
 }
@@ -265,7 +288,8 @@ function highlightSpokenWord(wordIndex) {
 /**
  * Paragraph bubble: visible actions for the tapped word's paragraph.
  * @param {HTMLElement} span the word element (anchor)
- * @param {{ surface: string, paragraph: string, wordIndex?: number | null,
+ * @param {{ surface: string, paragraph: string, sentence?: string,
+ *           wordIndex?: number | null,
  *           getParagraphSpeech?: ((wordIndex: number) =>
  *             { text: string, words: { start: number, end: number, wordIndex: number }[] } | null) | null,
  *           followWord?: ((wordIndex: number,
@@ -276,10 +300,12 @@ function highlightSpokenWord(wordIndex) {
  *   word outside the rendered page into view (page turn / scroll) so the
  *   highlight can keep following. Without it, the button falls back to a
  *   one-shot read of `paragraph`. Copying always copies the whole paragraph.
+ *   `sentence` is the tapped word's own sentence — the ONLY thing Translate ever
+ *   sends, deliberately narrower than everything else this bubble acts on.
  */
 export function showParagraphActions(
   span,
-  { surface, paragraph, wordIndex = null, getParagraphSpeech = null, followWord = null },
+  { surface, paragraph, sentence = '', wordIndex = null, getParagraphSpeech = null, followWord = null },
 ) {
   show(span);
 
@@ -336,7 +362,40 @@ export function showParagraphActions(
     copyWithToast(surface, 'Word');
   }));
 
-  el.append(head, actions);
+  // The comprehension check: read it first, then ask what it said. The result
+  // replaces nothing — it appears UNDER the text, which stays where it is, so the
+  // reader compares their own reading against it.
+  //
+  // It translates ONE SENTENCE — the one holding the tapped word, period to period —
+  // never the paragraph. That is a deliberate limit, not a technical one: translation
+  // has to stay expensive enough that it is not worth leaning on. One double tap buys
+  // one sentence, so a reader can check a passage they struggled with and cannot
+  // sweep the book into their own language a paragraph at a time. It also happens to
+  // be what the small on-device model translates best.
+  const language = getLanguage();
+  const result = document.createElement('p');
+  result.className = 'gloss__translation';
+  result.hidden = true;
+  if (sentence && isMlkitAvailable() && getReadingLangName() !== language) {
+    const translate = actionButton('Translate this sentence', async () => {
+      const mine = showId;
+      translate.disabled = true;
+      translate.textContent = 'Translating…';
+      result.hidden = false;
+      result.textContent = '…';
+      // A first run downloads a model: the idle timer must not eat a result the
+      // reader explicitly asked for, and a pinned bubble stays until dismissed.
+      pinOpen();
+      const text = await translateFragment(sentence, language);
+      if (mine !== showId || el.hidden) return; // the bubble moved on meanwhile
+      result.textContent = text || `Could not translate (is the ${language} model downloaded?).`;
+      translate.remove(); // answered: the button has nothing left to do
+      position(span); // the bubble just grew — re-anchor it to the word
+    });
+    actions.appendChild(translate);
+  }
+
+  el.append(head, actions, result);
   position(span);
 }
 
@@ -386,6 +445,7 @@ export function showLinkActions(span, { url }) {
 export function hideGloss() {
   if (!el || el.hidden) return;
   showId += 1;
+  pinned = false;
   el.hidden = true;
   // A read-aloud in progress is left playing on purpose: dismissing the UI
   // shouldn't cut the audio mid-sentence; any 🔊 tap cancels it anyway.

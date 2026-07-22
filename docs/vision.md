@@ -125,14 +125,12 @@ design (schema support already exists where noted):
   (EN→ES first). The `translations` table already exists (keyed by `sense_id`,
   `target_lang` — open to N languages); what's missing is the generation pass
   (a purpose-built model such as `translategemma`, run as a separate batch) and
-  surfacing translations in the popup/Dictionary hub. **Cheaper source now wired
-  (*Fase 3 — done on the client*):** freedictionaryapi.com returns ready-made
-  Wiktionary translations (`?translations=true`) for an English word into ~hundreds
-  of languages; the reader filters them to the native language in an on-demand
-  **"Translate to `<native>`"** button (`freeDictTranslate`), the away-from-home path
-  to a native answer with no home server (docs/design.md). Still open: English-source
-  only (no ES→native yet), no lemma resolution for inflected forms, and the
-  `translategemma` batch stays the higher-quality, offline, all-direction path.
+  surfacing translations in the popup/Dictionary hub. The **reader** no longer waits
+  on this: the on-demand "Translate to `<native>`" button already answers away from
+  home, on-device and in every direction (docs/design.md, docs/android.md). What is
+  still missing is translation as *KB data* — stored per sense, shared across devices,
+  visible in the Dictionary hub and in the family card, rather than produced live for
+  one tap and forgotten.
 - **Gap-fill parsers for the remaining editions.** The server now seeds missing
   words from public dictionaries (`generate/gapfill.js`, see docs/home-server.md):
   `en` from freedictionaryapi.com, `es`/`fr`/`it`/`pt` from their own Wiktionary

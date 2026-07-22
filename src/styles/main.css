@@ -211,6 +211,21 @@ body {
   background: color-mix(in srgb, var(--word-unknown) 16%, transparent);
 }
 
+/* A checkbox inside a .menu__item row: label on the left, control pushed right. */
+.menu__toggle {
+  margin-left: auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--word-learning);
+}
+
+/* Recessive one-liner under a group of buttons — status, not an action. */
+.menu__hint {
+  margin: 0.1rem 0.6rem 0;
+  font-size: 0.78rem;
+  opacity: 0.55;
+}
+
 .menu__field {
   display: flex;
   align-items: center;
@@ -922,6 +937,15 @@ body.nav-hidden .primary-nav {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.5;
+}
+
+/* Secondary line under an answer: the translated sentence beneath the translated
+   word. Recessive and italic so the word it explains stays the headline. */
+.popup__slot-note {
+  margin: 0.3rem 0 0;
+  font-size: 0.9rem;
+  font-style: italic;
+  opacity: 0.75;
 }
 
 /* IPA pronunciation line (freedictionaryapi.com), shown under the definition. */
@@ -2612,6 +2636,26 @@ button.kb-form:focus-visible {
 .gloss__action:focus-visible {
   background: color-mix(in srgb, var(--text) 10%, transparent);
 }
+
+.gloss__action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* The paragraph's translation (the comprehension check). Set apart from the actions
+   above it and given room to scroll: a long paragraph must not push the bubble off
+   the screen. */
+.gloss__translation {
+  margin: 0.5rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--gloss-border);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 
 /* --- 🔊 pronounce button (gloss + Dictionary hub rows, see src/speech.js) --- */
 .speak-btn {

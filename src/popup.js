@@ -44,6 +44,9 @@ function sourceLabel(source) {
       : 'English translation · freedictionaryapi.com';
   }
   if (source === 'translation') return 'Translation · freedictionaryapi.com';
+  // On-device (ML Kit): worth naming, because it is the one source that keeps
+  // answering with no network at all.
+  if (source === 'mlkit') return 'Translation · on-device';
   if (source === 'wiktionary') return `Online · ${getReadingLang()}.wiktionary.org`;
   if (source === 'contraction') return 'Contraction';
   if (source === 'local') return 'Local dictionary';
@@ -94,15 +97,19 @@ export class WordPopup {
     }
     this.el.appendChild(buttons);
 
-    // Definition slots: fast dictionary, then AI (Ollama), then the on-demand
-    // native-language rescue.
+    // Definition slots: fast dictionary, then AI (Ollama), then the two
+    // native-language answers. The plain TRANSLATION sits above the AI EXPLANATION
+    // because it is the cheaper question: a word and what the dictionary says it
+    // means, no server and no model. They are separate slots, not one, so asking for
+    // both does not have the second overwrite the first.
     this.definition = document.createElement('div');
     this.definition.className = 'popup__definition';
     this.definition.hidden = true;
     this.quickSlot = this._makeSlot();
     this.aiSlot = this._makeSlot();
+    this.translationSlot = this._makeSlot();
     this.langSlot = this._makeSlot();
-    this.definition.append(this.quickSlot, this.aiSlot, this.langSlot);
+    this.definition.append(this.quickSlot, this.aiSlot, this.translationSlot, this.langSlot);
     this.el.appendChild(this.definition);
 
     // On-demand "Look it up" button — shown for KNOWN words, which never
@@ -127,6 +134,17 @@ export class WordPopup {
       if (this._onRefreshAi) this._onRefreshAi();
     });
     this.el.appendChild(this.refreshAiButton);
+
+    // On-demand "Translate to <language>". Appended BEFORE the explain button so
+    // the cheaper answer is always the one offered first, whichever resolves first.
+    this.translateButton = document.createElement('button');
+    this.translateButton.type = 'button';
+    this.translateButton.className = 'popup__lang-btn';
+    this.translateButton.hidden = true;
+    this.translateButton.addEventListener('click', () => {
+      if (this._onTranslate) this._onTranslate();
+    });
+    this.el.appendChild(this.translateButton);
 
     // On-demand "Explain in <language>" button (immersion-first: only on request).
     this.langButton = document.createElement('button');
@@ -172,11 +190,14 @@ export class WordPopup {
     this.definition.hidden = true;
     this._hideSlot(this.quickSlot);
     this._hideSlot(this.aiSlot);
+    this._hideSlot(this.translationSlot);
     this._hideSlot(this.langSlot);
     this.langButton.hidden = true;
+    this.translateButton.hidden = true;
     this.lookupButton.hidden = true;
     this.refreshAiButton.hidden = true;
     this._onExplain = null;
+    this._onTranslate = null;
     this._onLookup = null;
     this._onRefreshAi = null;
     this._onRerefine = null;
@@ -434,15 +455,39 @@ export class WordPopup {
     else this._fillSlot(this.langSlot, { state: 'error', text: 'Could not get an explanation (is the AI reachable?).' });
   }
 
+  // --- On-demand plain translation (its own slot, above the AI explanation) ---
   /**
-   * A plain dictionary TRANSLATION into the reader's language (freedictionaryapi),
-   * the away-from-home path when the AI is unreachable. Unlike setLang it carries no
-   * ↻ — there is no model to re-run, it is a fixed dictionary lookup.
+   * @param {string} label e.g. "Translate to Spanish"
+   * @param {() => void} onTranslate
+   */
+  showTranslateButton(label, onTranslate) {
+    this.translateButton.textContent = label;
+    this.translateButton.hidden = false;
+    this._onTranslate = onTranslate;
+  }
+
+  translationLoading(text) {
+    this.translateButton.hidden = true;
+    this._fillSlot(this.translationSlot, { state: 'loading', text });
+  }
+
+  /**
+   * A plain TRANSLATION into the reader's language: the word, plus what the
+   * dictionary says it MEANS. Cheaper than the AI explanation below it — on-device or
+   * a single dictionary call, no home server — and offered alongside it rather than
+   * only in its absence, because it answers a different, smaller question. Unlike
+   * setLang it carries no ↻: there is no model to re-run.
    * @param {import('./definitions/index.js').Definition | null} def
    */
   setLangTranslation(def) {
-    if (def) this._fillSlot(this.langSlot, { state: 'ready', text: def.explanation, source: def.source });
-    else this._hideSlot(this.langSlot);
+    if (def)
+      this._fillSlot(this.translationSlot, {
+        state: 'ready',
+        text: def.explanation,
+        note: def.note, // what it means, when the provider could translate that too
+        source: def.source,
+      });
+    else this._hideSlot(this.translationSlot);
   }
 
   /**
@@ -512,7 +557,7 @@ export class WordPopup {
     return btn;
   }
 
-  _fillSlot(slot, { state, text, source, kb, word, regen, pronunciation, regenTitle = 'Re-do this definition with the AI' }) {
+  _fillSlot(slot, { state, text, note, source, kb, word, regen, pronunciation, regenTitle = 'Re-do this definition with the AI' }) {
     slot.hidden = false;
     slot.dataset.state = state;
     slot.textContent = '';
@@ -528,6 +573,14 @@ export class WordPopup {
       slot.appendChild(row);
     } else {
       slot.appendChild(p);
+    }
+    // A secondary line under the answer: today the translated DEFINITION beneath
+    // the translated word, set apart so the word stays the headline.
+    if (note) {
+      const n = document.createElement('p');
+      n.className = 'popup__slot-note';
+      n.textContent = note;
+      slot.appendChild(n);
     }
     if (pronunciation) {
       const ipa = document.createElement('span');

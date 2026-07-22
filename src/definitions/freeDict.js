@@ -69,6 +69,77 @@ const NATIVE_CODE = {
   Italian: 'it',
 };
 
+// Grammatical vocabulary that marks a Wiktionary "form of" gloss. A definition that
+// carries one of these AND an "of X" is not a meaning at all — it is a pointer to the
+// lemma that holds the meaning ("was" → *first-person singular simple past indicative
+// of be*). Recognising that from the prose alone is what lets an OFFLINE reader
+// follow the pointer, with no KB to ask.
+const FORM_OF_WORDS =
+  /\b(form|forms|plural|singular|past|participle|present|future|preterite|comparative|superlative|gerund|infinitive|indicative|subjunctive|imperative|conditional|inflection|genitive|dative|accusative|nominative|vocative|person|tense|feminine|masculine|neuter)\b/i;
+
+/**
+ * The lemma a "form of" definition points at, or null when the text is a real
+ * meaning. Text-only, so it works on any provider's prose (and offline).
+ * @param {string} definition e.g. "first-person singular simple past indicative of be."
+ * @returns {string | null} e.g. "be"
+ */
+export function lemmaFromFormOf(definition) {
+  const text = (definition || '').trim();
+  if (!text || !FORM_OF_WORDS.test(text)) return null;
+  // Greedy prefix → the LAST "of X" ("genitive singular of X"), letters only.
+  const m = /^.*\bof\s+([\p{L}\p{M}'-]+)/u.exec(text);
+  return m ? m[1] : null;
+}
+
+// The English Wiktionary stores meaning — and therefore translations — on the LEMMA
+// only: an inflected form is a "form of" stub ("grunted" → *simple past and past
+// participle of grunt*) whose senses carry an empty translation list. Follow that
+// pointer out of the definition text so a tapped inflection still gets an answer.
+// Same rule as the KB's lemma layer, done offline from the API's own prose because
+// away from home there is no KB to ask.
+function formOfLemma(data) {
+  for (const e of data?.entries || []) {
+    for (const s of e.senses || []) {
+      if (!(s.tags || []).includes('form of')) continue;
+      // Greedy prefix → the LAST "of X" ("genitive singular of X"), letters only.
+      const m = /^.*\bof\s+([\p{L}\p{M}'-]+)/u.exec(s.definition || '');
+      if (m) return m[1];
+    }
+  }
+  return null;
+}
+
+// Fetch one English entry with its translations. Returns the parsed body, or null
+// on timeout / offline / 404 — the caller decides what a miss means.
+async function fetchEntry(word) {
+  const url = `${ENDPOINT}en/${encodeURIComponent(word)}?translations=true`;
+  let res;
+  try {
+    res = await fetchWithTimeout(url);
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  return res.json();
+}
+
+const MAX_TRANSLATIONS = 6; // the popup shows a short list, not a thesaurus
+
+function translationsFor(data, code) {
+  const words = [];
+  for (const e of data?.entries || []) {
+    for (const s of e.senses || []) {
+      for (const t of s.translations || []) {
+        if (t?.language?.code !== code || typeof t.word !== 'string') continue;
+        const w = t.word.trim();
+        if (w && !words.includes(w)) words.push(w);
+        if (words.length >= MAX_TRANSLATIONS) return words;
+      }
+    }
+  }
+  return words;
+}
+
 /**
  * Translate the (English) word into the reader's native language, straight from
  * freedictionaryapi — no home server needed, so it works away from home on mobile
@@ -86,30 +157,25 @@ export async function freeDictTranslate(word, nativeLanguageName) {
   const code = NATIVE_CODE[nativeLanguageName];
   if (!code) return null;
 
-  const url = `${ENDPOINT}en/${encodeURIComponent(word)}?translations=true`;
-  let res;
-  try {
-    res = await fetchWithTimeout(url);
-  } catch {
-    return null;
-  }
-  if (!res.ok) return null;
+  const data = await fetchEntry(word);
+  if (!data) return null;
 
-  const data = await res.json();
-  const words = [];
-  for (const e of data?.entries || []) {
-    for (const s of e.senses || []) {
-      for (const t of s.translations || []) {
-        if (t?.language?.code === code && typeof t.word === 'string') {
-          const w = t.word.trim();
-          if (w && !words.includes(w)) words.push(w);
-          if (words.length >= 6) break;
-        }
-      }
-    }
+  let words = translationsFor(data, code);
+  let lemma = null;
+  if (!words.length) {
+    // One hop only: the lemma's entry is a real one, it never points further.
+    lemma = formOfLemma(data);
+    if (!lemma || lemma === word) return null;
+    const lemmaData = await fetchEntry(lemma);
+    if (!lemmaData) return null;
+    words = translationsFor(lemmaData, code);
+    if (!words.length) return null;
   }
-  if (!words.length) return null;
-  return { explanation: words.join(', '), source: 'translation' };
+
+  // Name the lemma when the answer came from it: the tapped word is not the word
+  // being translated, and hiding that would misattribute the meaning.
+  const explanation = lemma ? `${words.join(', ')} (${lemma})` : words.join(', ');
+  return { explanation, source: 'translation' };
 }
 
 /**

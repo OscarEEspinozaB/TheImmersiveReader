@@ -136,8 +136,14 @@ published one should not drift apart.
   word bubble (definition, 🔊, state chips, ⋯ → full popup); double tap → the
   paragraph bubble (continuous read-aloud from the tapped word — paragraph by
   paragraph to the book's end, highlighting each word as it is spoken, the page
-  following the voice / copy); tap on a URL/e-mail token → the link
-  bubble (open in new tab / copy). In the full popup, an AI-produced answer carries
+  following the voice / copy / **translate this sentence**); tap on a URL/e-mail token
+  → the link bubble (open in new tab / copy). **Translation is split on purpose:** the
+  word bubble translates the word and its DICTIONARY EXPLANATION (never the book's
+  sentence — the reader must understand the words, not be handed the book in Spanish);
+  translating running text is a deliberate comprehension check, exists only in the
+  paragraph bubble, and is scoped to **one sentence** while every other action there
+  works on the paragraph — translation is kept **expensive on purpose** so it stays a
+  check, never a crutch. Never widen that scope. In the full popup, an AI-produced answer carries
   a **↻ regenerate** button — one for the dictionary definition, one for the
   reading-language explanation, one for the native-language explanation — that
   re-runs the model and repaints in place.
@@ -150,7 +156,11 @@ published one should not drift apart.
   Spanish definition, not an English gloss; parser validated for `es`, others fall
   through) → `freeDict` (freedictionaryapi.com — English Wiktionary, so its answer
   for a non-English word is an English translation; carries IPA); `serverAi`
-  (server-brokered explanations);
+  (server-brokered explanations). `mlkitTranslate` is separate from that chain: the
+  away-from-home **translation** rescue (`translateToNative` = on-device ML Kit on
+  Android → freedictionaryapi elsewhere), Android-only and never a dependency; it also
+  exposes the installed-model list + an explicit download (Settings → Offline
+  translation), because the implicit WiFi download fails silently;
   `ollama.js` only decomposes contractions. `src/definitionsCache.js` caches per
   `<lang>:<word>`.
 - `src/kbDetails.js` — the **family card**: a word is never shown loose when the KB
@@ -173,12 +183,18 @@ published one should not drift apart.
 - `src/settings.js` — native language, default reading language, runtime **active**
   reading language (the open book's, read via `getReadingLang()`), home-server URL,
   OTA update URL (Android-only; falls back to the home-server URL),
-  profile, AI model override, reading mode/font, read-aloud voice + speed, shelf sort.
+  profile, AI model override, reading mode/font, read-aloud voice + speed, shelf sort,
+  detailed-log toggle.
   Build-time **defaults** are centralized in `app.config.json` (imported here) — the
   shipped home-server IP + default languages, so re-shipping them never touches code;
   every value stays user-overridable in Settings.
 - `src/appUpdate.js` — Android OTA: pulls a newer web bundle from the home server
   and stages it for the next start. Never a dependency (no-op on web/offline).
+- `src/diagnostics.js` — in-app log capture (a WebView has no devtools): a bounded
+  ring of errors/warnings — always on; the **Detailed log** toggle adds the chatty
+  levels — dumped into a **note** from Settings → Diagnostics. Imported FIRST in
+  `main.js` so boot failures are caught. Use `logDiag`/`logDiagError` instead of
+  letting a `catch` swallow why a feature gave up.
 - `src/main.js` — view switching (`shelf | server | dictionary | progress | reader |
   swiper`) and wiring.
 - `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,

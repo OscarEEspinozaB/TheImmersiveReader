@@ -93,6 +93,9 @@ const settings = {
   // the first installed voice matching the reading language, else the engine default).
   ttsRate: appConfig.defaults.ttsRate,
   ttsVoice: '', // a SpeechSynthesisVoice.voiceURI
+  // Diagnostics: errors and warnings are ALWAYS captured (src/diagnostics.js); this
+  // only adds the chatty console levels while reproducing a problem.
+  verboseLog: false,
 };
 
 // The language currently in effect = the open book's language. NOT persisted:
@@ -125,6 +128,7 @@ function load() {
     if (typeof obj.aiModel === 'string') settings.aiModel = obj.aiModel;
     if (Number.isFinite(obj.ttsRate) && obj.ttsRate >= 0.5 && obj.ttsRate <= 2) settings.ttsRate = obj.ttsRate;
     if (typeof obj.ttsVoice === 'string') settings.ttsVoice = obj.ttsVoice;
+    if (typeof obj.verboseLog === 'boolean') settings.verboseLog = obj.verboseLog;
   } catch {
     /* ignore */
   }
@@ -327,6 +331,25 @@ export function getTtsVoice() {
 export function setTtsVoice(voiceURI) {
   settings.ttsVoice = voiceURI || '';
   save();
+}
+
+/**
+ * Capture the chatty console levels too (src/diagnostics.js). Errors and warnings
+ * are captured regardless — this is the extra detail you turn on to reproduce a
+ * problem, and turn off again.
+ */
+export function getVerboseLog() {
+  return settings.verboseLog;
+}
+
+export function setVerboseLog(on) {
+  settings.verboseLog = !!on;
+  save();
+}
+
+/** The reading-language code matching the user's native language, e.g. "Spanish" → "es". */
+export function nativeLangCode() {
+  return READING_LANGUAGES.find((l) => l.name === settings.language)?.code || 'en';
 }
 
 load();

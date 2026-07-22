@@ -16,7 +16,8 @@ import {
   isAiAvailable,
   requestKbBuild,
   reRefineWord,
-  freeDictTranslate,
+  translateToNative,
+  isMlkitAvailable,
 } from './definitions/index.js';
 import {
   getContraction,
@@ -24,7 +25,7 @@ import {
   learnContraction,
   aggregateStates as aggregateContraction,
 } from './contractions.js';
-import { getLanguage, getReadingLang } from './settings.js';
+import { getLanguage, getReadingLang, getReadingLangName } from './settings.js';
 import { showGloss, showParagraphActions, showLinkActions, hideGloss } from './gloss.js';
 import {
   getCached,
@@ -294,10 +295,23 @@ export function attachMarking(
 
     if (isContraction) showBreakdown(span);
 
-    // On-demand native-language rescue. Like the AI panel, it is generated once per
-    // context and then served from the store forever — never re-explained. So if
-    // this context already has an explanation, show it directly (no button); only a
-    // context without one offers the button, and only when the AI is reachable.
+    // Two native-language answers, offered independently because they answer
+    // different questions at different prices:
+    //
+    //  • "Translate to <language>" — the word plus what the dictionary says it MEANS.
+    //    On-device on Android (no network at all), else one dictionary call. Cheap,
+    //    instant, works away from home. Offered whenever it CAN answer.
+    //  • "Explain in <language>" — the AI, in this exact sentence's context. Richer,
+    //    but it needs the home server, so it only appears when that is reachable.
+    //
+    // It used to be either/or (the translation was the away-from-home substitute for
+    // the AI). It is not a substitute: at home a reader still wants the cheap answer
+    // first and the model only when the cheap one is not enough. So the translation
+    // button shows even when the AI is up, above it, and they write into SEPARATE
+    // slots — asking for both must not have the second erase the first.
+
+    // The AI explanation is generated once per context and then served from the store
+    // forever — never re-explained. A context that already has one shows it directly.
     const cachedLang = getCachedLang(word, language, sentence);
     if (cachedLang) {
       popup.setLang(cachedLang); // already explained for this context — just show it
@@ -323,30 +337,43 @@ export function attachMarking(
             popup.showLangButton(`Explain in ${language}`, explain);
           });
       };
-      // Away from home the AI is unreachable, so the context-aware explanation is
-      // off — but a plain dictionary TRANSLATION into the reader's language still
-      // works over any internet (freedictionaryapi, no home server). Offer whichever
-      // is available: the AI when reachable, else the translation (English books
-      // only — freedictionaryapi's translations are English-source). On-demand in
-      // both cases, so a metro tap never spends data until asked.
-      const translate = () => {
-        popup.langLoading(`Translating to ${language}…`); // hides the button
-        freeDictTranslate(word, language)
-          .then((def) => {
-            if (!active()) return;
-            if (def) popup.setLangTranslation(def);
-            else popup.showLangButton(`Translate to ${language}`, translate); // re-offer
-          })
-          .catch(() => {
-            if (active()) popup.showLangButton(`Translate to ${language}`, translate);
-          });
-      };
       isAiAvailable().then((ok) => {
-        if (!active()) return;
-        if (ok) popup.showLangButton(`Explain in ${language}`, explain);
-        else if (getReadingLang() === 'en' && language !== 'English')
-          popup.showLangButton(`Translate to ${language}`, translate);
+        if (active() && ok) popup.showLangButton(`Explain in ${language}`, explain);
       });
+    }
+
+    // What gets translated is the word and the DICTIONARY'S EXPLANATION of it — never
+    // the book's sentence. The point is a reader who understands the words and then
+    // reads the English; translating the sentence here would turn every tap into a
+    // translated book. Running text has its own button, in the paragraph bubble, and
+    // is limited to one sentence.
+    const translate = () => {
+      popup.translationLoading(`Translating to ${language}…`); // hides the button
+      // The definition on screen right now: every path that calls popup.setQuick
+      // caches it first, so the cache is what the reader is looking at.
+      const shown = getCached(word)?.dictionary?.explanation || '';
+      translateToNative(word, surface, shown, language)
+        .then((def) => {
+          if (!active()) return;
+          if (def) popup.setLangTranslation(def);
+          else {
+            // Clear the "Translating…" line first — otherwise the loading text
+            // stays on screen forever next to the re-offered button.
+            popup.setLangTranslation(null);
+            popup.showTranslateButton(`Translate to ${language}`, translate); // re-offer
+          }
+        })
+        .catch(() => {
+          if (!active()) return;
+          popup.setLangTranslation(null);
+          popup.showTranslateButton(`Translate to ${language}`, translate);
+        });
+    };
+    // Nothing to translate when the book is already in the reader's own language.
+    // On-device translation covers every pair; the online dictionary fallback only
+    // has English-source data, so on the web the button stays English-books-only.
+    if (getReadingLangName() !== language && (isMlkitAvailable() || getReadingLang() === 'en')) {
+      popup.showTranslateButton(`Translate to ${language}`, translate);
     }
 
     // Unknown contraction (looks like one but isn't in the registry yet): ask the
@@ -453,6 +480,8 @@ export function attachMarking(
       showParagraphActions(span, {
         surface: span.textContent,
         paragraph: getParagraph(wordIndex),
+        // Read/copy act on the paragraph; Translate acts only on this sentence.
+        sentence: getSentence(wordIndex),
         wordIndex,
         getParagraphSpeech,
         followWord,

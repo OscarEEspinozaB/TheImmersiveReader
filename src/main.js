@@ -1,6 +1,11 @@
 // App entry point: a bookshelf (library) and a reader. On load you see the shelf;
 // opening a book switches to the reader. Books (text + images) live in IndexedDB.
 
+// Kept FIRST on purpose. Modules evaluate in import order, and diagnostics.js starts
+// capturing in its own module body, so importing it before anything else is what puts
+// a failure *during boot* — the one no console on the phone will ever show — inside
+// the log. Do not reorder this below another import.
+import { logText, clearLog, logSize } from './diagnostics.js';
 import { ingest } from './ingest/index.js';
 import { tokenize } from './tokenizer.js';
 import { load as loadVocabulary, exportVocabulary, importVocabulary, resetAll } from './vocabulary.js';
@@ -34,7 +39,7 @@ import { importTir } from './tir.js';
 import { prepareCover, documentCover, imagesWithCover } from './cover.js';
 import { renderSwiper } from './swiper.js';
 import { alertDialog, confirmDialog, selectDialog } from './dialog.js';
-import { listAiModels } from './definitions/index.js';
+import { listAiModels, downloadedModels, downloadModel, modelCodeFor } from './definitions/index.js';
 import { canSpeak, voiceGroupsForLang } from './speech.js';
 import { stopReading } from './readAloud.js';
 import {
@@ -88,7 +93,11 @@ import {
   setReadingFontSize,
   getReadingLineHeight,
   setReadingLineHeight,
+  getVerboseLog,
+  setVerboseLog,
+  nativeLangCode,
 } from './settings.js';
+import { copyWithToast } from './copy.js';
 
 const reader = document.getElementById('reader');
 const readerWrap = document.querySelector('.reader-wrap');
@@ -141,6 +150,14 @@ const updateUrlInput = document.getElementById('update-url');
 const appVersionLabel = document.getElementById('app-version');
 const checkUpdateButton = document.getElementById('check-update');
 const resetAppButton = document.getElementById('reset-app');
+const translationSection = document.getElementById('translation-section');
+const modelStatusLabel = document.getElementById('model-status');
+const modelButtons = document.getElementById('model-buttons');
+const verboseLogToggle = document.getElementById('verbose-log');
+const logToNoteButton = document.getElementById('log-to-note');
+const copyLogButton = document.getElementById('copy-log');
+const clearLogButton = document.getElementById('clear-log');
+const logCountLabel = document.getElementById('log-count');
 
 let paginator = null;
 let pageTurn = null; // live drag page-turn controller (paged mode only)
@@ -625,6 +642,128 @@ if (isNativeApp) {
     await rollbackToPrevious();
   });
 }
+
+// --- Offline translation models (Android only, see definitions/mlkitTranslate.js) ---
+//
+// The models download themselves on WiFi the first time a translation is asked for,
+// which is convenient and completely opaque: when nothing comes back there is no way
+// to tell "the model never arrived" from "the app is broken". This panel answers that
+// in one line, and lets the download be started deliberately so its error is seen.
+
+/** The languages this reader needs a model for: their own, plus what they read. */
+function neededModels() {
+  const wanted = new Set([getLanguage(), readingLangName(getDefaultReadingLang())]);
+  // ML Kit always pivots through English, so it is needed for every pair.
+  wanted.add('English');
+  return [...wanted].map((name) => ({ name, code: modelCodeFor(name) })).filter((m) => m.code);
+}
+
+async function refreshModelPanel() {
+  if (!isNativeApp) return;
+  translationSection.hidden = false;
+  modelStatusLabel.textContent = 'Checking…';
+  modelButtons.textContent = '';
+
+  const have = await downloadedModels();
+  if (!have) {
+    modelStatusLabel.textContent = 'Could not read the model list — see the log below.';
+    return;
+  }
+  const needed = neededModels();
+  const missing = needed.filter((m) => !have.includes(m.code));
+  modelStatusLabel.textContent = missing.length
+    ? `Missing: ${missing.map((m) => m.name).join(', ')}. Downloading needs WiFi (~30 MB each).`
+    : `Ready offline: ${needed.map((m) => m.name).join(', ')}.`;
+
+  for (const m of missing) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'menu__item';
+    const label = document.createElement('span');
+    label.textContent = `Download ${m.name}`;
+    btn.appendChild(label);
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      label.textContent = `Downloading ${m.name}…`;
+      const res = await downloadModel(m.code);
+      if (res.ok) {
+        await refreshModelPanel(); // it is installed now; the panel says so
+        return;
+      }
+      // The real reason, on screen. This is the whole point of the button.
+      label.textContent = `Failed: ${res.error}`;
+      btn.disabled = false;
+    });
+    modelButtons.appendChild(btn);
+  }
+}
+
+if (isNativeApp) refreshModelPanel();
+
+// --- Diagnostics (see src/diagnostics.js) ---
+
+/** Say how much there is to export — an empty log should not look like a broken one. */
+function showLogCount() {
+  const n = logSize();
+  logCountLabel.textContent = n
+    ? `${n} ${n === 1 ? 'entry' : 'entries'} captured. Errors and warnings are always kept.`
+    : 'Nothing captured yet. Errors and warnings are always kept.';
+}
+
+/** The context a bare log lacks: which build, which server, which languages. */
+async function logContext() {
+  const ctx = {
+    Platform: isNativeApp ? 'Android app' : 'Web',
+    'Native language': getLanguage(),
+    'Reading language': readingLangName(getReadingLang()),
+    'Home server': getKbUrl() || 'not set',
+  };
+  if (isNativeApp) {
+    try {
+      const b = await currentBundle();
+      ctx['App bundle'] = b ? `${b.version}${b.builtin ? ' (installed with the app)' : ''}` : 'unknown';
+    } catch (err) {
+      ctx['App bundle'] = `unreadable (${err.message})`;
+    }
+    // "Which models does this phone have?" is the first question a failed
+    // translation raises; a log that does not answer it costs another round trip.
+    const models = await downloadedModels();
+    ctx['Translation models'] = models ? models.join(', ') || 'none' : 'unreadable';
+  }
+  return ctx;
+}
+
+verboseLogToggle.checked = getVerboseLog();
+verboseLogToggle.addEventListener('change', () => setVerboseLog(verboseLogToggle.checked));
+showLogCount();
+
+// The log goes into a NOTE rather than a file: a note is already readable, editable,
+// copyable and syncable, and on a phone "save a file somewhere" is the step that
+// loses the report. Saved in the user's OWN language so the reader does not paint a
+// log red — it is diagnostics, not vocabulary.
+logToNoteButton.addEventListener('click', async () => {
+  const label = logToNoteButton.querySelector('span');
+  try {
+    const now = new Date();
+    const title = `Log ${now.toISOString().slice(0, 16).replace('T', ' ')}`;
+    await addNote({ title, text: logText(await logContext()), lang: nativeLangCode() });
+    label.textContent = 'Saved to Notes';
+    if (activeView === 'notes') await renderNotes();
+  } catch (err) {
+    label.textContent = `Failed: ${err.message}`;
+  }
+  setTimeout(() => (label.textContent = 'Save log to Notes'), 6000);
+});
+
+copyLogButton.addEventListener('click', async () => {
+  copyWithToast(logText(await logContext()), 'Log');
+});
+
+clearLogButton.addEventListener('click', async () => {
+  if (!(await confirmDialog('Clear the captured log?', { confirmLabel: 'Clear', danger: true }))) return;
+  clearLog();
+  showLogCount();
+});
 
 profileInput.value = getProfile();
 profileInput.addEventListener('change', () => {
