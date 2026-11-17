@@ -58,20 +58,43 @@ Definition chain → popup (quick definition, KB details, AI explanations)
 The reading text is **flat on purpose** — every char offset in it is load-bearing
 (tokens, image anchors, paragraph-anchored positions, cross-device sync). So the
 document's structure never rewrites the text: it travels alongside it as
-`blocks: [{ start, end, type }]`, sorted non-overlapping char ranges with a type —
-`h1`/`h2`/`h3` (headings; deeper levels flatten to `h3`), `li` (list item),
-`code`, `quote`. Plain paragraphs are not annotated. Conventions
+`blocks: [{ start, end, type, level? }]`, sorted non-overlapping char ranges with
+a type — `h1`/`h2`/`h3` (headings; deeper levels flatten to `h3`), `li` (list item,
+with `level` 1–2 when nested), `code`, `quote`, `row` (a table row) and `hr` (a
+thematic break). Plain paragraphs are not annotated. Conventions
 (`src/ingest/index.js` is the contract):
 
 - a block is separated from its neighbours by `\n\n`, except **consecutive list
   items**, one `\n` apart (a tight list);
-- a list item's text begins with its visible marker (`•` or `3.` plus a space) —
-  the text stays readable even with no styling at all;
-- a code block keeps its internal newlines and indentation verbatim.
+- a list item's text begins with its visible marker (`•`/`◦`/`▪` by nesting level,
+  `3.`, or `☐`/`☑` for a task, plus a space) — the text stays readable even with no
+  styling at all;
+- a code block keeps its internal newlines and indentation verbatim;
+- a table row holds one `Header: value` line per non-empty cell — a grid read at
+  phone width, and the natural way to say it aloud;
+- a thematic break is the wordless text `· · ·` (the voice passes over it).
+
+**Inline formatting** travels the same way, as `marks: [{ start, end, type }]` —
+`b` bold, `i` italic, `s` strikethrough, `code` a code span; they may nest. The
+renderer stamps each token with the marks covering it and turns them into classes
+(on the word span, or on a small span around punctuation/whitespace inside a mark,
+so a code span's background runs continuously). Classes only — the text, offsets
+and speech are untouched, and a word inside a mark is still an ordinary, colored,
+markable word.
 
 Where blocks come from, per format: **EPUB** maps XHTML tags (`h1..h6`, `li`,
-`pre`, `blockquote`); **Markdown** parses line syntax (`#`, list markers, fenced
-code — kept now, it used to be dropped — and `>` quotes); **PDF** infers headings
+`pre`, `blockquote`); **Markdown** (`ingest/md.js` — notes and `.md` books) parses
+line syntax: `#` and setext (`===`/`---` underlined) headings, list markers with
+their nesting (from indentation), task boxes, fenced code (kept verbatim; a fence
+may be indented inside a list), `>` quotes, GFM tables and `---` breaks; reference
+definitions are dropped. Its inline pass follows CommonMark's delimiter rules
+closely enough for real text: an underscore **inside** a word is never emphasis
+(`my_config_file.py` stays whole), a `*` with spaces on both sides is a
+multiplication sign, a single `~` is "approximately" (only `~~` strikes through),
+code spans are opaque, backslash escapes and HTML entities are honored, links and
+images keep their text, and known inline HTML tags are dropped (`<br>` is a space;
+a whitelist, so prose like `List<T>` is never eaten). Only `.md` books and notes
+produce marks so far. **PDF** infers headings
 from geometry (a short paragraph whose font height is ≥1.2×/≥1.55× the document's
 median is `h2`/`h1`) and list items from a leading bullet glyph — a leading dash
 is deliberately **not** a bullet, because in a novel it is dialogue — or from dot
@@ -204,7 +227,9 @@ becomes another hidden gesture:
   cover the highlighted text; the session belongs to the **player**, below) — to
   the end of the book, fed to the speech engine **one paragraph at a time** (long
   single utterances stall every engine), with a short breathing gap between
-  paragraphs. As it plays, the **word being spoken is softly shaded** (a gentle
+  paragraphs. A continuing session **passes over code blocks** (an answer's
+  `const x = 1;` read symbol by symbol is noise); starting inside one reads that
+  block, and the next ones are skipped. As it plays, the **word being spoken is softly shaded** (a gentle
   cross-fade, not a hard step) so the eye can follow the voice (MS Edge style;
   Web Speech boundary events on the web, the native engine's `onRangeStart` on
   Android — engines that report no boundaries still highlight and align each

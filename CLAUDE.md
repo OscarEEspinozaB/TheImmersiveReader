@@ -113,11 +113,13 @@ published one should not drift apart.
 
 ## Code map
 
-- `src/ingest/` — per-format readers → `{ text, images, blocks }` (clean flat
-  text, anchored illustrations, and structure: headings/list-items/code/quotes
+- `src/ingest/` — per-format readers → `{ text, images, blocks, marks? }` (clean
+  flat text, anchored illustrations, structure — headings/list-items (+level)/code/
+  quotes/table rows/breaks — and inline marks (bold/italic/strike/code spans), all
   as char RANGES over the text, never rewriting it — offsets are load-bearing;
   the contract lives in `ingest/index.js`. PDF de-hyphenation/paragraph+heading
-  reconstruction from geometry, EPUB spine order, Markdown line syntax).
+  reconstruction from geometry, EPUB spine order, Markdown via CommonMark-style
+  rules in `md.js` — `MD_VERSION` re-parses stale notes from their source).
 - `src/tokenizer.js` / `src/words.js` / `src/normalize.js` — segmentation and the
   word→key rule (normalize is shared with the server; keep it dependency-free).
 - `src/vocabulary.js` — `<lang>:<word>` → `{ state, at }` store (localStorage; only

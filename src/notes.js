@@ -5,7 +5,7 @@
 // a book. The only thing a note has that a book does not is editing, which lives —
 // with rename, language and delete — behind the card's "⋮".
 
-import { listNotes, renameNote, deleteBook, setBookLang, getBookContent } from './library.js';
+import { listNotes, renameNote, deleteBook, setBookLang, getBookContent, reparseNoteIfStale } from './library.js';
 import { confirmDialog, promptDialog, selectDialog } from './dialog.js';
 import { READING_LANGUAGES, readingLangName } from './settings.js';
 import { iconButton } from './shelf.js';
@@ -171,12 +171,15 @@ function noteCard(note, container, opts) {
 }
 
 async function fillPreview(id, snip, meta) {
+  await reparseNoteIfStale(id); // a note saved under an older parser previews like it reads
   const content = await getBookContent(id);
   if (!content) return;
   // Preview the clean READING text (never the raw Markdown) so the card reads the
-  // way the note will be spoken — strip the leading list markers we added ("• ", "3. ").
+  // way the note will be spoken — strip the list markers and dividers the parser
+  // added ("• ", "◦ ", "☐ ", "3. ", "· · ·").
   const preview = (content.text || '')
-    .replace(/^(?:•|\d+\.)\s*/gm, '')
+    .replace(/^(?:[•◦▪☐☑]|\d+\.)\s*/gm, '')
+    .replace(/^· · ·$/gm, '')
     .replace(/\s+/g, ' ')
     .trim();
   snip.textContent = preview.slice(0, 160);

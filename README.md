@@ -20,7 +20,9 @@ per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
 - **Ingest** `.txt`, `.md`, `.pdf`, and `.epub` client-side. PDF/EPUB text is
   reconstructed into clean paragraphs, embedded illustrations show inline, and
   document **structure survives**: headings, list items, code blocks and quotes
-  render styled (from EPUB tags, Markdown syntax, or PDF geometry).
+  render styled (from EPUB tags, Markdown syntax, or PDF geometry). Markdown also
+  keeps nested lists, task boxes, tables (one card per row), breaks and inline
+  bold / italic / code — while the voice never reads a Markdown symbol.
 - **Word states**: Unknown (red) → Learning (gold) → Known (blends in), plus a
   manual-only **Discarded** state (recessive slate-blue) that sets non-vocabulary
   tokens aside — proper nouns, code identifiers, Roman numerals — out of the

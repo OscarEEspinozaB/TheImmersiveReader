@@ -11,6 +11,12 @@
 // inline-blocks (width 100%) on purpose: they take part in the pre-wrap line
 // layout, so the "\n\n" / "\n" separators around them space blocks exactly like
 // they space plain paragraphs.
+//
+// MARKS: inline formatting (bold, italic, strikethrough, code spans) also arrives as
+// offset ranges. applyMarks() stamps each token with the marks covering it, and
+// makeNode() turns that into classes — on the word span itself, or on a small span
+// wrapping punctuation/whitespace inside a mark (so a code span's background or a
+// strikethrough runs continuously). Classes only: text and offsets never change.
 
 import { getState } from '../vocabulary.js';
 import { parts, displayState, aggregateStates } from '../contractions.js';
@@ -33,9 +39,11 @@ export function makeNode(item) {
   // A URL/e-mail token: a quietly-marked tappable span (marking.js opens the link
   // bubble on tap — visible Open/Copy buttons, never direct navigation). It has no
   // vocabulary key and no learning state.
+  const marked = item.mark ? item.mark.split(' ').map((t) => `mark--${t}`) : null;
   if (item.isLink) {
     const span = document.createElement('span');
     span.className = 'link';
+    if (marked) span.classList.add(...marked);
     span.tabIndex = 0;
     span.textContent = item.text;
     return span;
@@ -43,6 +51,7 @@ export function makeNode(item) {
   if (item.isWord) {
     const span = document.createElement('span');
     span.className = 'word';
+    if (marked) span.classList.add(...marked);
     span.dataset.i = String(item.wordIndex);
     span.tabIndex = 0;
     span.textContent = item.text;
@@ -61,7 +70,34 @@ export function makeNode(item) {
     }
     return span;
   }
+  if (marked) {
+    const span = document.createElement('span');
+    span.className = `mark ${marked.join(' ')}`;
+    span.textContent = item.text;
+    return span;
+  }
   return document.createTextNode(item.text);
+}
+
+/**
+ * Stamp each token with the inline marks covering it (`token.mark = 'b code'`).
+ * A token belongs to a mark when it STARTS inside the mark's range.
+ * @param {(import('../tokenizer.js').Token & { mark?: string })[]} tokens in order
+ * @param {import('../ingest/index.js').DocMark[]} [marks]
+ */
+export function applyMarks(tokens, marks) {
+  if (!marks || !marks.length) return;
+  const sorted = [...marks].sort((a, b) => a.start - b.start);
+  let next = 0;
+  let active = [];
+  for (const t of tokens) {
+    active = active.filter((m) => m.end > t.start);
+    while (next < sorted.length && sorted[next].start <= t.start) {
+      if (sorted[next].end > t.start) active.push(sorted[next]);
+      next += 1;
+    }
+    if (active.length) t.mark = [...new Set(active.map((m) => m.type))].join(' ');
+  }
 }
 
 /**
@@ -138,6 +174,7 @@ export function blockAt(blocks, offset) {
 function makeBlockNode(block) {
   const div = document.createElement('div');
   div.className = `reader__block reader__block--${block.type}`;
+  if (block.level) div.dataset.level = String(block.level); // a nested list item
   div._block = block; // identity: items of the SAME block join the same container
   return div;
 }

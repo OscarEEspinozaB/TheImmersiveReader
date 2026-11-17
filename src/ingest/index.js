@@ -9,7 +9,14 @@
 //   - a block is separated from its neighbours by "\n\n", except consecutive
 //     list items, separated by a single "\n" (a tight list);
 //   - a list item's text begins with its visible marker ("• " or "3. ");
-//   - a code block keeps its internal newlines and indentation verbatim.
+//   - a code block keeps its internal newlines and indentation verbatim;
+//   - a list item may carry `level` (1, 2) when nested inside another item;
+//   - a table row ('row') holds one "Header: value" line per non-empty cell;
+//   - a thematic break ('hr') is the wordless text "· · ·" (the voice skips it).
+//
+//   marks[] (optional): INLINE formatting as ranges over the same text — 'b' bold,
+//   'i' italic, 's' strikethrough, 'code' a code span. They may nest/overlap; the
+//   renderer only adds classes, so they never affect layout offsets or speech.
 
 import { readTxt } from './txt.js';
 import { readMd } from './md.js';
@@ -17,10 +24,11 @@ import { readPdf } from './pdf.js';
 import { readEpub } from './epub.js';
 
 /**
- * @typedef {'h1'|'h2'|'h3'|'li'|'code'|'quote'} BlockType
- * @typedef {{ start: number, end: number, type: BlockType }} DocBlock
+ * @typedef {'h1'|'h2'|'h3'|'li'|'code'|'quote'|'row'|'hr'} BlockType
+ * @typedef {{ start: number, end: number, type: BlockType, level?: number }} DocBlock
+ * @typedef {{ start: number, end: number, type: 'b'|'i'|'s'|'code' }} DocMark
  * @typedef {{ start: number, width: number, height: number, blob: Blob }} DocImage
- * @typedef {{ text: string, images: DocImage[], blocks: DocBlock[] }} IngestResult
+ * @typedef {{ text: string, images: DocImage[], blocks: DocBlock[], marks?: DocMark[] }} IngestResult
  */
 
 /**

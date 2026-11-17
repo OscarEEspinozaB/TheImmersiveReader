@@ -18,8 +18,11 @@ IndexedDB "immersive-reader"
                                   progressUpdatedAt, lastOpenedAt?, … }
                                   (metadata, small; kind: 'book' | 'note')
   store "content"    { text, images: [{ start, width, height, blob }],
-                       blocks: [{ start, end, type }],
-                       source? }       (heavy, by id; source = a note's raw text)
+                       blocks: [{ start, end, type, level? }],
+                       marks?: [{ start, end, type }],
+                       source?, mdVersion? }
+                       (heavy, by id; source = a note's raw text, mdVersion = the
+                        Markdown parser version it was parsed with)
   store "bookwords"  per-book word data, versioned & recomputed when stale:
                      unique lemmas, occurrence counts (the swiper deck's
                      frequency ranking) and per-sentence word indexes (the
@@ -120,9 +123,11 @@ book.tir  (zip)
 - Reading position and vocabulary are deliberately **not** embedded — vocabulary
   is global and position is per-device — so files stay portable and shareable.
 - `blocks` (v2) is the document's structure — headings / list items / code /
-  quotes as char ranges over `text.txt` (the contract lives in
+  quotes / table rows / breaks as char ranges over `text.txt` (the contract lives in
   `src/ingest/index.js`, rendering in [design.md §3](design.md)). v1 files import
-  fine: no blocks means the flat flow of paragraphs they always were.
+  fine: no blocks means the flat flow of paragraphs they always were. `marks`
+  (inline bold / italic / code spans) is an **optional** v2 field: a file without it
+  reads as plain text, and an older app simply ignores it.
 - Import tolerates missing image entries and rejects newer-version files with a
   clear message. Language comes from the manifest, so no language prompt on
   import.
@@ -155,7 +160,11 @@ out of `listBooks()`, so they never appear on My Books or in Progress. Built in
 - **Saving opens the note in the reader** — writing → listening is one action, and
   back from the reader returns to Notes. The text is parsed as Markdown into the
   reading text + `blocks` (`src/ingest/md.js`); the raw text is kept as `source`,
-  which is what *Edit text* reopens. Saving an edit **keeps the reading position**
+  which is what *Edit text* reopens. Because the source is kept, a note saved under
+  an older Markdown parser (`mdVersion`) is **parsed again** when it is opened or
+  listed, so parser improvements reach existing notes too (title, language and
+  position are untouched; a re-parse that splits or merges paragraphs can move the
+  position slightly). Saving an edit **keeps the reading position**
   (paragraph-anchored and clamped on restore, so a shortened text cannot leave it
   past the end) and reopens the reader there.
 - **Leaving with unsaved changes asks first** — *Keep editing* / *Discard* — from the

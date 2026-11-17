@@ -32,7 +32,7 @@ import { logDiag } from './diagnostics.js';
 
 /**
  * @typedef {{
- *   getSlice: (wordIndex: number) =>
+ *   getSlice: (wordIndex: number, opts?: { continuing?: boolean }) =>
  *     { text: string, words: { start: number, end: number, wordIndex: number }[] } | null,
  *   getSentenceStart: (wordIndex: number) => number,
  *   getFirstVisibleWord: () => number,

@@ -78,7 +78,7 @@ export function wordAtOffset(words, offset) {
  * Replaces any running session.
  * @param {{
  *   fromWord: number,
- *   getSlice: (wordIndex: number) =>
+ *   getSlice: (wordIndex: number, opts: { continuing: boolean }) =>
  *     { text: string, words: { start: number, end: number, wordIndex: number }[] } | null,
  *   getLang: () => string,
  *   onWord?: (wordIndex: number | null, paragraphStart?: boolean) => void  the
@@ -98,8 +98,8 @@ export function startReading({ fromWord, getSlice, getLang, onWord, onEnd }) {
     onEnd?.(reason);
   };
 
-  const readParagraph = (wordIndex) => {
-    const slice = getSlice(wordIndex);
+  const readParagraph = (wordIndex, continuing = false) => {
+    const slice = getSlice(wordIndex, { continuing });
     if (!slice || !slice.words.length) {
       cancel('finished'); // ran out of book
       return;
@@ -117,7 +117,7 @@ export function startReading({ fromWord, getSlice, getLang, onWord, onEnd }) {
         const next = slice.words[slice.words.length - 1].wordIndex + 1;
         gapTimer = setTimeout(() => {
           gapTimer = null;
-          readParagraph(next);
+          readParagraph(next, true);
         }, PARAGRAPH_GAP_MS);
       },
     });

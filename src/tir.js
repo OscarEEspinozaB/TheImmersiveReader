@@ -9,7 +9,8 @@
 //     manifest.json   { format, version, title, addedAt, lang, cover, coverMime,
 //                       coverSource, coverWidth, coverHeight,
 //                       images: [{ file, mime, start, width, height }],
-//                       blocks: [{ start, end, type }] }   (v2 — see ingest/index.js)
+//                       blocks: [{ start, end, type, level? }],   (v2 — see ingest/index.js)
+//                       marks?: [{ start, end, type }] }   (optional: inline formatting)
 //     text.txt        the clean reading text
 //     images/0.png …  the illustration blobs (one file per anchored image)
 //     cover.png       optional cover: the shelf thumbnail, and (when uploaded) the
@@ -28,7 +29,9 @@ import { getBook, getBookContent, addBook, findBookByTitle } from './library.js'
 const FORMAT = 'tir';
 // v2: the manifest carries `blocks` — the document's structure (headings, list
 // items, code, quotes) as char ranges over text.txt. v1 files import fine (no
-// blocks: a flat flow of paragraphs, exactly what they always were).
+// blocks: a flat flow of paragraphs, exactly what they always were). `marks`
+// (bold/italic/code spans) is an OPTIONAL v2 field: a file without it reads as plain
+// text, and an older app reading a file with it simply ignores it — no version bump.
 const VERSION = 2;
 
 const MIME_TO_EXT = {
@@ -93,6 +96,7 @@ export async function exportBookToBlob(id) {
     coverHeight: meta.coverHeight,
     images: manifestImages,
     blocks: content.blocks || [],
+    marks: content.marks || [],
   };
   files['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2));
   files['text.txt'] = strToU8(content.text || '');
@@ -180,6 +184,7 @@ export async function importTir(file) {
     text,
     images,
     blocks: manifest.blocks || [], // v1 files carry none: a flat flow, as they always were
+    marks: manifest.marks || [],
 
     cover,
     // Legacy files (and books whose cover came from the file itself) have no

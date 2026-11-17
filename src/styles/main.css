@@ -516,10 +516,49 @@ body.immersive .reader-wrap--scroll {
 }
 
 /* The marker ("• " / "3. ") is part of the text; the hanging indent aligns the
-   wrapped lines under the first character after it. */
+   wrapped lines under the first character after it. Nested items (data-level,
+   from the Markdown's indentation) step in. */
 .reader__block--li {
   padding-left: 1.3em;
   text-indent: -1.3em;
+}
+.reader__block--li[data-level='1'] {
+  padding-left: 2.6em;
+}
+.reader__block--li[data-level='2'] {
+  padding-left: 3.9em;
+}
+
+/* A table row, read as a card: one "Header: value" line per cell (md.js). */
+.reader__block--row {
+  border-left: 3px solid color-mix(in srgb, var(--word-learning) 45%, transparent);
+  padding-left: 0.9em;
+}
+
+/* A thematic break ("---"): the wordless "· · ·", centered and quiet. */
+.reader__block--hr {
+  text-align: center;
+  letter-spacing: 0.5em;
+  opacity: 0.45;
+}
+
+/* Inline formatting (md.js marks → render.js classes). Classes only — never a
+   size or spacing change that would shift the measured layout between renders. */
+.mark--b {
+  font-weight: 700;
+}
+.mark--i {
+  font-style: italic;
+}
+.mark--s {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text) 55%, transparent);
+}
+.mark--code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.88em;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  border-radius: 3px;
 }
 
 .reader__block--code {

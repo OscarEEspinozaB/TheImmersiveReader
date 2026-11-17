@@ -33,7 +33,7 @@ import { renderServerShelf } from './serverShelf.js';
 import { initVocabSync, syncNow } from './vocabSync.js';
 import { pullPosition, pushPosition } from './positionSync.js';
 import { buildParagraphs, wordStartsOf, wordIndexToPosition, positionToWordIndex } from './reader/position.js';
-import { recolorWord } from './reader/render.js';
+import { recolorWord, applyMarks } from './reader/render.js';
 import { renderProgress, renderDictionary, refreshBookLanguages } from './dashboard.js';
 import { buildDeck, bookWordData } from './deck.js';
 import { importTir } from './tir.js';
@@ -55,6 +55,7 @@ import {
   setProgress,
   touchOpened,
   migrateOldDocument,
+  reparseNoteIfStale,
 } from './library.js';
 import {
   LANGUAGES,
@@ -381,6 +382,9 @@ function pickReadingLang(message, defaultCode) {
 
 async function openBook(id, origin = 'shelf') {
   readerOrigin = origin;
+  // A note saved under an older Markdown parser is parsed again from its source
+  // first, so it reads with the current rendering (no-op for books / fresh notes).
+  await reparseNoteIfStale(id);
   const [book, content] = await Promise.all([getBook(id), getBookContent(id)]);
   if (!content) return;
   // Older books have no language; ask once and persist it before rendering.
@@ -404,7 +408,12 @@ async function openBook(id, origin = 'shelf') {
   // An uploaded cover is rendered as the book's first image (cover.js anchors it at
   // offset 0), so the book opens with it exactly as it looks on the shelf.
   showDocument(
-    { text: content.text, images: imagesWithCover(book, content.images), blocks: content.blocks },
+    {
+      text: content.text,
+      images: imagesWithCover(book, content.images),
+      blocks: content.blocks,
+      marks: content.marks,
+    },
     { restore },
   );
   touchOpened(id);
@@ -480,12 +489,12 @@ async function addBookFromFile(file) {
   setView('reader');
   reader.innerHTML = '<p class="reader__placeholder">Loading…</p>';
   try {
-    const { text, images, blocks } = await ingest(file);
+    const { text, images, blocks, marks } = await ingest(file);
     // The document's own cover: the image it opens with, if it has one. An
     // illustration deep in the text is not a cover (see cover.js).
     const cover = documentCover(images)?.blob || null;
     const title = file.name.replace(/\.[^.]+$/, '');
-    const id = await addBook({ title, text, images, blocks, cover, lang, wordData: bookWordData(text) });
+    const id = await addBook({ title, text, images, blocks, marks, cover, lang, wordData: bookWordData(text) });
     await openBook(id);
   } catch (err) {
     console.error(err);
@@ -1001,14 +1010,14 @@ function isWordOnScreen(wordIndex) {
 // content on this device, e.g. a font/mode change) or a { paragraph, word } position
 // (used when opening a book, possibly from another device). Paragraph-anchored so it
 // lands the right paragraph even if the word segmenter disagrees across engines.
-function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) {
+function showDocument({ text, images = [], blocks = [], marks = [] }, { restore = 0 } = {}) {
   detachPlayer(); // a re-render/new book orphans the session's word indexes
   if (pageTurn) {
     pageTurn.destroy();
     pageTurn = null;
   }
   if (paginator) paginator.destroy();
-  currentContent = { text, images, blocks };
+  currentContent = { text, images, blocks, marks };
   applyRedSeaSuppression();
 
   const continuous = getReadingMode() === 'continuous';
@@ -1019,6 +1028,7 @@ function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) 
   pager.classList.toggle('pager--scroll', continuous);
 
   const tokens = tokenize(text);
+  applyMarks(tokens, marks); // bold / italic / code spans → classes on the rendered nodes
   currentParagraphs = buildParagraphs(text);
   currentWordStarts = wordStartsOf(tokens);
   lastSavedPosKey = '';
@@ -1034,7 +1044,7 @@ function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) 
   // The read-aloud player reads THIS document: from a tapped word (paragraph
   // bubble), or from the top of the screen (the top bar's ▶) — see player.js.
   attachPlayer({
-    getSlice: buildParagraphSpeechLookup(text, tokens),
+    getSlice: buildParagraphSpeechLookup(text, tokens, blocks),
     getSentenceStart: buildSentenceStartLookup(text, tokens),
     getFirstVisibleWord: () => paginator?.currentFirstWordIndex() ?? 0,
     isWordOnScreen,

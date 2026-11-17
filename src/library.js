@@ -4,7 +4,7 @@
 
 import { idbGet, idbGetAll, idbSet, idbDelete } from './idb.js';
 import { documentCover } from './cover.js';
-import { parseMarkdown } from './ingest/md.js';
+import { parseMarkdown, MD_VERSION } from './ingest/md.js';
 import { bookWordData } from './deck.js';
 
 function uuid() {
@@ -35,7 +35,8 @@ function uuid() {
 /**
  * Add a book to the library.
  * @param {{ title: string, text: string, images?: any[],
- *   blocks?: import('./ingest/index.js').DocBlock[], cover?: Blob | null,
+ *   blocks?: import('./ingest/index.js').DocBlock[],
+ *   marks?: import('./ingest/index.js').DocMark[], cover?: Blob | null,
  *   words?: string[] | null, lang?: string }} book
  * @returns {Promise<string>} the new book id
  */
@@ -48,8 +49,8 @@ function uuid() {
 const WORDS_VERSION = 5;
 
 export async function addBook({
-  id, title, text, images = [], blocks = [], cover = null, coverSource, coverWidth, coverHeight,
-  wordData = null, lang, addedAt, kind, source,
+  id, title, text, images = [], blocks = [], marks = [], cover = null, coverSource, coverWidth,
+  coverHeight, wordData = null, lang, addedAt, kind, source, mdVersion,
 }) {
   // `id`/`addedAt` may be supplied when importing a `.tir` so the book keeps its
   // stable identity across devices (the same logical book is not duplicated). New
@@ -65,8 +66,10 @@ export async function addBook({
   };
   await idbSet('books', id, meta);
   // `source` (a note's raw, unparsed text) is kept alongside the parsed reading text
-  // so the editor can reopen exactly what was typed. Books have no source.
-  await idbSet('content', id, { text, images, blocks, source });
+  // so the editor can reopen exactly what was typed — and so the note can be parsed
+  // again when the Markdown parser improves (`mdVersion`, see reparseNoteIfStale).
+  // Books have no source.
+  await idbSet('content', id, { text, images, blocks, marks, source, mdVersion });
   if (wordData) await setBookWords(id, wordData);
   return id;
 }
@@ -79,10 +82,10 @@ export async function addBook({
  * @returns {Promise<string>} the new note id
  */
 export async function addNote({ title, text, lang }) {
-  const { text: clean, blocks } = parseMarkdown(text);
+  const { text: clean, blocks, marks } = parseMarkdown(text);
   return addBook({
     title: title || firstLineTitle(text),
-    text: clean, blocks, source: text, lang,
+    text: clean, blocks, marks, source: text, mdVersion: MD_VERSION, lang,
     kind: 'note', wordData: bookWordData(clean),
   });
 }
@@ -97,10 +100,8 @@ export async function updateNote(id, { title, text, lang }) {
   const book = await idbGet('books', id);
   const content = await idbGet('content', id);
   if (!book || !content) return;
-  const { text: clean, blocks } = parseMarkdown(text);
-  content.text = clean;
-  content.blocks = blocks;
-  content.source = text;
+  const { text: clean, blocks, marks } = parseMarkdown(text);
+  Object.assign(content, { text: clean, blocks, marks, source: text, mdVersion: MD_VERSION });
   await idbSet('content', id, content);
   if (title != null) book.title = title;
   if (lang) book.lang = lang;
@@ -111,6 +112,24 @@ export async function updateNote(id, { title, text, lang }) {
   // dangling past the end.
   await idbSet('books', id, book);
   await setBookWords(id, bookWordData(clean));
+}
+
+/**
+ * A note parsed by an older Markdown parser is parsed again from its `source`, so a
+ * parser improvement reaches the notes already saved (not only new ones). Title,
+ * language and reading position are untouched (the position is paragraph-anchored
+ * and clamped; a re-parse that splits or merges paragraphs can move it slightly).
+ * @param {string} id
+ * @returns {Promise<boolean>} whether the note was re-parsed
+ */
+export async function reparseNoteIfStale(id) {
+  const content = await idbGet('content', id);
+  if (content?.source == null || content.mdVersion === MD_VERSION) return false;
+  const { text: clean, blocks, marks } = parseMarkdown(content.source);
+  Object.assign(content, { text: clean, blocks, marks, mdVersion: MD_VERSION });
+  await idbSet('content', id, content);
+  await setBookWords(id, bookWordData(clean));
+  return true;
 }
 
 /** A note's title when the writer gave none: its first non-empty line, trimmed. */
@@ -189,7 +208,8 @@ export async function findBookByTitle(title) {
  * Books stored before structure existed have no `blocks` — they read as one flat
  * flow of paragraphs (re-ingest the source file to get structure).
  * @returns {Promise<{ text: string, images: any[],
- *   blocks?: import('./ingest/index.js').DocBlock[] } | undefined>}
+ *   blocks?: import('./ingest/index.js').DocBlock[],
+ *   marks?: import('./ingest/index.js').DocMark[] } | undefined>}
  */
 export function getBookContent(id) {
   return idbGet('content', id);

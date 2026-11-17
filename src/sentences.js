@@ -152,12 +152,18 @@ export function buildParagraphLookup(text, tokens) {
  * word inside the slice with its offsets, so speech boundary events (character
  * offsets into the spoken text) can be mapped back to word spans and
  * highlighted as they are pronounced.
+ *
+ * CODE BLOCKS are passed over by a continuing read-aloud: listening to an answer,
+ * `const x = 1;` read symbol by symbol is noise. When the reader STARTS inside a
+ * code block (they asked for it), that block is read; the next ones are skipped.
  * @param {string} text the clean source text
  * @param {import('./tokenizer.js').Token[]} tokens tokens in document order
- * @returns {(wordIndex: number) =>
+ * @param {import('./ingest/index.js').DocBlock[]} [blocks] the document structure
+ * @returns {(wordIndex: number, opts?: { continuing?: boolean }) =>
  *   { text: string, words: { start: number, end: number, wordIndex: number }[] } | null}
+ *   `continuing`: the session is moving on to the next paragraph (not starting).
  */
-export function buildParagraphSpeechLookup(text, tokens) {
+export function buildParagraphSpeechLookup(text, tokens, blocks = []) {
   const words = []; // { at, len } by word index, offsets into `text`
   let offset = 0;
   for (const t of tokens) {
@@ -170,7 +176,23 @@ export function buildParagraphSpeechLookup(text, tokens) {
   let m;
   while ((m = re.exec(text))) paragraphs.push({ start: m.index, end: m.index + m[0].length });
 
-  return (wordIndex) => {
+  const codeBlocks = (blocks || []).filter((b) => b.type === 'code');
+  const codeAt = (at) => codeBlocks.find((b) => at >= b.start && at < b.end) || null;
+
+  return (start, { continuing = false } = {}) => {
+    let wordIndex = start;
+    // Entering a code block from outside it while continuing: hop over it (and any
+    // code block right after it) to the first word past it.
+    if (continuing) {
+      for (;;) {
+        const w0 = words[wordIndex];
+        const block = w0 && codeAt(w0.at);
+        if (!block) break;
+        const prev = words[wordIndex - 1];
+        if (prev && prev.at >= block.start && prev.at < block.end) break; // already inside it
+        while (words[wordIndex] && words[wordIndex].at < block.end) wordIndex += 1;
+      }
+    }
     const w = words[wordIndex];
     if (!w) return null;
     const p = paragraphs.find((x) => w.at >= x.start && w.at < x.end);
