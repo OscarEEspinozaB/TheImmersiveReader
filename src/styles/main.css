@@ -144,9 +144,29 @@ body {
 }
 
 .brand {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+/* The top bar's right-hand group: the read-aloud player (reader only) + the menu. */
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: none;
+}
+
+.player-btn[hidden] {
+  display: none;
+}
+.player-btn.is-playing {
+  color: var(--word-learning);
+  border-color: color-mix(in srgb, var(--word-learning) 45%, var(--border));
 }
 
 .menu-toggle {
@@ -2858,6 +2878,45 @@ button.kb-form:focus-visible {
 .playback-pill:hover,
 .playback-pill:focus-visible {
   background: color-mix(in srgb, var(--text) 10%, var(--surface));
+}
+
+/* --- Read-aloud mini-player (src/playerControls.js): the session's ▶/⏸ + ⏹ while
+   it is playing or paused — reachable while the top bar is auto-hidden. Same spot
+   and look as the generic speech pill above, which is suppressed meanwhile. */
+.player-pill {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(4.2rem + var(--sab));
+  z-index: 35;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--text) 28%, var(--surface));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.player-pill[hidden] {
+  display: none;
+}
+.player-pill__btn {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border: none;
+  border-radius: 999px;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+}
+.player-pill__btn:hover,
+.player-pill__btn:focus-visible {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.player-pill__btn.is-playing {
+  color: var(--word-learning);
 }
 
 /* Dictionary coverage on a server book: how much of it is already refined, and the

@@ -175,6 +175,19 @@ const PILL_LINGER_MS = 1000;
 let pill = null;
 let pillTimer = null;
 let pillHideTimer = null;
+// While the read-aloud player is active it shows its OWN controls (player.js); this
+// generic stop pill must not appear on top of them.
+let pillSuppressed = false;
+
+/**
+ * Hide (and keep hidden) the generic "Stop reading" pill — the player calls this
+ * while a read-aloud session is playing or paused, since it has its own controls.
+ * @param {boolean} on
+ */
+export function suppressPill(on) {
+  pillSuppressed = !!on;
+  if (pillSuppressed) hidePill();
+}
 
 function ensurePill() {
   if (pill) return;
@@ -196,7 +209,7 @@ function schedulePill(token) {
   }
   pillTimer = setTimeout(() => {
     pillTimer = null;
-    if (token !== speakToken || !active) return;
+    if (token !== speakToken || !active || pillSuppressed) return;
     ensurePill();
     pill.hidden = false;
   }, PILL_DELAY_MS);

@@ -149,7 +149,11 @@ published one should not drift apart.
   re-runs the model and repaints in place.
   `src/speech.js` — TTS (Web Speech; native engine on Android) with per-word
   boundary callbacks; `src/readAloud.js` — the continuous paragraph-by-paragraph
-  read-aloud session.
+  read-aloud session; `src/player.js` — the read-aloud PLAYER every control reflects
+  (one idle/playing/paused state; pause is logical — stop + resume from the paused
+  sentence's start, since the native TTS has no pause), with `src/playerControls.js`
+  (top bar ▶/⏸ + ⏹ — ▶ reads from the top of the screen — and a floating
+  mini-player while a session exists).
 - `src/definitions/` — provider chain: `localDict` → `kbApi` (home-server KB) →
   `nativeWiktionary` (a MONOLINGUAL definition from the book language's own
   Wiktionary edition via its CORS-open MediaWiki API — so a Spanish book gets a

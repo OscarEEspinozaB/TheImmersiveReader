@@ -68,6 +68,50 @@ export function buildSentenceLookup(text, tokens) {
 }
 
 /**
+ * Build a function mapping a word index to the index of the FIRST word of its
+ * sentence — where a paused read-aloud resumes (player.js), so the voice picks the
+ * sentence up from its start instead of mid-phrase. Lazy: the segmentation runs on
+ * the first call (most sessions are never paused), not when the book opens.
+ * @param {string} text the clean source text
+ * @param {import('./tokenizer.js').Token[]} tokens tokens in document order
+ * @returns {(wordIndex: number) => number}
+ */
+export function buildSentenceStartLookup(text, tokens) {
+  let starts = null; // first word index of each sentence, ascending
+  const build = () => {
+    const wordOffsets = [];
+    let offset = 0;
+    for (const t of tokens) {
+      if (t.isWord) wordOffsets.push(offset);
+      offset += t.text.length;
+    }
+    starts = [];
+    let k = 0;
+    for (const s of segmentSentences(text)) {
+      while (k < wordOffsets.length && wordOffsets[k] < s.start) k += 1;
+      if (k < wordOffsets.length && wordOffsets[k] < s.end) starts.push(k);
+    }
+  };
+  return (wordIndex) => {
+    if (!starts) build();
+    // The last sentence start at or before the word (binary search).
+    let lo = 0;
+    let hi = starts.length - 1;
+    let found = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (starts[mid] <= wordIndex) {
+        found = starts[mid];
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return found;
+  };
+}
+
+/**
  * Build a function mapping a word index to its whole paragraph. Paragraphs are runs
  * of text between newlines (the ingest layer reconstructs paragraphs as single lines
  * separated by `\n`). Used by the triple-tap "copy paragraph" gesture.

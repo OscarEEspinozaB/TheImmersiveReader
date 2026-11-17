@@ -62,17 +62,12 @@ const ARMING_MIN_MS = 400;
  * @param {{
  *   getSentence?: (wordIndex: number) => string,
  *   getParagraph?: (wordIndex: number) => string,
- *   getParagraphSpeech?: (wordIndex: number) =>
- *     { text: string, words: { start: number, end: number, wordIndex: number }[] } | null,
- *   followWord?: (wordIndex: number) => void,
  *   book?: { uid?: string },
  * }} [opts]
  *   `book` identifies the open book so server-cached AI answers are stored/shared
  *   per book (the sentence is the real key; book + page are organizing metadata).
- *   `getParagraph` backs the paragraph bubble's copy action; `getParagraphSpeech`
- *   its continuous read-aloud (paragraph slices from any word, with per-word
- *   offsets for the follow-along highlight — see sentences.js); `followWord`
- *   brings an off-page word into view so the highlight can follow the voice.
+ *   `getParagraph` backs the paragraph bubble's copy action (its read-aloud goes
+ *   through the player, attached to the document by main.js — see player.js).
  */
 // ONE popup (and one request counter) for the whole app. attachMarking runs on
 // every re-render (book open, reading-mode or font change), and each WordPopup
@@ -93,8 +88,6 @@ export function attachMarking(
   {
     getSentence = () => '',
     getParagraph = () => '',
-    getParagraphSpeech = null,
-    followWord = null,
     book = {},
   } = {},
 ) {
@@ -483,8 +476,6 @@ export function attachMarking(
         // Read/copy act on the paragraph; Translate acts only on this sentence.
         sentence: getSentence(wordIndex),
         wordIndex,
-        getParagraphSpeech,
-        followWord,
       });
     } else if (span.dataset.state !== 'known' && span.dataset.state !== 'discarded') {
       // Known and discarded are "resolved": a single tap never interrupts reading.

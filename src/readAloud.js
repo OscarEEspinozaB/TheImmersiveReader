@@ -5,13 +5,16 @@
 // paragraph); each paragraph re-reads the CURRENT voice settings, so a speed or
 // voice change in Settings applies from the next paragraph on.
 //
-// The session ends when: the book runs out of paragraphs, the reader stops it
-// (the bubble's ⏹ toggle or the pill — including a stop landing inside the
-// inter-paragraph gap, via onSpeechStop), or any other speech starts (a word's
-// 🔊 replaces the running utterance, whose onEnd then reports completed=false).
+// The session ends when: the book runs out of paragraphs ('finished'), the reader
+// stops it ('stopped' — including a stop landing inside the inter-paragraph gap,
+// via onSpeechStop), any other speech starts ('interrupted' — a word's 🔊 replaces
+// the running utterance, whose onEnd then reports completed=false), a new session
+// replaces it ('replaced'), or the engine refuses to start ('failed'). The reason
+// is handed to onEnd so the caller can tell "done" from "cut short" — the player
+// (player.js) turns a cut-short session into a resumable pause.
 //
 // This module only SPEAKS and reports word boundaries; what a boundary does
-// (highlight, page follow) is the caller's business (gloss.js).
+// (highlight, page follow, pause/resume) is the caller's business (player.js).
 
 import { speak, stopSpeaking, onSpeechStop } from './speech.js';
 
@@ -26,9 +29,12 @@ export function isReading() {
   return activeEnd != null;
 }
 
+/** @typedef {'finished'|'stopped'|'interrupted'|'replaced'|'failed'} EndReason */
+
 // End the session logically (idempotent). Never touches the engine — callers
 // that need the voice silenced too go through stopReading().
-function cancel() {
+/** @param {EndReason} [reason] */
+function cancel(reason = 'stopped') {
   session += 1;
   if (gapTimer) {
     clearTimeout(gapTimer);
@@ -36,19 +42,19 @@ function cancel() {
   }
   const end = activeEnd;
   activeEnd = null;
-  end?.();
+  end?.(reason);
 }
 
 /** Stop the continuous session and silence the voice. Safe to call anytime. */
 export function stopReading() {
-  cancel();
+  cancel('stopped');
   stopSpeaking(); // no-op when the voice is already silent (a stop mid-gap)
 }
 
 // The pill's ⏹ only knows the speech engine; when its stop lands during the
 // inter-paragraph gap there is no active speech whose onEnd could tell us — so
 // every explicit stop request also ends the session.
-onSpeechStop(() => cancel());
+onSpeechStop(() => cancel('stopped'));
 
 /**
  * The word a boundary offset belongs to: the last word starting at or before
@@ -80,21 +86,22 @@ export function wordAtOffset(words, offset) {
  *     Fired once with paragraphStart=true as each paragraph BEGINS (even on
  *     engines without boundary events — so view-following always works), then
  *     per boundary as words are spoken,
- *   onEnd?: () => void  always fires exactly once, however the session ends,
+ *   onEnd?: (reason: EndReason) => void  always fires exactly once, however the
+ *     session ends, with WHY it ended,
  * }} opts `getSlice` is sentences.js's paragraph-speech lookup.
  */
 export function startReading({ fromWord, getSlice, getLang, onWord, onEnd }) {
-  cancel();
+  cancel('replaced');
   const my = ++session;
-  activeEnd = () => {
+  activeEnd = (reason) => {
     onWord?.(null);
-    onEnd?.();
+    onEnd?.(reason);
   };
 
   const readParagraph = (wordIndex) => {
     const slice = getSlice(wordIndex);
     if (!slice || !slice.words.length) {
-      cancel(); // ran out of book
+      cancel('finished'); // ran out of book
       return;
     }
     const ok = speak(slice.text, getLang(), {
@@ -104,7 +111,7 @@ export function startReading({ fromWord, getSlice, getLang, onWord, onEnd }) {
       onEnd: (completed) => {
         if (my !== session) return;
         if (!completed) {
-          cancel(); // stopped, or another speech (a word's 🔊) took over
+          cancel('interrupted'); // another speech (a word's 🔊) took over, or a stop
           return;
         }
         const next = slice.words[slice.words.length - 1].wordIndex + 1;
@@ -115,7 +122,7 @@ export function startReading({ fromWord, getSlice, getLang, onWord, onEnd }) {
       },
     });
     if (!ok) {
-      cancel();
+      cancel('failed');
       return;
     }
     // Announce the paragraph's first word immediately: the view aligns to the

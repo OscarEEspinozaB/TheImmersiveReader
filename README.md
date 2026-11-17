@@ -38,8 +38,10 @@ per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
   pops up next to it — definition, 🔊 (the word, then its meaning), state chips
   to mark it, and `⋯` for the full panel (AI contexts, explain-in-my-language).
   Hold works on any word (the better you know it, the longer the hold);
-  double-tap opens the paragraph bubble: **read the paragraph aloud**, copy it,
-  or copy the word. A floating `⏹ Stop reading` pill shows while audio plays.
+  double-tap opens the paragraph bubble: **read aloud from that word**, copy the
+  paragraph, or copy the word. The read-aloud **player** has ▶/⏸ and ⏹ in the top
+  bar (▶ reads from the top of the screen) and a floating mini-player while a
+  session is playing or paused; resuming picks the paused sentence up from its start.
   URLs and e-mail addresses stay whole as quietly-underlined link tokens (never
   vocabulary); tapping one opens the **link bubble** — open in a new tab or copy
   — instead of navigating away from the book.

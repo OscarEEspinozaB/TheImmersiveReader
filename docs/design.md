@@ -199,9 +199,10 @@ becomes another hidden gesture:
   slower holds show a fill animation. It signals intent without the old heavy
   gate (2 s holds made sense when they guarded the full popup; the bubble is a light
   glance). The full popup only ever opens **from** the bubble.
-- **Double tap** opens the **paragraph bubble**: `🔊 Read from here` starts a
-  **continuous read-aloud** (`src/readAloud.js`) — from the tapped word to the
-  end of the book, fed to the speech engine **one paragraph at a time** (long
+- **Double tap** opens the **paragraph bubble**: `▶ Read from here` starts a
+  **continuous read-aloud** from the tapped word (the bubble closes so it does not
+  cover the highlighted text; the session belongs to the **player**, below) — to
+  the end of the book, fed to the speech engine **one paragraph at a time** (long
   single utterances stall every engine), with a short breathing gap between
   paragraphs. As it plays, the **word being spoken is softly shaded** (a gentle
   cross-fade, not a hard step) so the eye can follow the voice (MS Edge style;
@@ -214,9 +215,7 @@ becomes another hidden gesture:
   nears the bottom edge (smooth scroll; instant under `prefers-reduced-motion`),
   so the reading never slips out of sight — even after scrolling away to peek
   at something. Each paragraph re-reads the current voice/speed settings, so a change
-  in Settings applies from the next paragraph. The session ends at the book's
-  end, on the bubble's `⏹ Stop`, on the pill (below), when any other speech
-  starts (a word's 🔊), or on leaving the reader / re-rendering the book. Plus
+  in Settings applies from the next paragraph. Plus
   copy the paragraph (always the whole paragraph) and copy the word (clipboard
   with a legacy fallback for non-HTTPS LAN contexts, `src/copy.js`).
   **`Translate this sentence`** (on-device, so Android only) is here and **only**
@@ -233,11 +232,33 @@ becomes another hidden gesture:
   Asking for one **pins the bubble open**: the idle timeout is right for a bubble that
   was only glanced at and wrong the moment it is asked a question — a slow first answer
   would time out under the await, and a long one would vanish while it was still being
-  read. It closes on a tap outside, as always. While any
-  read-aloud is playing, a fixed **`⏹ Stop reading` pill** shows at the bottom —
-  the playback indicator and stop control that survives the bubble's auto-hide
-  (it lingers through the inter-paragraph gap instead of blinking, and stopping
-  inside that gap still ends the session).
+  read. It closes on a tap outside, as always.
+- **The read-aloud player** (`src/player.js`, controls in `src/playerControls.js`)
+  owns every continuous session, with ONE state — idle, playing or paused — shown
+  in two places:
+
+  | state   | top bar | floating mini-player |
+  |---------|---------|----------------------|
+  | idle    | ▶       | —                    |
+  | playing | ⏸ ⏹     | ⏸ ⏹                  |
+  | paused  | ▶ ⏹     | ▶ ⏹                  |
+
+  ▶/⏸ is one button that follows the state; ⏹ exists only while there is a session
+  (playing or paused). The top bar's ▶ (present whenever a document is open) reads
+  **from the top of the screen** — the first word on the page (paged) or at the top
+  of the view (continuous). The top bar auto-hides while reading, so the floating
+  pair keeps a running or paused session reachable without bringing the chrome back
+  (it replaces the generic speech pill below, which is suppressed meanwhile).
+  **Pause is logical**: the Android TTS plugin has no pause and Web Speech's is
+  unreliable, so pausing stops the voice and remembers the last word spoken (kept
+  shaded); ▶ then starts a new session from the **beginning of that word's
+  sentence** — or, when the reader has paged/scrolled away from it while paused,
+  from the top of what is on screen now. A session **cut short** by another speech
+  (a word's 🔊) becomes a pause, not a stop. It ends — back to idle — at the book's
+  end, on ⏹, or on leaving the reader / re-rendering the book. While playing, the
+  screen is kept awake (Screen Wake Lock, where the browser/WebView has it; released
+  on pause/stop). One-shot speech outside a session (a word's 🔊, the Dictionary's)
+  still shows the generic **`⏹ Stop reading` pill** at the bottom while it plays.
 - **Tap on a link** (a URL/e-mail token, §4) opens the **link bubble**: the
   link's text plus `Open in new tab ↗` (scheme-less `www.` links get `https://`,
   e-mail addresses open as `mailto:`) and `Copy link`. The tap itself never
@@ -406,7 +427,11 @@ src/
                      (user-set voice + speed; sentence-chunked; a settle delay
                      after cancel avoids the engines' first-words clipping)
   readAloud.js       continuous read-aloud session: paragraph-by-paragraph
-                     chaining with a breathing gap, stop-anywhere semantics
+                     chaining with a breathing gap, stop-anywhere semantics,
+                     reports WHY a session ended (finished / interrupted / …)
+  player.js          the read-aloud player: idle/playing/paused state, logical
+                     pause + resume from the sentence start, highlight, wake lock
+  playerControls.js  its controls: top bar ▶/⏸ + ⏹, floating mini-player
   definitions/       index (chain), localDict, kbApi, freeDict, serverAi,
                      mlkitTranslate (on-device translation, Android — §6),
                      ollama (contraction decomposition only), prompts

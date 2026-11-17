@@ -23,6 +23,7 @@ import {
   buildSentenceLookup,
   buildParagraphLookup,
   buildParagraphSpeechLookup,
+  buildSentenceStartLookup,
 } from './sentences.js';
 import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
@@ -41,7 +42,8 @@ import { renderSwiper } from './swiper.js';
 import { alertDialog, confirmDialog, dismissDialog, selectDialog } from './dialog.js';
 import { listAiModels, downloadedModels, downloadModel, modelCodeFor } from './definitions/index.js';
 import { canSpeak, voiceGroupsForLang } from './speech.js';
-import { stopReading } from './readAloud.js';
+import { attachPlayer, detachPlayer } from './player.js';
+import { initPlayerControls } from './playerControls.js';
 import {
   addBook,
   addNote,
@@ -208,9 +210,9 @@ let readerOrigin = 'shelf';
 function setView(view) {
   activeView = view;
   const reading = view === 'reader';
-  // Leaving the reader ends a continuous read-aloud: the voice must never keep
-  // going (and turning pages underneath) over the library or a hub view.
-  if (!reading) stopReading();
+  // Leaving the reader ends a read-aloud (playing or paused): the voice must never
+  // keep going (and turning pages underneath) over the library or a hub view.
+  if (!reading) detachPlayer();
   // Tear down the swiper's key listener when leaving it.
   if (view !== 'swiper' && swiperEl._cleanup) {
     swiperEl._cleanup();
@@ -359,6 +361,8 @@ async function openNoteForEdit(id) {
   setView('editor');
   await openNoteEditor(id);
 }
+
+initPlayerControls();
 
 initNoteEditor({
   onSaved: (id) => openBook(id, 'notes'),
@@ -983,12 +987,22 @@ function followSpokenWord(wordIndex, { paragraphStart = false } = {}) {
   }
 }
 
+// Whether a word is on screen right now (a paused read-aloud resumes there; once
+// the reader has paged/scrolled away from it, ▶ reads from the top of the view).
+function isWordOnScreen(wordIndex) {
+  const span = paginator?.content.querySelector(`.word[data-i="${wordIndex}"]`);
+  if (!span) return false;
+  const vr = reader.getBoundingClientRect();
+  const r = span.getBoundingClientRect();
+  return r.bottom > vr.top && r.top < vr.bottom && r.right > vr.left && r.left < vr.right;
+}
+
 // `restore` is either an exact word index (a number — used when re-rendering the SAME
 // content on this device, e.g. a font/mode change) or a { paragraph, word } position
 // (used when opening a book, possibly from another device). Paragraph-anchored so it
 // lands the right paragraph even if the word segmenter disagrees across engines.
 function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) {
-  stopReading(); // a re-render/new book orphans the session's word indexes
+  detachPlayer(); // a re-render/new book orphans the session's word indexes
   if (pageTurn) {
     pageTurn.destroy();
     pageTurn = null;
@@ -1015,9 +1029,17 @@ function showDocument({ text, images = [], blocks = [] }, { restore = 0 } = {}) 
   attachMarking(paginator.content, {
     getSentence: buildSentenceLookup(text, tokens),
     getParagraph: buildParagraphLookup(text, tokens),
-    getParagraphSpeech: buildParagraphSpeechLookup(text, tokens),
-    followWord: followSpokenWord,
     book: { uid: currentBookId || '' },
+  });
+  // The read-aloud player reads THIS document: from a tapped word (paragraph
+  // bubble), or from the top of the screen (the top bar's ▶) — see player.js.
+  attachPlayer({
+    getSlice: buildParagraphSpeechLookup(text, tokens),
+    getSentenceStart: buildSentenceStartLookup(text, tokens),
+    getFirstVisibleWord: () => paginator?.currentFirstWordIndex() ?? 0,
+    isWordOnScreen,
+    followWord: followSpokenWord,
+    getLang: getReadingLang,
   });
 
   // Restore the saved position BEFORE wiring progress-saving, so the first event

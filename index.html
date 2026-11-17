@@ -18,11 +18,18 @@
         </svg>
       </button>
       <span class="brand">The Immersive Reader</span>
-      <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Menu" aria-expanded="false">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" />
-        </svg>
-      </button>
+      <div class="topbar__actions">
+        <!-- Read-aloud player (src/playerControls.js): ▶/⏸ is one button that follows
+             the state — ▶ from idle reads from the top of the page; ⏹ shows only
+             while a session is playing or paused. Present only while reading. -->
+        <button id="player-toggle" class="menu-toggle player-btn" type="button" hidden></button>
+        <button id="player-stop" class="menu-toggle player-btn" type="button" aria-label="Stop reading" title="Stop reading" hidden></button>
+        <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Menu" aria-expanded="false">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" />
+          </svg>
+        </button>
+      </div>
     </header>
 
     <nav id="menu" class="menu" hidden>
