@@ -189,6 +189,12 @@ on are missing or behave differently. Each is bridged to a native equivalent:
   plugin error it returns null and the freedictionaryapi path answers instead. That
   fallback is English-books-only, so the "Translate to `<native>`" button covers
   every language pair on the phone and only English books in a browser.
+- **Reading other sites (Import from a link).** A web page cannot read another
+  site's page unless that site allows it (CORS), and most do not. On native,
+  `src/webImport.js` fetches pages and pictures with **`CapacitorHttp`** — part of
+  Capacitor's core, registered by the bridge in every APK, so this needed no plugin
+  and no rebuild: it arrived over the air. (Pictures come back base64 and are turned
+  into blobs.) The web build uses the home server's `/fetch` proxy instead.
 - **No devtools.** Nothing on the phone can open a console, so a failure there is
   invisible from the desk. Settings → **Diagnostics** captures the app's own errors
   and dumps them into a note that can be read, copied and sent — see

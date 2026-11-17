@@ -19,10 +19,11 @@ const sorters = {
 /**
  * @param {HTMLElement} container
  * @param {{ view?: 'cards'|'list', sortBy?: string, onOpen: (id: string) => void,
- *           onEdit: (id: string) => void, onNew?: () => void }} opts
+ *           onEdit: (id: string) => void, onNew?: () => void,
+ *           onImportLink?: () => void }} opts
  */
 export async function renderNotesShelf(container, opts) {
-  const { view = 'cards', sortBy = 'lastRead', onOpen, onEdit, onNew } = opts;
+  const { view = 'cards', sortBy = 'lastRead', onNew, onImportLink } = opts;
   const notes = await listNotes();
   notes.sort(sorters[sortBy] || sorters.lastRead);
   container.dataset.view = view;
@@ -31,16 +32,20 @@ export async function renderNotesShelf(container, opts) {
   if (notes.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'shelf__empty';
-    empty.textContent = 'No notes yet. Write or paste your first one.';
+    empty.textContent = 'No notes yet. Write or paste your first one — or bring in a web page.';
     container.appendChild(empty);
-    if (onNew) {
-      const start = document.createElement('button');
-      start.className = 'shelf__sample';
-      start.type = 'button';
-      start.textContent = 'New note';
-      start.addEventListener('click', onNew);
-      container.appendChild(start);
+    const starts = document.createElement('div');
+    starts.className = 'notes-empty__actions';
+    for (const [label, fn] of [['New note', onNew], ['Import from a link', onImportLink]]) {
+      if (!fn) continue;
+      const btn = document.createElement('button');
+      btn.className = 'shelf__sample';
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.addEventListener('click', fn);
+      starts.appendChild(btn);
     }
+    container.appendChild(starts);
     return;
   }
 
@@ -77,7 +82,7 @@ function noteCard(note, container, opts) {
   open.appendChild(meta);
 
   // Preview + word count come from the content record, loaded lazily.
-  fillPreview(note.id, snip, meta);
+  fillPreview(note, snip, meta);
 
   card.appendChild(open);
 
@@ -170,7 +175,8 @@ function noteCard(note, container, opts) {
   return card;
 }
 
-async function fillPreview(id, snip, meta) {
+async function fillPreview(note, snip, meta) {
+  const { id } = note;
   await reparseNoteIfStale(id); // a note saved under an older parser previews like it reads
   const content = await getBookContent(id);
   if (!content) return;
@@ -184,7 +190,16 @@ async function fillPreview(id, snip, meta) {
     .trim();
   snip.textContent = preview.slice(0, 160);
   const words = (content.text || '').trim().split(/\s+/).filter(Boolean).length;
-  if (words) meta.textContent = `${meta.textContent} · ${words.toLocaleString()} words`;
+  // A page imported from the web says where it came from.
+  let site = '';
+  try {
+    site = note.sourceUrl ? new URL(note.sourceUrl).hostname.replace(/^www\./, '') : '';
+  } catch {
+    site = '';
+  }
+  meta.textContent = [meta.textContent, words ? `${words.toLocaleString()} words` : '', site]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 // Human-friendly elapsed time: "just now", "5 min ago", "3 h ago", "Mon", or a date.

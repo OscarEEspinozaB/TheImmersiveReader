@@ -15,12 +15,19 @@
 // Tables become one block per body row, each cell on its own line as
 // "Header: value" — a phone-width reading of a grid, and the natural way to say it
 // aloud. Fenced code is kept verbatim (in a technical text it IS reading material).
+//
+// A line holding only images (`![caption](src)`) is a FIGURE: the parse returns an
+// `imageRefs` entry (where the picture goes, and which src) and the caption becomes
+// a 'caption' block under it. The parser never fetches anything — the caller pairs
+// refs with the image blobs it has (a note imported from the web keeps them, keyed
+// by src, so they survive edits and re-parses). An image inside running text keeps
+// only its alt text.
 
 /**
  * Bump when the parse of the same source would change — notes keep their source and
  * are re-parsed on open when they were parsed by an older version (library.js).
  */
-export const MD_VERSION = 2;
+export const MD_VERSION = 3;
 
 /**
  * @param {File} file
@@ -40,6 +47,8 @@ const RULE = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
 const TABLE_DELIM = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
 const LINK_DEF = /^\s{0,3}\[[^\]]+\]:\s*\S+/;
 const TASK = /^\[([ xX])\]\s+/;
+const IMAGE = /!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;
+const IMAGE_LINE = /^\s*(?:!\[[^\]]*\]\(\s*<?[^)\s>]+>?(?:\s+"[^"]*")?\s*\)\s*)+$/;
 
 const BULLETS = ['•', '◦', '▪'];
 // What a thematic break reads as: a quiet centered divider that has no words, so
@@ -48,10 +57,12 @@ const BREAK_TEXT = '· · ·';
 
 /**
  * @param {string} md
- * @returns {import('./index.js').IngestResult}
+ * @returns {import('./index.js').IngestResult & {
+ *   imageRefs: { start: number, src: string, alt: string }[] }}
  */
 export function parseMarkdown(md) {
   const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  const imageRefs = [];
   const out = {
     text: '',
     blocks: [],
@@ -198,6 +209,22 @@ export function parseMarkdown(md) {
     }
     listIndents = [];
 
+    // Figure line: anchor each picture where its caption starts (or where the next
+    // text will, when it has none) — the renderer draws the image before that offset.
+    if (IMAGE_LINE.test(line)) {
+      for (const m of line.matchAll(IMAGE)) {
+        const caption = inline(m[1]);
+        let start = out.text.length;
+        if (caption.text) {
+          out.push('caption', caption);
+          start = out.blocks[out.blocks.length - 1].start;
+        }
+        imageRefs.push({ start, src: m[2], alt: caption.text });
+      }
+      i += 1;
+      continue;
+    }
+
     // Prose paragraph: consecutive plain lines, soft-wrapped into one paragraph —
     // unless an "===" / "---" underline turns them into a (setext) heading.
     const body = [];
@@ -221,7 +248,9 @@ export function parseMarkdown(md) {
   }
 
   // trimEnd only: a leading trim would shift every recorded offset.
-  return { text: out.text.trimEnd(), images: [], blocks: out.blocks, marks: out.marks };
+  const text = out.text.trimEnd();
+  for (const r of imageRefs) r.start = Math.min(r.start, text.length);
+  return { text, images: [], blocks: out.blocks, marks: out.marks, imageRefs };
 }
 
 function dedent(line, n) {

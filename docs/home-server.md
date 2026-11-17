@@ -289,7 +289,13 @@ POST   /ai/explain                      explain in native language (cached)
 GET    /ai/health · /ai/models          Ollama probe · installed models
 GET    /app/latest                      published web bundle { version, size, sha256 }; 404 if none
 GET    /app/bundle.zip                  that bundle (OTA for the APK — see docs/android.md)
+GET    /fetch?url=                      a web page/picture fetched for the WEB build's
+                                        "Import from a link" (CORS); body + Content-Type
 ```
+
+`/fetch` is a dumb proxy (no parsing — extraction happens on the client): http(s)
+only, 10 MB cap, 20 s timeout. Only the desktop browser needs it — the APK fetches
+pages natively and Wikipedia's API is CORS-open (docs/library.md §4).
 
 `/app/*` is **read-only over HTTP**: publishing is the local `npm run app:publish`
 (builds the web, zips `dist/` into `data/app/`, repoints `latest.json`, keeps the

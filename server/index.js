@@ -22,6 +22,7 @@ import { vocabRouter } from './routes/vocab.js';
 import { positionRouter } from './routes/position.js';
 import { aiDefineRouter } from './routes/aiDefine.js';
 import { appUpdateRouter } from './routes/appUpdate.js';
+import { fetchPageRouter } from './routes/fetchPage.js';
 import { getLibraryDb } from './library-db.js';
 
 const PORT = Number(process.env.KB_PORT || 4321);
@@ -42,6 +43,7 @@ app.use(vocabRouter);
 app.use(positionRouter);
 app.use(aiDefineRouter);
 app.use(appUpdateRouter); // OTA web bundles for the Android app
+app.use(fetchPageRouter); // web build's "Import from a link" proxy (CORS)
 
 getDb(); // open the connection + ensure schema before accepting requests
 getLibraryDb(); // open the library DB + ensure its schema/dirs exist

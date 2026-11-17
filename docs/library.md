@@ -15,9 +15,10 @@ IndexedDB "immersive-reader"
   store "books"      BookMeta = { id, title, addedAt, lang, kind?, cover?,
                                   coverSource?, coverWidth?, coverHeight?,
                                   progressParagraph, progressWord,
-                                  progressUpdatedAt, lastOpenedAt?, … }
-                                  (metadata, small; kind: 'book' | 'note')
-  store "content"    { text, images: [{ start, width, height, blob }],
+                                  progressUpdatedAt, lastOpenedAt?, sourceUrl?, … }
+                                  (metadata, small; kind: 'book' | 'note';
+                                   sourceUrl: the page a note was imported from)
+  store "content"    { text, images: [{ start, width, height, blob, src? }],
                        blocks: [{ start, end, type, level? }],
                        marks?: [{ start, end, type }],
                        source?, mdVersion? }
@@ -142,13 +143,43 @@ out of `listBooks()`, so they never appear on My Books or in Progress. Built in
 `src/notes.js` (the Notes hub) and `src/notesEditor.js` (the editor).
 
 - **Notes hub** (its own bottom-nav item): text cards — title, a preview of the
-  clean reading text, when it was last opened and its word count — sortable and
-  switchable between cards and a compact list. Each card's ⋮ holds *Edit text*,
-  *Language*, *Rename*, *Delete*; as on the book cards, every ⋮ entry is an icon
-  **with its label** (a touch screen has no hover to explain a bare icon).
-- **Entering a note:** *New note* opens a blank editor; *Import* takes a `.md` /
-  `.txt` file (asking its language — offering My language first — then opening it
-  in the reader). Settings → Diagnostics → *Save log to Notes* also creates one.
+  clean reading text, when it was last opened, its word count and, for an imported
+  page, the site it came from — sortable and switchable between cards and a compact
+  list. Each card's ⋮ holds *Edit text*, *Language*, *Rename*, *Delete*; as on the
+  book cards, every ⋮ entry is an icon **with its label** (a touch screen has no
+  hover to explain a bare icon).
+- **Entering a note:** ONE **+** button opens a menu of labeled choices — *Write a
+  note* (a blank editor), *Import from a link* (below), *Import a file* (a `.md` /
+  `.txt`, asking its language — offering My language first — then opening it in the
+  reader). The empty hub offers *New note* and *Import from a link* directly.
+  Settings → Diagnostics → *Save log to Notes* also creates one.
+- **Import from a link** (`src/webImport.js`) turns a web page into a note: the
+  article's text with its structure and emphasis — **no ads, menus, comments or
+  newsletter boxes** — plus its **main pictures** (up to 8, with their captions),
+  saved to read offline. It accepts a bare address or a shared text containing one;
+  progress shows on the hub; failures say why (and land in the diagnostics log).
+  - **Wikipedia** (desktop or mobile URLs, any language edition) is read from its
+    REST API's clean article HTML, which is CORS-open — it works on the web and the
+    phone with **no server**. References, navigation boxes, hatnotes, the infobox's
+    data table and the trailing apparatus sections (*References*, *See also*,
+    *External links*… in every supported language) are dropped; the **infobox's
+    picture becomes the article's opening figure**. The note's language is the
+    wiki's own (`es.wikipedia` → Spanish, `simple` → English).
+  - **Any other page** goes through Mozilla's **Readability** (Firefox's reader
+    view, loaded only when an import runs), after removing blocks whose class/id
+    marks them as clutter (newsletter, share, ads, cookie banners, "recommended"…)
+    — never a block that is mostly prose. The title drops the site's name; the
+    language is the page's `<html lang>`. A browser may only read another site's
+    page when that site allows it (CORS): the **APK fetches natively**
+    (`CapacitorHttp`, already part of the installed app); the **web build** falls
+    back to the home server's `/fetch` proxy ([home-server.md](home-server.md) §6).
+  - Either way the page becomes **Markdown** (`src/ingest/htmlToMarkdown.js`) — the
+    note's editable source, parsed like any note — with each figure as an
+    `![caption](src)` line: the parser anchors the picture there and shows the
+    caption under it. The pictures are stored **with their `src`**, so an edit or a
+    parser re-parse anchors them again (a figure deleted from the source drops out).
+    Pictures are scaled to ≤ 1200 px (WebP); icons under 120 px are skipped. When the
+    page names no language the app reads, it asks (offering My language).
 - **The editor** is a plain text area under an optional title. Its toolbar holds
   **Paste** (drops the clipboard in at the cursor) and the note's **language** — a
   visible chip that starts on **My language** for a new note and changes with one

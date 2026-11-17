@@ -17,6 +17,10 @@ per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
   book as a portable **`.tir`** file. Each card shows a **readability badge** —
   "You can read N%": the share of the book's sentences where you know every
   word, so you pick material at your real level.
+- **Notes**: write or paste a text — or **import a web page from its link** (a
+  Wikipedia article, or any article page: just the text and its main pictures, no
+  ads) — and read or listen to it in the same reader, with the same colors. Notes
+  stay editable.
 - **Ingest** `.txt`, `.md`, `.pdf`, and `.epub` client-side. PDF/EPUB text is
   reconstructed into clean paragraphs, embedded illustrations show inline, and
   document **structure survives**: headings, list items, code blocks and quotes

@@ -5,7 +5,7 @@
 // capturing in its own module body, so importing it before anything else is what puts
 // a failure *during boot* — the one no console on the phone will ever show — inside
 // the log. Do not reorder this below another import.
-import { logText, clearLog, logSize } from './diagnostics.js';
+import { logText, clearLog, logSize, logDiagError } from './diagnostics.js';
 import { ingest } from './ingest/index.js';
 import { tokenize } from './tokenizer.js';
 import { load as loadVocabulary, exportVocabulary, importVocabulary, resetAll } from './vocabulary.js';
@@ -39,7 +39,8 @@ import { buildDeck, bookWordData } from './deck.js';
 import { importTir } from './tir.js';
 import { prepareCover, documentCover, imagesWithCover } from './cover.js';
 import { renderSwiper } from './swiper.js';
-import { alertDialog, confirmDialog, dismissDialog, selectDialog } from './dialog.js';
+import { alertDialog, confirmDialog, dismissDialog, promptDialog, selectDialog } from './dialog.js';
+import { importFromUrl } from './webImport.js';
 import { listAiModels, downloadedModels, downloadModel, modelCodeFor } from './definitions/index.js';
 import { canSpeak, voiceGroupsForLang } from './speech.js';
 import { attachPlayer, detachPlayer } from './player.js';
@@ -114,6 +115,10 @@ const notesGrid = document.getElementById('notes-grid');
 const notesSortSelect = document.getElementById('notes-sort-select');
 const newNoteButton = document.getElementById('new-note');
 const importNoteInput = document.getElementById('import-note');
+const notesAddButton = document.getElementById('notes-add');
+const notesAddMenu = document.getElementById('notes-add-menu');
+const noteFromLinkButton = document.getElementById('note-from-link');
+const notesStatus = document.getElementById('notes-status');
 const editorSection = document.getElementById('editor');
 const serverShelf = document.getElementById('server-shelf');
 const serverShelfGrid = document.getElementById('server-shelf-grid');
@@ -211,6 +216,7 @@ let readerOrigin = 'shelf';
 function setView(view) {
   activeView = view;
   const reading = view === 'reader';
+  setNotesAddMenu(false);
   // Leaving the reader ends a read-aloud (playing or paused): the voice must never
   // keep going (and turning pages underneath) over the library or a hub view.
   if (!reading) detachPlayer();
@@ -336,6 +342,7 @@ function renderNotes() {
     onOpen: (id) => openBook(id, 'notes'),
     onEdit: openNoteForEdit,
     onNew: openNewNote,
+    onImportLink: importNoteFromLink,
   });
 }
 
@@ -1089,6 +1096,10 @@ function saveCurrentPosition() {
 function handleBackButton() {
   // A dialog on screen is the innermost UI: back cancels it, like its Cancel button.
   if (dismissDialog()) return;
+  if (!notesAddMenu.hidden) {
+    setNotesAddMenu(false);
+    return;
+  }
   if (!menu.hidden) {
     setMenuOpen(false);
     return;
@@ -1139,8 +1150,78 @@ navDictionary.addEventListener('click', () => showDictionary());
 navProgress.addEventListener('click', showProgress);
 
 // --- Notes wiring ---
-newNoteButton.addEventListener('click', openNewNote);
-importNoteInput.addEventListener('change', (e) => addNoteFromFile(e.target.files[0]));
+// "+" opens the add menu: write, import from a link, import a file — visible,
+// labeled choices (book__more rows), closed by any choice, a tap outside or back.
+function setNotesAddMenu(open) {
+  notesAddMenu.hidden = !open;
+  notesAddButton.setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  // Fixed-positioned under the button, clamped inside the viewport (like the ⋮ menus).
+  const r = notesAddButton.getBoundingClientRect();
+  const margin = 8;
+  const left = Math.min(r.right - notesAddMenu.offsetWidth, window.innerWidth - notesAddMenu.offsetWidth - margin);
+  notesAddMenu.style.left = `${Math.max(margin, left)}px`;
+  notesAddMenu.style.top = `${r.bottom + 6}px`;
+}
+notesAddButton.addEventListener('click', (e) => {
+  e.stopPropagation();
+  setNotesAddMenu(notesAddMenu.hidden);
+});
+document.addEventListener('click', (e) => {
+  if (!notesAddMenu.hidden && !notesAddMenu.contains(e.target)) setNotesAddMenu(false);
+});
+newNoteButton.addEventListener('click', () => {
+  setNotesAddMenu(false);
+  openNewNote();
+});
+noteFromLinkButton.addEventListener('click', () => {
+  setNotesAddMenu(false);
+  importNoteFromLink();
+});
+importNoteInput.addEventListener('change', (e) => {
+  setNotesAddMenu(false);
+  addNoteFromFile(e.target.files[0]);
+});
+
+/** Show (or clear, with null) the import progress line on the Notes hub. */
+function setNotesStatus(message) {
+  notesStatus.hidden = !message;
+  notesStatus.textContent = message || '';
+}
+
+// Import a web page as a note (src/webImport.js): the article's text and main
+// pictures, no ads or menus — Wikipedia via its own API. The note's language comes
+// from the page (asked only when the page does not say, or says one the app does
+// not read); like any new note, it then opens in the reader.
+let importingLink = false;
+async function importNoteFromLink() {
+  if (importingLink) return;
+  const input = await promptDialog('Web address to import — a Wikipedia article works best:', '', {
+    confirmLabel: 'Import',
+  });
+  if (!input) return;
+  importingLink = true;
+  setNotesStatus('Connecting…');
+  try {
+    const page = await importFromUrl(input, { onProgress: setNotesStatus });
+    const lang =
+      page.lang ||
+      (await pickReadingLang('What language is this page in?', nativeLangCode())) ||
+      nativeLangCode();
+    setNotesStatus('Saving…');
+    const id = await addNote({
+      title: page.title, text: page.markdown, lang, sourceUrl: page.url, images: page.images,
+    });
+    setNotesStatus(null);
+    await openBook(id, 'notes');
+  } catch (err) {
+    setNotesStatus(null);
+    logDiagError('import', String(input).slice(0, 200), err?.message || String(err));
+    await alertDialog(`Could not import that page: ${err.message}`);
+  } finally {
+    importingLink = false;
+  }
+}
 notesViewToggle.addEventListener('click', () => {
   notesView = notesView === 'cards' ? 'list' : 'cards';
   renderNotes();

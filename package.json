@@ -26,6 +26,7 @@
     "@capacitor/status-bar": "^6.0.3",
     "@capgo/capacitor-updater": "^6.50.2",
     "@fontsource-variable/literata": "^5.2.8",
+    "@mozilla/readability": "^0.6.0",
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",

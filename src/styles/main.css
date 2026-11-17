@@ -535,6 +535,16 @@ body.immersive .reader-wrap--scroll {
   padding-left: 0.9em;
 }
 
+/* A figure's caption (md.js: the alt text of a `![caption](src)` line), right under
+   its picture. */
+.reader__block--caption {
+  font-family: var(--font-ui);
+  font-size: 0.78em;
+  line-height: 1.45;
+  text-align: center;
+  opacity: 0.72;
+}
+
 /* A thematic break ("---"): the wordless "· · ·", centered and quiet. */
 .reader__block--hr {
   text-align: center;
@@ -1766,6 +1776,48 @@ button.kb-form:focus-visible {
   margin-left: auto;
   font-size: 0.78rem;
   color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+
+/* Notes hub: an import's progress line, and the empty state's two ways in. */
+.notes-status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 1rem 0.6rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--text) 80%, transparent);
+}
+.notes-status[hidden] {
+  display: none;
+}
+.notes-status::before {
+  content: '';
+  flex: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid color-mix(in srgb, var(--word-learning) 30%, transparent);
+  border-top-color: var(--word-learning);
+  border-radius: 50%;
+  animation: notes-spin 0.8s linear infinite;
+}
+@keyframes notes-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notes-status::before {
+    animation: none;
+  }
+}
+.notes-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
 }
 
 /* --- In-app dialogs (replace native alert/confirm/prompt) --- */

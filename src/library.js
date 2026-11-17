@@ -15,7 +15,8 @@ function uuid() {
  * @typedef {{ id: string, title: string, addedAt: number, lastOpenedAt: number,
  *   progressParagraph: number, progressWord: number, progressUpdatedAt: number,
  *   progressWordIndex?: number, cover: Blob | null, coverSource?: 'document'|'uploaded',
- *   coverWidth?: number, coverHeight?: number, lang?: string, kind?: 'book'|'note' }} BookMeta
+ *   coverWidth?: number, coverHeight?: number, lang?: string, kind?: 'book'|'note',
+ *   sourceUrl?: string }} BookMeta
  *   `kind` separates the two things this store holds: 'book' (the default, and what
  *   everything saved before notes existed is) — an imported document, read-only; and
  *   'note' — a text the reader wrote or pasted, editable. Notes are kept out of the
@@ -50,7 +51,7 @@ const WORDS_VERSION = 5;
 
 export async function addBook({
   id, title, text, images = [], blocks = [], marks = [], cover = null, coverSource, coverWidth,
-  coverHeight, wordData = null, lang, addedAt, kind, source, mdVersion,
+  coverHeight, wordData = null, lang, addedAt, kind, source, mdVersion, sourceUrl,
 }) {
   // `id`/`addedAt` may be supplied when importing a `.tir` so the book keeps its
   // stable identity across devices (the same logical book is not duplicated). New
@@ -64,6 +65,7 @@ export async function addBook({
     cover, coverSource: coverSource || (cover ? 'document' : undefined),
     coverWidth, coverHeight, lang, kind,
   };
+  if (sourceUrl) meta.sourceUrl = sourceUrl; // a note imported from a web page
   await idbSet('books', id, meta);
   // `source` (a note's raw, unparsed text) is kept alongside the parsed reading text
   // so the editor can reopen exactly what was typed — and so the note can be parsed
@@ -78,16 +80,42 @@ export async function addBook({
  * Create a note from raw text the reader wrote or pasted. The text is parsed as
  * Markdown so its symbols (**, #, `) never reach the reader or the voice, while the
  * original is kept as `source` for later editing.
- * @param {{ title: string, text: string, lang?: string }} note
+ * @param {{ title: string, text: string, lang?: string, sourceUrl?: string,
+ *   images?: Map<string, { blob: Blob, width: number, height: number }> }} note
+ *   `images`: pictures the source cites (`![caption](src)`), keyed by src — a page
+ *   imported from the web brings them along (webImport.js).
  * @returns {Promise<string>} the new note id
  */
-export async function addNote({ title, text, lang }) {
-  const { text: clean, blocks, marks } = parseMarkdown(text);
+export async function addNote({ title, text, lang, sourceUrl, images }) {
+  const { text: clean, blocks, marks, imageRefs } = parseMarkdown(text);
   return addBook({
     title: title || firstLineTitle(text),
-    text: clean, blocks, marks, source: text, mdVersion: MD_VERSION, lang,
+    text: clean, blocks, marks, source: text, mdVersion: MD_VERSION, lang, sourceUrl,
+    images: anchorImages(imageRefs, images),
     kind: 'note', wordData: bookWordData(clean),
   });
+}
+
+/**
+ * Place a note's pictures at the offsets its parse gave them. They are stored with
+ * their `src`, so an edit or a re-parse anchors them again by src (a figure deleted
+ * from the source simply drops out).
+ * @param {{ start: number, src: string }[]} refs
+ * @param {Map<string, { blob: Blob, width: number, height: number }> | undefined} available
+ */
+function anchorImages(refs, available) {
+  if (!available || !available.size) return [];
+  return refs
+    .filter((r) => available.has(r.src))
+    .map((r) => {
+      const { blob, width, height } = available.get(r.src);
+      return { start: r.start, src: r.src, blob, width, height };
+    });
+}
+
+/** A note's stored pictures, keyed by src (to anchor them again after a re-parse). */
+function imagesBySrc(content) {
+  return new Map((content.images || []).filter((im) => im.src).map((im) => [im.src, im]));
 }
 
 /**
@@ -100,8 +128,9 @@ export async function updateNote(id, { title, text, lang }) {
   const book = await idbGet('books', id);
   const content = await idbGet('content', id);
   if (!book || !content) return;
-  const { text: clean, blocks, marks } = parseMarkdown(text);
-  Object.assign(content, { text: clean, blocks, marks, source: text, mdVersion: MD_VERSION });
+  const { text: clean, blocks, marks, imageRefs } = parseMarkdown(text);
+  const images = anchorImages(imageRefs, imagesBySrc(content));
+  Object.assign(content, { text: clean, blocks, marks, images, source: text, mdVersion: MD_VERSION });
   await idbSet('content', id, content);
   if (title != null) book.title = title;
   if (lang) book.lang = lang;
@@ -125,8 +154,9 @@ export async function updateNote(id, { title, text, lang }) {
 export async function reparseNoteIfStale(id) {
   const content = await idbGet('content', id);
   if (content?.source == null || content.mdVersion === MD_VERSION) return false;
-  const { text: clean, blocks, marks } = parseMarkdown(content.source);
-  Object.assign(content, { text: clean, blocks, marks, mdVersion: MD_VERSION });
+  const { text: clean, blocks, marks, imageRefs } = parseMarkdown(content.source);
+  const images = anchorImages(imageRefs, imagesBySrc(content));
+  Object.assign(content, { text: clean, blocks, marks, images, mdVersion: MD_VERSION });
   await idbSet('content', id, content);
   await setBookWords(id, bookWordData(clean));
   return true;

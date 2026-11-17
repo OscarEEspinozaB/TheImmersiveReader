@@ -60,8 +60,8 @@ The reading text is **flat on purpose** — every char offset in it is load-bear
 document's structure never rewrites the text: it travels alongside it as
 `blocks: [{ start, end, type, level? }]`, sorted non-overlapping char ranges with
 a type — `h1`/`h2`/`h3` (headings; deeper levels flatten to `h3`), `li` (list item,
-with `level` 1–2 when nested), `code`, `quote`, `row` (a table row) and `hr` (a
-thematic break). Plain paragraphs are not annotated. Conventions
+with `level` 1–2 when nested), `code`, `quote`, `row` (a table row), `hr` (a
+thematic break) and `caption` (a figure's caption, right after its picture). Plain paragraphs are not annotated. Conventions
 (`src/ingest/index.js` is the contract):
 
 - a block is separated from its neighbours by `\n\n`, except **consecutive list
@@ -86,8 +86,10 @@ Where blocks come from, per format: **EPUB** maps XHTML tags (`h1..h6`, `li`,
 `pre`, `blockquote`); **Markdown** (`ingest/md.js` — notes and `.md` books) parses
 line syntax: `#` and setext (`===`/`---` underlined) headings, list markers with
 their nesting (from indentation), task boxes, fenced code (kept verbatim; a fence
-may be indented inside a list), `>` quotes, GFM tables and `---` breaks; reference
-definitions are dropped. Its inline pass follows CommonMark's delimiter rules
+may be indented inside a list), `>` quotes, GFM tables, `---` breaks and figure
+lines — a line holding only `![caption](src)` anchors a picture there (when the
+caller has its blob: notes imported from the web keep theirs, keyed by src) with the
+caption as a `caption` block; reference definitions are dropped. Its inline pass follows CommonMark's delimiter rules
 closely enough for real text: an underscore **inside** a word is never emphasis
 (`my_config_file.py` stays whole), a `*` with spaces on both sides is a
 multiplication sign, a single `~` is "approximately" (only `~~` strikes through),
@@ -464,6 +466,8 @@ src/
   definitionsCache.js  per-language word cache (dict + AI history + native)
   library.js/shelf.js/tir.js        local library, shelf UI, .tir format  → docs/library.md
   notes.js/notesEditor.js           Notes hub + note editor               → docs/library.md §4
+  webImport.js       Import from a link: Wikipedia API / Readability → Markdown note
+                     + its main pictures (ingest/htmlToMarkdown.js converts)
   serverLibrary.js/serverShelf.js   server catalog + Server hub           → docs/home-server.md
   vocabSync.js                      offline-first vocabulary sync         → docs/home-server.md
   positionSync.js                   cross-device reading position (by title) → docs/home-server.md

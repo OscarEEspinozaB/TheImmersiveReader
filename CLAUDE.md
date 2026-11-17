@@ -181,7 +181,10 @@ published one should not drift apart.
   `src/notes.js` / `src/notesEditor.js` — the Notes hub and editor (notes are
   `kind:'note'` library records: editable, Markdown-parsed, kept off My Books;
   saving opens the reader; the language chip defaults to My language — see
-  docs/library.md §4).
+  docs/library.md §4). `src/webImport.js` — "Import from a link": Wikipedia via its
+  CORS-open REST API, any other page via Readability (fetched natively on the APK
+  with CapacitorHttp, through the server's `/fetch` on the web), converted to a
+  Markdown note by `src/ingest/htmlToMarkdown.js`, main pictures kept by src.
   `src/serverLibrary.js` / `src/serverShelf.js` — the Server hub (incl. per-book
   dictionary coverage and the "build this book" job, driven from the app).
 - `src/vocabSync.js` — offline-first vocabulary sync (outbox push, incremental pull).
@@ -208,7 +211,8 @@ published one should not drift apart.
 - `src/main.js` — view switching (`shelf | notes | editor | server | dictionary |
   progress | reader | swiper`) and wiring.
 - `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,
-  position, aiDefine, appUpdate — the OTA bundle, published by `publishApp.js`),
+  position, aiDefine, appUpdate — the OTA bundle, published by `publishApp.js`;
+  fetchPage — `/fetch`, the web build's CORS proxy for importing a link),
   `generate/` (refine + explain pipelines, book CLI, `audit.js`;
   `gapfill.js` — seeds words the dump lacks from public dictionaries: `en` from
   freedictionaryapi, `es`/`fr`/`it`/`pt` from their OWN Wiktionary edition, so a
