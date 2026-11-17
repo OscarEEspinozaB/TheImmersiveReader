@@ -217,6 +217,7 @@ function bookCard(book, container, opts) {
   });
 
   const del = iconButton('Delete', 'M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6');
+  del.classList.add('book__action--danger');
   del.addEventListener('click', async () => {
     const ok = await confirmDialog(`Delete "${book.title}"? Your vocabulary is kept.`, {
       confirmLabel: 'Delete',
@@ -264,6 +265,8 @@ function bookCard(book, container, opts) {
     const left = Math.max(margin, Math.min(r.right - more.offsetWidth, window.innerWidth - more.offsetWidth - margin));
     let top = r.top - more.offsetHeight - 4;
     if (top < margin) top = r.bottom + 4;
+    // Labeled rows make the menu tall: never let it run off the bottom either.
+    top = Math.max(margin, Math.min(top, window.innerHeight - more.offsetHeight - margin));
     more.style.left = `${left}px`;
     more.style.top = `${top}px`;
     const onDocClick = (ev) => {
@@ -361,7 +364,13 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function iconButton(label, path) {
+/**
+ * A card action: an icon, plus its label as text. The label stays hidden on the
+ * card itself (where the icon sits alone) and shows inside a "⋮" menu — a touch
+ * screen has no hover, so a menu of bare icons would be a row of guesses.
+ * Shared with the Notes cards (notes.js).
+ */
+export function iconButton(label, path) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'book__action';
@@ -371,5 +380,9 @@ function iconButton(label, path) {
     .split(' M')
     .map((d, i) => `<path d="${i ? 'M' : ''}${d}" />`)
     .join('')}</svg>`;
+  const text = document.createElement('span');
+  text.className = 'book__action-label';
+  text.textContent = label;
+  btn.appendChild(text);
   return btn;
 }

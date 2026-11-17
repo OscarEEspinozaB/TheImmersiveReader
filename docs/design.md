@@ -413,6 +413,7 @@ src/
   diagnostics.js     in-app log capture → a note (§8)
   definitionsCache.js  per-language word cache (dict + AI history + native)
   library.js/shelf.js/tir.js        local library, shelf UI, .tir format  → docs/library.md
+  notes.js/notesEditor.js           Notes hub + note editor               → docs/library.md §4
   serverLibrary.js/serverShelf.js   server catalog + Server hub           → docs/home-server.md
   vocabSync.js                      offline-first vocabulary sync         → docs/home-server.md
   positionSync.js                   cross-device reading position (by title) → docs/home-server.md
@@ -429,8 +430,8 @@ src/
                      become a stable "Voice N", and connectivity-only voices
                      are flagged "· online"; see voiceGroupsForLang in
                      speech.js)
-  main.js            view switching (shelf | server | dictionary | progress |
-                     reader | swiper) and wiring
+  main.js            view switching (shelf | notes | editor | server |
+                     dictionary | progress | reader | swiper) and wiring
 ```
 
 ## 8. Diagnostics (in-app log)

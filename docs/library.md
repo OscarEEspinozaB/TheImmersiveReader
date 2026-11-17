@@ -5,18 +5,21 @@ with per-book reading progress and a portable file format. Built in
 `src/library.js` (IndexedDB stores), `src/shelf.js` (the shelf UI), `src/tir.js`
 (the `.tir` format), and the view switching in `src/main.js`. The same `.tir` is
 also the wire format for the home server's book store
-([home-server.md](home-server.md) §3).
+([home-server.md](home-server.md) §3). The same stores also hold the reader's
+**notes** (§4).
 
 ## 1. On-device storage
 
 ```text
 IndexedDB "immersive-reader"
-  store "books"      BookMeta = { id, title, addedAt, lang, cover?, coverSource?,
-                                  coverWidth?, coverHeight?, progressParagraph,
-                                  progressWord, progressUpdatedAt,
-                                  lastOpenedAt?, … }        (metadata, small)
+  store "books"      BookMeta = { id, title, addedAt, lang, kind?, cover?,
+                                  coverSource?, coverWidth?, coverHeight?,
+                                  progressParagraph, progressWord,
+                                  progressUpdatedAt, lastOpenedAt?, … }
+                                  (metadata, small; kind: 'book' | 'note')
   store "content"    { text, images: [{ start, width, height, blob }],
-                       blocks: [{ start, end, type }] }     (heavy, by id)
+                       blocks: [{ start, end, type }],
+                       source? }       (heavy, by id; source = a note's raw text)
   store "bookwords"  per-book word data, versioned & recomputed when stale:
                      unique lemmas, occurrence counts (the swiper deck's
                      frequency ranking) and per-sentence word indexes (the
@@ -43,7 +46,9 @@ IndexedDB "immersive-reader"
 
 Grid/list toggle, cover, editable title, sorting (last read / title / date
 added), per-book actions: open, practice (swiper), **cover image**, export
-`.tir`, upload to the home server (☁), change language, rename, delete. Opening
+`.tir`, upload to the home server (☁), change language, rename, delete — *Read* is
+the card's only visible icon; the rest live in its ⋮ menu, each row an icon with its
+label (*Delete* in the danger color). Opening
 a book restores its saved position; a back-to-shelf control returns. Empty state
 prompts to add the first book.
 
@@ -121,3 +126,39 @@ book.tir  (zip)
 - Import tolerates missing image entries and rejects newer-version files with a
   clear message. Language comes from the manifest, so no language prompt on
   import.
+
+## 4. Notes
+
+A **note** is a text the reader writes or pastes — typically something to listen to
+(a long answer, an article) without the voice reading Markdown symbols aloud. It is
+stored as a library record with `kind: 'note'` and opens in the **same reader** as a
+book (same colors, bubbles, read-aloud); what it adds is **editing**. Notes are kept
+out of `listBooks()`, so they never appear on My Books or in Progress. Built in
+`src/notes.js` (the Notes hub) and `src/notesEditor.js` (the editor).
+
+- **Notes hub** (its own bottom-nav item): text cards — title, a preview of the
+  clean reading text, when it was last opened and its word count — sortable and
+  switchable between cards and a compact list. Each card's ⋮ holds *Edit text*,
+  *Language*, *Rename*, *Delete*; as on the book cards, every ⋮ entry is an icon
+  **with its label** (a touch screen has no hover to explain a bare icon).
+- **Entering a note:** *New note* opens a blank editor; *Import* takes a `.md` /
+  `.txt` file (asking its language — offering My language first — then opening it
+  in the reader). Settings → Diagnostics → *Save log to Notes* also creates one.
+- **The editor** is a plain text area under an optional title. Its toolbar holds
+  **Paste** (drops the clipboard in at the cursor) and the note's **language** — a
+  visible chip that starts on **My language** for a new note and changes with one
+  tap; it is never auto-detected and never asked in a dialog. The gear holds the
+  text settings (font, size, line spacing), which are the reader's own. When the
+  clipboard cannot be read (the Android WebView refuses clipboard reads; so does a
+  non-secure origin), the editor says so, puts the cursor in the text for a manual
+  long-press paste, and records why in the diagnostics log.
+- **Saving opens the note in the reader** — writing → listening is one action, and
+  back from the reader returns to Notes. The text is parsed as Markdown into the
+  reading text + `blocks` (`src/ingest/md.js`); the raw text is kept as `source`,
+  which is what *Edit text* reopens. Saving an edit **keeps the reading position**
+  (paragraph-anchored and clamped on restore, so a shortened text cannot leave it
+  past the end) and reopens the reader there.
+- **Leaving with unsaved changes asks first** — *Keep editing* / *Discard* — from the
+  editor's back arrow and from the Android back button alike; an empty new note
+  leaves without asking. The Android back button closes an open dialog before it
+  navigates anywhere.

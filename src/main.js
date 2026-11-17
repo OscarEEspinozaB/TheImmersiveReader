@@ -27,7 +27,7 @@ import {
 import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
 import { renderNotesShelf } from './notes.js';
-import { initNoteEditor, openNoteEditor } from './notesEditor.js';
+import { initNoteEditor, openNoteEditor, requestExit as requestEditorExit } from './notesEditor.js';
 import { renderServerShelf } from './serverShelf.js';
 import { initVocabSync, syncNow } from './vocabSync.js';
 import { pullPosition, pushPosition } from './positionSync.js';
@@ -38,7 +38,7 @@ import { buildDeck, bookWordData } from './deck.js';
 import { importTir } from './tir.js';
 import { prepareCover, documentCover, imagesWithCover } from './cover.js';
 import { renderSwiper } from './swiper.js';
-import { alertDialog, confirmDialog, selectDialog } from './dialog.js';
+import { alertDialog, confirmDialog, dismissDialog, selectDialog } from './dialog.js';
 import { listAiModels, downloadedModels, downloadModel, modelCodeFor } from './definitions/index.js';
 import { canSpeak, voiceGroupsForLang } from './speech.js';
 import { stopReading } from './readAloud.js';
@@ -345,8 +345,9 @@ async function showNotes() {
   await renderNotes();
 }
 
-// The editor is entered from Notes (New, or Edit on a card). Saving returns to the
-// Notes list; backing out does too, discarding an unsaved draft.
+// The editor is entered from Notes (New, or Edit on a card). Saving opens the note
+// in the reader (back from there returns to Notes); backing out returns to Notes,
+// after confirming when there are unsaved changes (notesEditor.js#requestExit).
 async function openNewNote() {
   setMenuOpen(false);
   setView('editor');
@@ -359,7 +360,11 @@ async function openNoteForEdit(id) {
   await openNoteEditor(id);
 }
 
-initNoteEditor({ onSaved: showNotes, onExit: showNotes, onStyleChange: applyReadingFont });
+initNoteEditor({
+  onSaved: (id) => openBook(id, 'notes'),
+  onExit: showNotes,
+  onStyleChange: applyReadingFont,
+});
 
 /** Ask the user to pick a reading language. @returns {Promise<string|null>} */
 function pickReadingLang(message, defaultCode) {
@@ -1050,6 +1055,8 @@ function saveCurrentPosition() {
 // UI first, then step out of the reader / a hub to the library, and only leave the
 // app from the library itself. No-op on the web (the event never fires there).
 function handleBackButton() {
+  // A dialog on screen is the innermost UI: back cancels it, like its Cancel button.
+  if (dismissDialog()) return;
   if (!menu.hidden) {
     setMenuOpen(false);
     return;
@@ -1064,9 +1071,10 @@ function handleBackButton() {
     backFromReader(); // saves the reading position, same as the "back" button
     return;
   }
-  // The editor backs out to Notes (discarding an unsaved draft, like its own Back).
+  // The editor backs out to Notes — asking first when there are unsaved changes,
+  // exactly like its own Back button.
   if (activeView === 'editor') {
-    showNotes();
+    requestEditorExit();
     return;
   }
   if (activeView !== 'shelf') {
@@ -1119,8 +1127,8 @@ notesSortSelect.addEventListener('change', () => {
 });
 
 // Importing a .md/.txt as a NOTE (editable), as opposed to a book: read the file's
-// text and save it through the note path (which parses the Markdown), then land on
-// the Notes list rather than opening the reader.
+// text and save it through the note path (which parses the Markdown), then open it
+// in the reader — the same as saving a note from the editor.
 async function addNoteFromFile(file) {
   if (!file) return;
   importNoteInput.value = ''; // so the same file can be picked again
@@ -1139,10 +1147,11 @@ async function addNoteFromFile(file) {
       if (!again) return;
       title = uniqueNoteTitle(title, existing.map((n) => n.title));
     }
-    // Ask the note's language, the same as importing a book — never assume the default.
-    const lang = (await pickReadingLang('What language is this note in?', getDefaultReadingLang())) || getDefaultReadingLang();
-    await addNote({ title, text, lang });
-    await renderNotes();
+    // Ask the note's language (there is no editor here to show it in), offering the
+    // writer's own language first — the same default a new note starts with.
+    const lang = (await pickReadingLang('What language is this note in?', nativeLangCode())) || nativeLangCode();
+    const id = await addNote({ title, text, lang });
+    await openBook(id, 'notes');
   } catch (err) {
     console.error(err);
     await alertDialog(`Could not import this file as a note: ${err.message}`);

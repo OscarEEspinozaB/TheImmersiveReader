@@ -3,20 +3,27 @@
 // clipboard in at the cursor. Saving parses the text as Markdown (so its symbols are
 // never read aloud) and stores it as a note.
 //
-// The gear opens a settings popover: the note's language plus the editor's font,
-// text size and line spacing. Font/size/line-spacing are the SAME settings the
-// reader uses (so a note reads the way it was written); language is per-note —
-// chosen here (defaulting to the reading language, never auto-detected) and used at
-// save time for a new note, or applied immediately when editing an existing one.
+// The note's LANGUAGE is a visible chip in the toolbar, not a question at save: it
+// starts on the writer's own language ("My language" — what a pasted text usually
+// is) and one tap switches it. It is never auto-detected. Saving opens the note in
+// the reader straight away (main.js), so writing → listening is one action.
+//
+// The gear opens a settings popover with the editor's font, text size and line
+// spacing — the SAME settings the reader uses, so a note reads the way it was
+// written.
+//
+// Leaving with unsaved changes asks first (Back button and Android back alike):
+// a long paste must never be lost to one stray tap.
 
-import { addNote, updateNote, getBook, getBookContent, setBookLang } from './library.js';
+import { addNote, updateNote, getBook, getBookContent } from './library.js';
 import {
-  READING_LANGUAGES, getDefaultReadingLang,
+  READING_LANGUAGES, nativeLangCode,
   FONT_OPTIONS, FONT_SIZE_OPTIONS, LINE_SPACING_OPTIONS,
   getReadingFont, setReadingFont, getReadingFontSize, setReadingFontSize,
   getReadingLineHeight, setReadingLineHeight,
 } from './settings.js';
-import { alertDialog, selectDialog } from './dialog.js';
+import { alertDialog, confirmDialog } from './dialog.js';
+import { logDiagError } from './diagnostics.js';
 
 const heading = document.getElementById('editor-heading');
 const titleInput = document.getElementById('editor-title');
@@ -33,16 +40,14 @@ const sizeSelect = document.getElementById('editor-size-select');
 const lineSelect = document.getElementById('editor-linespacing-select');
 
 let currentId = null; // the note being edited, or null for a brand-new one
-let pendingLang = getDefaultReadingLang(); // a new note's chosen language, used at save
-// Whether the writer picked the language explicitly (in the settings popover). When
-// they haven't, saving a NEW note asks — the same way importing a book does — rather
-// than silently assuming the default language.
-let langChosen = false;
+// What the editor held when it opened — leaving with anything different asks first.
+let saved = { title: '', text: '', lang: '' };
 let callbacks = { onSaved: () => {}, onExit: () => {}, onStyleChange: () => {} };
 
 /**
  * Wire the editor's controls once.
  * @param {{ onSaved:(id:string)=>void, onExit:()=>void, onStyleChange:()=>void }} cb
+ *   `onSaved` receives the saved note's id (main.js opens it in the reader).
  *   `onStyleChange` re-applies the shared reader CSS variables after a font/size/
  *   line-spacing change (so both editor and reader update).
  */
@@ -51,8 +56,35 @@ export function initNoteEditor({ onSaved, onExit, onStyleChange }) {
   textArea.addEventListener('input', updateCount);
   pasteBtn.addEventListener('click', pasteFromClipboard);
   saveBtn.addEventListener('click', save);
-  backBtn.addEventListener('click', () => callbacks.onExit());
+  backBtn.addEventListener('click', requestExit);
+  fillSelect(langSelect, READING_LANGUAGES.map((l) => ({ value: l.code, label: l.name })));
   buildSettingsMenu();
+}
+
+/**
+ * Leave the editor — after confirming, when there are unsaved changes. The editor's
+ * Back button and the Android back button both come through here.
+ */
+export async function requestExit() {
+  if (isDirty()) {
+    const discard = await confirmDialog(
+      currentId ? 'Discard your changes to this note?' : 'Discard this note?',
+      { confirmLabel: 'Discard', cancelLabel: 'Keep editing', danger: true },
+    );
+    if (!discard) return;
+  }
+  callbacks.onExit();
+}
+
+function currentState() {
+  return { title: titleInput.value.trim(), text: textArea.value.trim(), lang: langSelect.value };
+}
+
+function isDirty() {
+  const now = currentState();
+  // A new note with nothing written is not worth a question, whatever its language.
+  if (!currentId && !now.title && !now.text) return false;
+  return now.title !== saved.title || now.text !== saved.text || now.lang !== saved.lang;
 }
 
 /**
@@ -69,15 +101,15 @@ export async function openNoteEditor(noteId = null) {
     titleInput.value = book?.title || '';
     // Edit the raw text the writer saved, not the Markdown-stripped reading text.
     textArea.value = content?.source ?? content?.text ?? '';
-    pendingLang = book?.lang || getDefaultReadingLang();
-    langChosen = true; // an existing note already has its language; editing keeps it
+    langSelect.value = book?.lang || nativeLangCode();
   } else {
     heading.textContent = 'New note';
     titleInput.value = '';
     textArea.value = '';
-    pendingLang = getDefaultReadingLang();
-    langChosen = false; // ask on save unless the writer picks one in settings
+    // A new note starts in the writer's own language; the chip changes it.
+    langSelect.value = nativeLangCode();
   }
+  saved = currentState();
   syncSettingsControls();
   updateCount();
   // Focus the writing surface for a new note; leave an existing one un-scrolled.
@@ -101,10 +133,20 @@ async function pasteFromClipboard() {
     el.setSelectionRange(caret, caret);
     el.focus();
     updateCount();
-  } catch {
-    // Clipboard read can be blocked (permissions, insecure context). The manual
-    // paste (long-press → Paste) still works; tell the writer to use it.
+  } catch (err) {
+    // Clipboard read can be blocked (permissions, insecure context — the Android
+    // WebView does not grant clipboard reads). Log WHY, since on the phone it is
+    // otherwise invisible; the manual paste (long-press → Paste) still works, so
+    // tell the writer and put the cursor in the text, ready for it.
+    logDiagError(
+      'notes',
+      `clipboard read failed (secure context: ${globalThis.isSecureContext}, ` +
+        `readText: ${typeof navigator.clipboard?.readText})`,
+      err?.name || '',
+      err?.message || String(err),
+    );
     await alertDialog('Could not read the clipboard here. Long-press the editor and choose Paste.');
+    textArea.focus();
   }
 }
 
@@ -115,18 +157,15 @@ async function save() {
     return;
   }
   const title = titleInput.value.trim();
+  const lang = langSelect.value;
   saveBtn.disabled = true;
   try {
-    if (currentId) {
-      await updateNote(currentId, { title: title || undefined, text });
-      callbacks.onSaved(currentId);
-    } else {
-      // Ask for the note's language — the same as importing a book — unless the
-      // writer already picked one in the settings popover.
-      const lang = langChosen ? pendingLang : await askNoteLanguage();
-      const id = await addNote({ title: title || undefined, text, lang });
-      callbacks.onSaved(id);
-    }
+    let id = currentId;
+    if (id) await updateNote(id, { title: title || undefined, text, lang });
+    else id = await addNote({ title: title || undefined, text, lang });
+    currentId = id;
+    saved = currentState(); // nothing left unsaved
+    callbacks.onSaved(id);
   } catch (err) {
     console.error(err);
     await alertDialog(`Could not save this note: ${err.message}`);
@@ -135,21 +174,9 @@ async function save() {
   }
 }
 
-// Ask which language the note is written in (mirrors the book-import prompt),
-// defaulting to the reading language; a cancel falls back to that default.
-async function askNoteLanguage() {
-  const code = await selectDialog(
-    'What language is this note in?',
-    READING_LANGUAGES.map((l) => ({ value: l.code, label: l.name })),
-    getDefaultReadingLang(),
-  );
-  return code || getDefaultReadingLang();
-}
-
 // --- Settings popover -------------------------------------------------------------
 
 function buildSettingsMenu() {
-  fillSelect(langSelect, READING_LANGUAGES.map((l) => ({ value: l.code, label: l.name })));
   fillSelect(fontSelect, FONT_OPTIONS.map((o) => ({ value: o.value, label: o.label })));
   fillSelect(sizeSelect, FONT_SIZE_OPTIONS.map((o) => ({ value: String(o.value), label: o.label })));
   fillSelect(lineSelect, LINE_SPACING_OPTIONS.map((o) => ({ value: String(o.value), label: o.label })));
@@ -165,20 +192,13 @@ function buildSettingsMenu() {
     }
   });
 
-  langSelect.addEventListener('change', async () => {
-    pendingLang = langSelect.value;
-    langChosen = true; // an explicit pick — saving no longer needs to ask
-    // For an existing note, apply the language change immediately.
-    if (currentId) await setBookLang(currentId, pendingLang);
-  });
   fontSelect.addEventListener('change', () => { setReadingFont(fontSelect.value); callbacks.onStyleChange(); });
   sizeSelect.addEventListener('change', () => { setReadingFontSize(sizeSelect.value); callbacks.onStyleChange(); });
   lineSelect.addEventListener('change', () => { setReadingLineHeight(lineSelect.value); callbacks.onStyleChange(); });
 }
 
-// Reflect the current per-note language and the shared type settings in the controls.
+// Reflect the shared type settings in the controls.
 function syncSettingsControls() {
-  langSelect.value = pendingLang;
   fontSelect.value = getReadingFont();
   sizeSelect.value = String(getReadingFontSize());
   lineSelect.value = String(getReadingLineHeight());

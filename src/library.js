@@ -88,12 +88,12 @@ export async function addNote({ title, text, lang }) {
 }
 
 /**
- * Replace a note's text (and optionally its title), re-parsing the Markdown and
- * refreshing the reading text, structure, word data and `source`.
+ * Replace a note's text (and optionally its title and language), re-parsing the
+ * Markdown and refreshing the reading text, structure, word data and `source`.
  * @param {string} id
- * @param {{ title?: string, text: string }} patch
+ * @param {{ title?: string, text: string, lang?: string }} patch
  */
-export async function updateNote(id, { title, text }) {
+export async function updateNote(id, { title, text, lang }) {
   const book = await idbGet('books', id);
   const content = await idbGet('content', id);
   if (!book || !content) return;
@@ -103,14 +103,14 @@ export async function updateNote(id, { title, text }) {
   content.source = text;
   await idbSet('content', id, content);
   if (title != null) book.title = title;
+  if (lang) book.lang = lang;
   book.lastOpenedAt = Date.now();
+  // The reading position is KEPT: an edit is usually a fix in the passage being
+  // read, and saving reopens the reader there. It is paragraph-anchored and
+  // clamped on restore (reader/position.js), so a shortened text cannot leave it
+  // dangling past the end.
   await idbSet('books', id, book);
   await setBookWords(id, bookWordData(clean));
-  // The reading position may now point past the shortened text; reset it to the top
-  // rather than leave it dangling.
-  book.progressParagraph = 0;
-  book.progressWord = 0;
-  await idbSet('books', id, book);
 }
 
 /** A note's title when the writer gave none: its first non-empty line, trimmed. */

@@ -8,6 +8,7 @@
 import { listNotes, renameNote, deleteBook, setBookLang, getBookContent } from './library.js';
 import { confirmDialog, promptDialog, selectDialog } from './dialog.js';
 import { READING_LANGUAGES, readingLangName } from './settings.js';
+import { iconButton } from './shelf.js';
 
 const sorters = {
   lastRead: (a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0),
@@ -81,14 +82,15 @@ function noteCard(note, container, opts) {
   card.appendChild(open);
 
   // Overflow menu: edit, rename, language, delete. Mirrors the book card's "⋮"
-  // (fixed-positioned to escape the scroll container's clipping). Edit (the note's
-  // text) and Rename (its title) are distinct actions, so distinct icons: a
-  // pencil-in-page for editing the body, a tag for renaming.
-  const edit = menuButton('Edit text', 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z');
+  // (fixed-positioned to escape the scroll container's clipping), each action an
+  // icon WITH its label. Edit (the note's text) and Rename (its title) are distinct
+  // actions, so distinct icons: a pencil-in-page for editing the body, a tag for
+  // renaming.
+  const edit = iconButton('Edit text', 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z');
   edit.addEventListener('click', () => onEdit(note.id));
 
   const langLabel = note.lang ? readingLangName(note.lang) : 'not set';
-  const lang = menuButton(
+  const lang = iconButton(
     `Language: ${langLabel}`,
     'M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20 M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20',
   );
@@ -104,7 +106,7 @@ function noteCard(note, container, opts) {
     }
   });
 
-  const rename = menuButton('Rename', 'M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z M7 7h.01');
+  const rename = iconButton('Rename', 'M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z M7 7h.01');
   rename.addEventListener('click', async () => {
     const name = await promptDialog('Note title:', note.title);
     if (name) {
@@ -113,7 +115,8 @@ function noteCard(note, container, opts) {
     }
   });
 
-  const del = menuButton('Delete', 'M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6');
+  const del = iconButton('Delete', 'M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6');
+  del.classList.add('book__action--danger');
   del.addEventListener('click', async () => {
     const ok = await confirmDialog(`Delete "${note.title}"? This cannot be undone.`, {
       confirmLabel: 'Delete',
@@ -149,6 +152,8 @@ function noteCard(note, container, opts) {
     const left = Math.max(margin, Math.min(r.right - more.offsetWidth, window.innerWidth - more.offsetWidth - margin));
     let top = r.top - more.offsetHeight - 4;
     if (top < margin) top = r.bottom + 4;
+    // Labeled rows make the menu tall: never let it run off the bottom either.
+    top = Math.max(margin, Math.min(top, window.innerHeight - more.offsetHeight - margin));
     more.style.left = `${left}px`;
     more.style.top = `${top}px`;
     const onDocClick = (ev) => {
@@ -191,17 +196,4 @@ function relativeTime(ts) {
   const d = Math.floor(h / 24);
   if (d < 7) return new Date(ts).toLocaleDateString(undefined, { weekday: 'short' });
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function menuButton(label, path) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'book__action';
-  btn.title = label;
-  btn.setAttribute('aria-label', label);
-  btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path
-    .split(' M')
-    .map((d, i) => `<path d="${i ? 'M' : ''}${d}" />`)
-    .join('')}</svg>`;
-  return btn;
 }

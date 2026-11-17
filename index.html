@@ -248,7 +248,8 @@
     </section>
 
     <!-- Note editor: write or paste, then Save. A blank editor for a new note, or
-         a note's own text reopened for editing. Not a hub — it hides the nav. -->
+         a note's own text reopened for editing. Saving opens it in the reader.
+         Not a hub — it hides the nav. -->
     <section id="editor" class="editor" hidden>
       <header class="editor__bar">
         <button id="editor-back" class="menu-toggle" type="button" aria-label="Back" title="Back">
@@ -257,7 +258,7 @@
           </svg>
         </button>
         <span id="editor-heading" class="editor__heading">New note</span>
-        <button id="editor-settings" class="menu-toggle" type="button" aria-label="Note settings" title="Note settings">
+        <button id="editor-settings" class="menu-toggle" type="button" aria-label="Text settings" title="Text settings">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
@@ -275,15 +276,18 @@
           </svg>
           <span>Paste</span>
         </button>
+        <!-- The note's language: visible, one tap to change, defaults to My language. -->
+        <label class="editor__lang" title="Note language">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15 15 0 0 1 0 20" /><path d="M12 2a15 15 0 0 0 0 20" />
+          </svg>
+          <select id="editor-lang-select" aria-label="Note language"></select>
+        </label>
         <span id="editor-count" class="editor__count">0 words</span>
       </div>
 
-      <!-- Note settings popover: opened by the gear in the editor bar. -->
+      <!-- Editor type settings (shared with the reader): opened by the gear. -->
       <div id="editor-settings-menu" class="editor-settings" hidden>
-        <label class="editor-settings__field">
-          <span>Note language</span>
-          <select id="editor-lang-select"></select>
-        </label>
         <label class="editor-settings__field">
           <span>Editor font</span>
           <select id="editor-font-select"></select>

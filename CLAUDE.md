@@ -172,6 +172,10 @@ published one should not drift apart.
   (incl. the readability badge: % of sentences whose every word is known —
   never word statistics; see docs/library.md), `.tir` book format (v2 carries
   `blocks` in the manifest; v1 imports as the flat flow it always was).
+  `src/notes.js` / `src/notesEditor.js` — the Notes hub and editor (notes are
+  `kind:'note'` library records: editable, Markdown-parsed, kept off My Books;
+  saving opens the reader; the language chip defaults to My language — see
+  docs/library.md §4).
   `src/serverLibrary.js` / `src/serverShelf.js` — the Server hub (incl. per-book
   dictionary coverage and the "build this book" job, driven from the app).
 - `src/vocabSync.js` — offline-first vocabulary sync (outbox push, incremental pull).
@@ -195,8 +199,8 @@ published one should not drift apart.
   levels — dumped into a **note** from Settings → Diagnostics. Imported FIRST in
   `main.js` so boot failures are caught. Use `logDiag`/`logDiagError` instead of
   letting a `catch` swallow why a feature gave up.
-- `src/main.js` — view switching (`shelf | server | dictionary | progress | reader |
-  swiper`) and wiring.
+- `src/main.js` — view switching (`shelf | notes | editor | server | dictionary |
+  progress | reader | swiper`) and wiring.
 - `server/` — Express app: `routes/` (define, build, words, stats, books, vocab,
   position, aiDefine, appUpdate — the OTA bundle, published by `publishApp.js`),
   `generate/` (refine + explain pipelines, book CLI, `audit.js`;

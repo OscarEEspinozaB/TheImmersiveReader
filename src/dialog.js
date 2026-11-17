@@ -2,6 +2,9 @@
 // alert()/confirm()/prompt(). Each returns a Promise.
 
 let overlay = null;
+// The open dialog's own `finish`, so something outside it (the Android back button)
+// can dismiss it the same way its Cancel does. Null when no dialog is open.
+let activeFinish = null;
 
 function ensureOverlay() {
   if (overlay) return overlay;
@@ -50,6 +53,7 @@ function openDialog({ message, withInput = false, selectOptions = null, defaultV
     actions.className = 'dialog__actions';
 
     const finish = (confirmed) => {
+      activeFinish = null;
       root.hidden = true;
       root.replaceChildren();
       document.removeEventListener('keydown', onKey);
@@ -80,6 +84,8 @@ function openDialog({ message, withInput = false, selectOptions = null, defaultV
     };
     document.addEventListener('keydown', onKey);
 
+    activeFinish?.(false); // never stack: a new dialog cancels one still open
+    activeFinish = finish;
     root.replaceChildren(card);
     root.hidden = false;
     root.onpointerdown = (e) => {
@@ -92,8 +98,18 @@ function openDialog({ message, withInput = false, selectOptions = null, defaultV
 }
 
 /** @returns {Promise<boolean>} */
-export function confirmDialog(message, { confirmLabel = 'OK', danger = false } = {}) {
-  return openDialog({ message, confirmLabel, danger }).then((r) => r.confirmed);
+export function confirmDialog(message, { confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false } = {}) {
+  return openDialog({ message, confirmLabel, cancelLabel, danger }).then((r) => r.confirmed);
+}
+
+/**
+ * Cancel the dialog on screen, if any — what its Cancel button would do.
+ * @returns {boolean} whether a dialog was open
+ */
+export function dismissDialog() {
+  if (!activeFinish) return false;
+  activeFinish(false);
+  return true;
 }
 
 /** @returns {Promise<string | null>} trimmed value, or null if cancelled */

@@ -1353,18 +1353,56 @@ button.kb-form:focus-visible {
      — fixed positioning escapes the clipping and clamps inside the viewport. */
   position: fixed;
   display: flex;
-  flex-direction: row;
-  gap: 0.3rem;
-  padding: 0.35rem 0.45rem;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 11rem;
+  max-width: calc(100vw - 16px);
+  padding: 0.3rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
   z-index: 40; /* above bars/nav (20) and popup layer (30) */
 }
 
 .book__more[hidden] {
   display: none;
+}
+
+/* Inside the menu each action is a row: icon + its label (shelf.js#iconButton).
+   On the card itself the label stays hidden and the icon stands alone. */
+.book__action-label {
+  display: none;
+}
+.book__more .book__action {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  opacity: 0.85;
+}
+.book__more .book__action:hover,
+.book__more .book__action:focus-visible {
+  opacity: 1;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.book__more .book__action--danger {
+  color: var(--word-unknown);
+}
+.book__more .book__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.book__more .book__action-label {
+  display: inline;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* List view: cover on the left, meta filling the row. */
@@ -1633,6 +1671,36 @@ button.kb-form:focus-visible {
 }
 .editor__paste:hover {
   border-color: var(--word-learning);
+}
+
+/* The note's language as a quiet chip: a native <select> (one tap opens the
+   system picker) dressed like the Paste button's neutral sibling. */
+.editor__lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--text) 75%, transparent);
+  cursor: pointer;
+}
+.editor__lang:focus-within {
+  border-color: var(--word-learning);
+}
+.editor__lang select {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+}
+.editor__lang select option {
+  background: var(--surface);
+  color: var(--text);
 }
 
 .editor__count {
