@@ -1741,6 +1741,17 @@ button.kb-form:focus-visible {
 .editor__paste:hover {
   border-color: var(--word-learning);
 }
+/* The empty note's big Paste, right under the title (above where a keyboard opens). */
+.editor__paste--big {
+  align-self: center;
+  margin: 1.4rem 1.2rem 0.4rem;
+  padding: 0.75rem 1.4rem;
+  font-size: 0.98rem;
+  border-radius: 12px;
+}
+.editor__paste--big[hidden] {
+  display: none;
+}
 
 /* The note's language as a quiet chip: a native <select> (one tap opens the
    system picker) dressed like the Paste button's neutral sibling. */

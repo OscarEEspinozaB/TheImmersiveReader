@@ -185,6 +185,10 @@ published one should not drift apart.
   CORS-open REST API, any other page via Readability (fetched natively on the APK
   with CapacitorHttp, through the server's `/fetch` on the web), converted to a
   Markdown note by `src/ingest/htmlToMarkdown.js`, main pictures kept by src.
+  `src/clipboard.js` — clipboard READ (native @capacitor/clipboard on the phone; the
+  WebView refuses navigator.clipboard.readText). `src/shareTarget.js` + the app's own
+  `android/…/ShareTargetPlugin.java` — "Share → The Immersive Reader" (a link →
+  imported page, text → a filled-in new note; see docs/android.md).
   `src/serverLibrary.js` / `src/serverShelf.js` — the Server hub (incl. per-book
   dictionary coverage and the "build this book" job, driven from the app).
 - `src/vocabSync.js` — offline-first vocabulary sync (outbox push, incremental pull).

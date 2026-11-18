@@ -195,6 +195,28 @@ on are missing or behave differently. Each is bridged to a native equivalent:
   Capacitor's core, registered by the bridge in every APK, so this needed no plugin
   and no rebuild: it arrived over the air. (Pictures come back base64 and are turned
   into blobs.) The web build uses the home server's `/fetch` proxy instead.
+- **Reading the clipboard (Paste).** The WebView refuses
+  `navigator.clipboard.readText()` (it has no permission prompt to grant it), so the
+  editor's Paste failed on the phone. `src/clipboard.js` reads it with the official
+  [`@capacitor/clipboard`](https://capacitorjs.com/docs/apis/clipboard) on native and
+  keeps the web API as the fallback — which is also what an APK built before the
+  plugin gets (it then fails as before and the editor explains the long-press
+  paste). Being able to read it quietly on the phone also lets *Import from a link*
+  **pre-fill its address** from a copied link; the web build never pre-fills (that
+  would pop a permission prompt nobody asked for).
+- **Share → The Immersive Reader.** The manifest declares an `ACTION_SEND`
+  `text/plain` intent filter, so the app appears in every app's share sheet. The
+  app's own plugin, `ShareTargetPlugin.java` (registered in `MainActivity` before the
+  bridge starts), turns the intent into a `"shared"` event `{ text, subject? }`;
+  `BridgeActivity` hands it both the launch intent (cold start) and later ones (the
+  activity is `singleTask`), and the event is **retained** until the web layer
+  listens — `src/shareTarget.js` starts listening only after the startup shelf is
+  up, so the startup navigation never lands on top of a share. The intent is marked
+  consumed so a re-creation (rotation) does not deliver it twice. What a share
+  becomes is `main.js#receiveShare`'s call: essentially a link (a browser shares
+  "Title\nURL") → the page is imported; text → a new note in the editor, filled in
+  (subject → title); text shared while a note is being edited → inserted at its
+  cursor. On an APK without the plugin, nothing listens and nothing breaks.
 - **No devtools.** Nothing on the phone can open a console, so a failure there is
   invisible from the desk. Settings → **Diagnostics** captures the app's own errors
   and dumps them into a note that can be read, copied and sent — see

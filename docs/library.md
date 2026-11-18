@@ -157,7 +157,8 @@ out of `listBooks()`, so they never appear on My Books or in Progress. Built in
   article's text with its structure and emphasis — **no ads, menus, comments or
   newsletter boxes** — plus its **main pictures** (up to 8, with their captions),
   saved to read offline. It accepts a bare address or a shared text containing one;
-  progress shows on the hub; failures say why (and land in the diagnostics log).
+  progress shows on the hub; failures say why (and land in the diagnostics log). On
+  the phone the address field comes **pre-filled** when the clipboard holds a link.
   - **Wikipedia** (desktop or mobile URLs, any language edition) is read from its
     REST API's clean article HTML, which is CORS-open — it works on the web and the
     phone with **no server**. References, navigation boxes, hatnotes, the infobox's
@@ -180,14 +181,24 @@ out of `listBooks()`, so they never appear on My Books or in Progress. Built in
     parser re-parse anchors them again (a figure deleted from the source drops out).
     Pictures are scaled to ≤ 1200 px (WebP); icons under 120 px are skipped. When the
     page names no language the app reads, it asks (offering My language).
-- **The editor** is a plain text area under an optional title. Its toolbar holds
-  **Paste** (drops the clipboard in at the cursor) and the note's **language** — a
-  visible chip that starts on **My language** for a new note and changes with one
-  tap; it is never auto-detected and never asked in a dialog. The gear holds the
-  text settings (font, size, line spacing), which are the reader's own. When the
-  clipboard cannot be read (the Android WebView refuses clipboard reads; so does a
-  non-secure origin), the editor says so, puts the cursor in the text for a manual
-  long-press paste, and records why in the diagnostics log.
+- **The editor** is a plain text area under an optional title. **Paste** (drops
+  the clipboard in at the cursor) sits in the **top bar** — the bottom toolbar can
+  end up under the phone's keyboard — and an empty note also offers a large
+  **Paste from clipboard** right under the title, which steps aside once there is
+  text. A new note does not pop the keyboard by itself (tapping the text starts
+  writing), and pasting leaves the keyboard closed: the next step is usually Save.
+  The bottom toolbar holds the note's **language** — a visible chip that starts on
+  **My language** for a new note and changes with one tap; it is never auto-detected
+  and never asked in a dialog — and the word count. The gear holds the text settings
+  (font, size, line spacing), which are the reader's own. On the phone the clipboard
+  is read natively (`src/clipboard.js`); when it cannot be read (an APK without the
+  clipboard plugin, a non-secure web origin) the editor says so, puts the cursor in
+  the text for a manual long-press paste, and records why in the diagnostics log; an
+  empty clipboard says so too.
+- **Share → The Immersive Reader** (Android): text or a link shared from any app
+  lands in Notes — a link is imported as a page (below), text opens a new note in the
+  editor already filled in (its subject as the title), and a share while a note is
+  being edited goes in at its cursor ([android.md](android.md)).
 - **Saving opens the note in the reader** — writing → listening is one action, and
   back from the reader returns to Notes. The text is parsed as Markdown into the
   reading text + `blocks` (`src/ingest/md.js`); the raw text is kept as `source`,

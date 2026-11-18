@@ -20,7 +20,8 @@ per-feature documentation and [docs/vision.md](docs/vision.md) for future plans.
 - **Notes**: write or paste a text — or **import a web page from its link** (a
   Wikipedia article, or any article page: just the text and its main pictures, no
   ads) — and read or listen to it in the same reader, with the same colors. Notes
-  stay editable.
+  stay editable. On Android, **share** a text or a link from any app straight into
+  a note.
 - **Ingest** `.txt`, `.md`, `.pdf`, and `.epub` client-side. PDF/EPUB text is
   reconstructed into clean paragraphs, embedded illustrations show inline, and
   document **structure survives**: headings, list items, code blocks and quotes

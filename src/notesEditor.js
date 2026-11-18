@@ -1,7 +1,14 @@
 // Note editor: a plain text editor for the reader's own notes. It is deliberately
-// NOT a paste box — you write here, and "Paste" is only a convenience that drops the
+// NOT a paste box — you write here, and "Paste" is a convenience that drops the
 // clipboard in at the cursor. Saving parses the text as Markdown (so its symbols are
 // never read aloud) and stores it as a note.
+//
+// Paste is where it can always be reached: in the TOP bar (the bottom toolbar can sit
+// under the phone's keyboard), and — while the note is still empty — as a large
+// "Paste from clipboard" button right under the title. A new note does not pop the
+// keyboard by itself: tapping the text area starts writing, the button pastes. On
+// the phone the clipboard is read natively (clipboard.js); text shared to the app
+// from another one opens here already filled in (main.js#receiveShare).
 //
 // The note's LANGUAGE is a visible chip in the toolbar, not a question at save: it
 // starts on the writer's own language ("My language" — what a pasted text usually
@@ -24,11 +31,13 @@ import {
 } from './settings.js';
 import { alertDialog, confirmDialog } from './dialog.js';
 import { logDiagError } from './diagnostics.js';
+import { readClipboardText } from './clipboard.js';
 
 const heading = document.getElementById('editor-heading');
 const titleInput = document.getElementById('editor-title');
 const textArea = document.getElementById('editor-text');
 const pasteBtn = document.getElementById('editor-paste');
+const pasteBigBtn = document.getElementById('editor-paste-big');
 const countEl = document.getElementById('editor-count');
 const saveBtn = document.getElementById('editor-save');
 const backBtn = document.getElementById('editor-back');
@@ -55,6 +64,7 @@ export function initNoteEditor({ onSaved, onExit, onStyleChange }) {
   callbacks = { onSaved, onExit, onStyleChange };
   textArea.addEventListener('input', updateCount);
   pasteBtn.addEventListener('click', pasteFromClipboard);
+  pasteBigBtn.addEventListener('click', pasteFromClipboard);
   saveBtn.addEventListener('click', save);
   backBtn.addEventListener('click', requestExit);
   fillSelect(langSelect, READING_LANGUAGES.map((l) => ({ value: l.code, label: l.name })));
@@ -88,11 +98,13 @@ function isDirty() {
 }
 
 /**
- * Populate the editor for a new note (no id) or an existing one, then focus it.
- * Call after the editor view is shown.
+ * Populate the editor for a new note (no id) or an existing one. Call after the
+ * editor view is shown.
  * @param {string|null} [noteId]
+ * @param {{ text?: string, title?: string }} [prefill] a NEW note's starting content
+ *   (text shared to the app) — unsaved, so leaving still asks.
  */
-export async function openNoteEditor(noteId = null) {
+export async function openNoteEditor(noteId = null, { text = '', title = '' } = {}) {
   currentId = noteId;
   settingsMenu.hidden = true;
   if (noteId) {
@@ -110,29 +122,46 @@ export async function openNoteEditor(noteId = null) {
     langSelect.value = nativeLangCode();
   }
   saved = currentState();
+  if (!noteId && (text || title)) {
+    textArea.value = text;
+    titleInput.value = title;
+  }
+  textArea.scrollTop = 0;
   syncSettingsControls();
   updateCount();
-  // Focus the writing surface for a new note; leave an existing one un-scrolled.
-  if (!noteId) textArea.focus();
+}
+
+/**
+ * Drop text in at the cursor (the clipboard, or a share arriving while editing).
+ * The keyboard is left alone: after a paste the next step is usually Save.
+ * @param {string} text
+ */
+export function insertText(text) {
+  if (!text) return;
+  const el = textArea;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, start) + text + el.value.slice(end);
+  const caret = start + text.length;
+  el.setSelectionRange(caret, caret);
+  updateCount();
 }
 
 function updateCount() {
   const words = textArea.value.trim().split(/\s+/).filter(Boolean).length;
   countEl.textContent = `${words.toLocaleString()} ${words === 1 ? 'word' : 'words'}`;
+  // The big Paste is the empty note's first offer; once there is text it steps aside.
+  pasteBigBtn.hidden = words > 0;
 }
 
 async function pasteFromClipboard() {
   try {
-    const text = await navigator.clipboard.readText();
-    if (!text) return;
-    const el = textArea;
-    const start = el.selectionStart ?? el.value.length;
-    const end = el.selectionEnd ?? el.value.length;
-    el.value = el.value.slice(0, start) + text + el.value.slice(end);
-    const caret = start + text.length;
-    el.setSelectionRange(caret, caret);
-    el.focus();
-    updateCount();
+    const text = await readClipboardText();
+    if (!text) {
+      await alertDialog('The clipboard is empty — copy a text first.');
+      return;
+    }
+    insertText(text);
   } catch (err) {
     // Clipboard read can be blocked (permissions, insecure context — the Android
     // WebView does not grant clipboard reads). Log WHY, since on the phone it is

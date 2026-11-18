@@ -11,6 +11,8 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // App-local plugins must be registered BEFORE the bridge is created.
+        registerPlugin(ShareTargetPlugin.class);
         super.onCreate(savedInstanceState);
         // Full edge-to-edge. The @capacitor/status-bar plugin only overlays the TOP
         // (status) bar; this lays the WebView out behind BOTH system bars, so the

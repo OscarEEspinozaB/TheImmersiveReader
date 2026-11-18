@@ -285,6 +285,12 @@
           </svg>
         </button>
         <span id="editor-heading" class="editor__heading">New note</span>
+        <!-- Paste lives in the top bar: the bottom toolbar can sit under the keyboard. -->
+        <button id="editor-paste" class="menu-toggle" type="button" aria-label="Paste from clipboard" title="Paste from clipboard">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="2" width="8" height="4" rx="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+          </svg>
+        </button>
         <button id="editor-settings" class="menu-toggle" type="button" aria-label="Text settings" title="Text settings">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -294,15 +300,16 @@
       </header>
       <div class="editor__doc">
         <input id="editor-title" class="editor__title" type="text" placeholder="Title (optional)" autocomplete="off" />
-        <textarea id="editor-text" class="editor__text" placeholder="Write your note, or paste a text to listen to it…" spellcheck="false"></textarea>
-      </div>
-      <div class="editor__toolbar">
-        <button id="editor-paste" class="editor__paste" type="button">
+        <!-- An empty note's first offer; hidden as soon as there is text. -->
+        <button id="editor-paste-big" class="editor__paste editor__paste--big" type="button">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="8" y="2" width="8" height="4" rx="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
           </svg>
-          <span>Paste</span>
+          <span>Paste from clipboard</span>
         </button>
+        <textarea id="editor-text" class="editor__text" placeholder="Write your note, or paste a text to listen to it…" spellcheck="false"></textarea>
+      </div>
+      <div class="editor__toolbar">
         <!-- The note's language: visible, one tap to change, defaults to My language. -->
         <label class="editor__lang" title="Note language">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

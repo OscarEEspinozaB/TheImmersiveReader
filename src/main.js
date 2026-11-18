@@ -28,7 +28,11 @@ import {
 import { migrateVocabularyEntries, resetLearned } from './contractions.js';
 import { renderShelf } from './shelf.js';
 import { renderNotesShelf } from './notes.js';
-import { initNoteEditor, openNoteEditor, requestExit as requestEditorExit } from './notesEditor.js';
+import {
+  initNoteEditor, openNoteEditor, insertText as insertIntoEditor, requestExit as requestEditorExit,
+} from './notesEditor.js';
+import { readClipboardText, canReadClipboardQuietly } from './clipboard.js';
+import { initShareTarget } from './shareTarget.js';
 import { renderServerShelf } from './serverShelf.js';
 import { initVocabSync, syncNow } from './vocabSync.js';
 import { pullPosition, pushPosition } from './positionSync.js';
@@ -1183,6 +1187,33 @@ importNoteInput.addEventListener('change', (e) => {
   addNoteFromFile(e.target.files[0]);
 });
 
+// "Share → The Immersive Reader" (shareTarget.js): what another app sends becomes a
+// note. Mostly a link (a browser shares "Title\nhttps://…") → the page is imported;
+// text (an assistant's answer) → a new note, filled in, in the editor — where the
+// language chip and Save are one tap away. Sharing while a note is being edited
+// drops the text in at its cursor instead of throwing the draft away.
+async function receiveShare({ text = '', subject = '' } = {}) {
+  const body = String(text).trim();
+  if (!body) return;
+  dismissDialog();
+  setMenuOpen(false);
+  const url = body.match(/https?:\/\/[^\s<>"']+/i)?.[0];
+  const rest = url ? body.replace(url, '').replace(subject, '').trim() : body;
+  if (url && rest.length < 160) {
+    await showNotes();
+    await importNoteFromLink(url);
+    return;
+  }
+  if (activeView === 'editor') {
+    insertIntoEditor(body);
+    return;
+  }
+  setView('editor');
+  await openNoteEditor(null, { text: body, title: subject.trim() });
+}
+// Dev builds only: lets a browser test drive a share without an Android intent.
+if (import.meta.env.DEV) globalThis.__receiveShare = receiveShare;
+
 /** Show (or clear, with null) the import progress line on the Notes hub. */
 function setNotesStatus(message) {
   notesStatus.hidden = !message;
@@ -1194,11 +1225,22 @@ function setNotesStatus(message) {
 // from the page (asked only when the page does not say, or says one the app does
 // not read); like any new note, it then opens in the reader.
 let importingLink = false;
-async function importNoteFromLink() {
+async function importNoteFromLink(link) {
   if (importingLink) return;
-  const input = await promptDialog('Web address to import — a Wikipedia article works best:', '', {
-    confirmLabel: 'Import',
-  });
+  // A link handed in (a share) is imported as is; otherwise ask — pre-filled with the
+  // clipboard when it holds a link and can be read without a permission prompt (the
+  // phone), so "copy the link, Import from a link, Import" needs no long-press paste.
+  let input = typeof link === 'string' ? link : '';
+  if (!input) {
+    let suggested = '';
+    if (canReadClipboardQuietly()) {
+      const clip = await readClipboardText().catch(() => '');
+      suggested = clip.match(/https?:\/\/[^\s<>"']+/i)?.[0] || '';
+    }
+    input = await promptDialog('Web address to import — a Wikipedia article works best:', suggested, {
+      confirmLabel: 'Import',
+    });
+  }
   if (!input) return;
   importingLink = true;
   setNotesStatus('Connecting…');
@@ -1379,9 +1421,14 @@ async function loadSample() {
 }
 
 // --- Startup: migrate any old single document, then show the shelf ---
+// Shares from other apps are taken only once the shelf is up, so the startup
+// navigation can never land on top of a share that cold-started the app.
 migrateOldDocument()
   .catch(() => {})
-  .finally(showShelf);
+  .finally(async () => {
+    await showShelf();
+    initShareTarget(receiveShare);
+  });
 
 // --- Page navigation ---
 // Buttons and arrow keys route through the page-turn controller (animated slide)
