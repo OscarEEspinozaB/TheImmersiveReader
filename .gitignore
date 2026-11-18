@@ -39,6 +39,10 @@ android/capacitor-cordova-android-plugins/
 *.apk
 *.aab
 
+# Desktop app (Tauri): keep the project source, drop build output + generated schemas.
+src-tauri/target/
+src-tauri/gen/
+
 # image files Gemini uses for its own purposes, but which are not part of the source code.
 Gemini*
 

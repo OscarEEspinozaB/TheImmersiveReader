@@ -37,9 +37,7 @@ settled the old open question:
 - **Packaging:** the decided path for a phone install is a **native Android app
   built with Capacitor** (see §2a) — a signed, sideloadable APK, not only a PWA.
   Capacitor wraps the exact Vite build in a WebView shell, so the codebase is
-  reused as-is. PWA (§3) stays the zero-install option for desktop and
-  non-Android devices; Tauri 2 remains a theoretical desktop fallback but is not
-  being pursued while Capacitor covers the concrete need (Android on the home LAN).
+  reused as-is. The laptops use a **Tauri 2 desktop app** built the same way (§2b).
 
 ### 2a. Android app (Capacitor)
 
@@ -94,6 +92,25 @@ plugin for each native gap below.
 - **Out of scope for the first APK:** Play Store publishing, push notifications,
   deep links, and any change to the offline-first data model — it is the same web
   client in a native shell.
+
+### 2b. Desktop app: what is left
+
+The Linux app exists (docs/desktop.md). Still to build:
+
+- **Native read-aloud on Linux.** WebKitGTK's speech has no Spanish voice, no word
+  boundaries, and can stall. Put a local engine behind `speech.js`, chosen for
+  pronunciation quality because this is a language-learning app, with word highlighting
+  derived from it.
+- **Getting files in.** Drag and drop onto the window, several files at once, and "Open
+  with" for `.pdf`, `.epub`, `.md`, `.txt`, `.tir`. Optionally upload to the server
+  library on import.
+- **Updates, two layers.** The web bundle uses the existing `/app/latest` +
+  `/app/bundle.zip` with the same rules as `appUpdate.js` (staged for next start,
+  rollback, manual way back), keeping one stable origin so local data survives. The
+  native shell uses Tauri's signed updater (AppImage on Linux, installer on Windows).
+- **Windows 11.** Same project, built on Windows or in CI. Test WebView2's Web Speech
+  and access to the plain-HTTP home server. Expect a SmartScreen warning on first
+  install without a paid code-signing certificate.
 
 ## 3. Reader
 

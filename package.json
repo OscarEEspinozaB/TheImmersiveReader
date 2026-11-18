@@ -17,7 +17,9 @@
     "app:publish": "vite build && node server/publishApp.js",
     "cap:sync": "vite build && cap sync android",
     "cap:open": "cap open android",
-    "cap:icons": "capacitor-assets generate --android --iconBackgroundColor '#000000' --iconBackgroundColorDark '#000000'"
+    "cap:icons": "capacitor-assets generate --android --iconBackgroundColor '#000000' --iconBackgroundColorDark '#000000'",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^5.1.0",
@@ -28,6 +30,10 @@
     "@capgo/capacitor-updater": "^6.50.2",
     "@fontsource-variable/literata": "^5.2.8",
     "@mozilla/readability": "^0.6.0",
+    "@tauri-apps/api": "^2.12.5",
+    "@tauri-apps/plugin-clipboard-manager": "^2.5.0",
+    "@tauri-apps/plugin-http": "^2.9.0",
+    "@tauri-apps/plugin-opener": "^2.7.3",
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
@@ -39,6 +45,7 @@
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^6.2.1",
     "@capacitor/core": "^6.2.1",
+    "@tauri-apps/cli": "^2.12.6",
     "vite": "^5.4.0"
   }
 }

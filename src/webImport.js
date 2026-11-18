@@ -13,15 +13,17 @@
 // reader asks to import a link.
 //
 // Getting the HTML: a browser may only read another site's page when that site
-// allows it (CORS). On the phone the APK fetches natively (CapacitorHttp, part of
-// the installed app — no CORS); on the web, a page that refuses is fetched through
+// allows it (CORS). The apps fetch natively, with no CORS (CapacitorHttp on the phone,
+// Tauri's HTTP plugin on the desktop); on the web, a page that refuses is fetched through
 // the home server's thin /fetch proxy when one is set. Wikipedia never needs either.
 
 import { CapacitorHttp } from '@capacitor/core';
+import { fetch as desktopFetch } from '@tauri-apps/plugin-http';
 import { htmlToMarkdown, cleanWikipedia } from './ingest/htmlToMarkdown.js';
 import { prepareCover } from './cover.js';
 import { READING_LANGUAGES, getKbUrl } from './settings.js';
 import { logDiag } from './diagnostics.js';
+import { isDesktopApp } from './desktop.js';
 
 const NATIVE = !!globalThis.Capacitor?.isNativePlatform?.();
 const MAX_IMAGES = 8;
@@ -183,8 +185,16 @@ function readingLang(code) {
 
 // --- Fetching -------------------------------------------------------------------------
 
+/** A request from the desktop app's native side, which CORS does not apply to. */
+function fetchFromDesktop(url) {
+  return desktopFetch(url, {
+    connectTimeout: 15000,
+    headers: { 'User-Agent': navigator.userAgent },
+  });
+}
+
 /**
- * A page's HTML, by whichever road is open: the phone's native HTTP (no CORS), the
+ * A page's HTML, by whichever road is open: the app's native HTTP (no CORS), the
  * browser's own fetch (CORS-open sites), then the home server's /fetch proxy.
  */
 async function fetchText(url, { corsOpen = false } = {}) {
@@ -212,7 +222,16 @@ async function fetchText(url, { corsOpen = false } = {}) {
       reasons.push(err?.message || 'native request failed');
     }
   }
-  if (!corsOpen && !NATIVE) {
+  if (isDesktopApp) {
+    try {
+      const r = await fetchFromDesktop(url);
+      if (r.ok) return await r.text();
+      reasons.push(`HTTP ${r.status}`);
+    } catch (err) {
+      reasons.push(String(err?.message || err || 'native request failed'));
+    }
+  }
+  if (!corsOpen && !NATIVE && !isDesktopApp) {
     const t = await viaFetch();
     if (t != null) return t;
   }
@@ -225,7 +244,7 @@ async function fetchText(url, { corsOpen = false } = {}) {
 async function viaProxy(url, kind, reasons) {
   const server = getKbUrl();
   if (!server) {
-    if (!NATIVE) reasons.push('the site does not allow reading it from the browser, and no home server is set');
+    if (!NATIVE && !isDesktopApp) reasons.push('the site does not allow reading it from the browser, and no home server is set');
     return null;
   }
   try {
@@ -251,6 +270,18 @@ async function fetchBlob(url) {
       if (r.status >= 200 && r.status < 300 && typeof r.data === 'string') {
         const type = headerValue(r.headers, 'content-type') || 'image/jpeg';
         return base64ToBlob(r.data, type.split(';')[0].trim());
+      }
+    } catch {
+      // fall through to the proxy
+    }
+  }
+  if (isDesktopApp) {
+    try {
+      const r = await fetchFromDesktop(url);
+      if (r.ok) {
+        // The plugin's Response leaves blob.type empty; the type is only in its headers.
+        const type = (r.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+        return new Blob([await r.arrayBuffer()], { type });
       }
     } catch {
       // fall through to the proxy

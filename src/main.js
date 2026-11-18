@@ -33,6 +33,7 @@ import {
 } from './notesEditor.js';
 import { readClipboardText, canReadClipboardQuietly } from './clipboard.js';
 import { initShareTarget } from './shareTarget.js';
+import { initDesktop } from './desktop.js';
 import { renderServerShelf } from './serverShelf.js';
 import { initVocabSync, syncNow } from './vocabSync.js';
 import { pullPosition, pushPosition } from './positionSync.js';
@@ -190,6 +191,7 @@ initTheme();
 initStatusBar().then(refreshStatusBarStyle);
 // Confirm this web bundle boots, then pull a newer one from the home server if
 // there is one (OTA — no APK reinstall). No-op on the web / offline.
+initDesktop();
 initAppUpdate({ onStaged: (version) => showAppVersion(version) });
 applyReadingFont();
 loadVocabulary();

@@ -83,6 +83,8 @@ Two pieces:
   to run/build the APK. The APK is the same web app in a Capacitor WebView — one
   source of truth; web changes reach an installed APK over the air (`app:publish`),
   so `cap:sync` is only for native changes. See [docs/android.md](docs/android.md).
+- `npm run desktop:dev` / `npm run desktop:build` — the Linux desktop app (Tauri): run
+  it in a native window / build its AppImage and `.deb`. See [docs/desktop.md](docs/desktop.md).
 
 No test runner. Verify with `npm run dev` (plus `npm run server` for
 KB/sync/AI features) and the "Load sample" button on the empty library.
@@ -110,6 +112,9 @@ npm run cap:sync && (cd android && ./gradlew assembleDebug)
 
 A native change still needs `app:publish` too: the APK's embedded bundle and the
 published one should not drift apart.
+
+The desktop app has no over-the-air updates: reaching it takes `npm run desktop:build`
+and installing the new package.
 
 ## Code map
 
@@ -205,6 +210,9 @@ published one should not drift apart.
   Build-time **defaults** are centralized in `app.config.json` (imported here) — the
   shipped home-server IP + default languages, so re-shipping them never touches code;
   every value stays user-overridable in Settings.
+- `src/desktop.js` + `src-tauri/` — the Tauri desktop app (Linux): the same web build
+  in a native window; new-tab links go to the system browser, and `clipboard.js` /
+  `webImport.js` use its native plugins (see docs/desktop.md).
 - `src/appUpdate.js` — Android OTA: pulls a newer web bundle from the home server
   and stages it for the next start. Never a dependency (no-op on web/offline).
 - `src/diagnostics.js` — in-app log capture (a WebView has no devtools): a bounded
@@ -229,7 +237,7 @@ Per-feature docs: [docs/design.md](docs/design.md) (core reader),
 [docs/library.md](docs/library.md), [docs/home-server.md](docs/home-server.md),
 [docs/dictionary-progress.md](docs/dictionary-progress.md),
 [docs/word-swiper.md](docs/word-swiper.md), [docs/android.md](docs/android.md)
-(the Capacitor APK) · Future: [docs/vision.md](docs/vision.md).
+(the Capacitor APK), [docs/desktop.md](docs/desktop.md) (the Tauri app) · Future: [docs/vision.md](docs/vision.md).
 
 ## Invariants (do not break)
 

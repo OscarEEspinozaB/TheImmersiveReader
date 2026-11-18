@@ -123,6 +123,16 @@ npm run cap:open   # open in Android Studio to run / build the APK
 Set `server.defaultUrl` in `app.config.json` to the server's LAN IP before building
 (the phone has no `localhost`). See [docs/android.md](docs/android.md).
 
+### Desktop app for Linux (optional)
+
+```bash
+npm run desktop:dev    # run it in a native window
+npm run desktop:build  # build the AppImage and .deb
+```
+
+It needs Rust and the WebKitGTK development packages. See
+[docs/desktop.md](docs/desktop.md).
+
 ## Tech
 
 Vanilla JavaScript + HTML + CSS, built with [Vite](https://vitejs.dev). PDF via

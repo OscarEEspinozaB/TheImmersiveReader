@@ -3,9 +3,12 @@
 // made the editor's Paste button useless on the phone. On native, the official
 // @capacitor/clipboard plugin reads it directly; the web API is the fallback (and
 // what an older APK without the plugin still gets — it then fails as before, and
-// the caller explains the long-press paste).
+// the caller explains the long-press paste). The desktop app reads it through its
+// Tauri plugin, because WebKitGTK does not let a page read it silently either.
 
 import { Clipboard } from '@capacitor/clipboard';
+import { readText as readDesktopClipboard } from '@tauri-apps/plugin-clipboard-manager';
+import { isDesktopApp } from './desktop.js';
 
 const NATIVE = !!globalThis.Capacitor?.isNativePlatform?.();
 
@@ -14,6 +17,15 @@ const NATIVE = !!globalThis.Capacitor?.isNativePlatform?.();
  * @returns {Promise<string>}
  */
 export async function readClipboardText() {
+  if (isDesktopApp) {
+    try {
+      return (await readDesktopClipboard()) || '';
+    } catch (err) {
+      // The plugin rejects when the clipboard holds no text.
+      if (/empty|no data|not available|unavailable/i.test(String(err?.message || err))) return '';
+      throw err;
+    }
+  }
   if (NATIVE) {
     try {
       const { type, value } = await Clipboard.read();
@@ -30,9 +42,9 @@ export async function readClipboardText() {
 
 /**
  * Whether the clipboard can be read without the browser asking for permission —
- * true on the phone (native plugin). Used to PRE-FILL a field from it, which must
+ * true in the phone and desktop apps. Used to PRE-FILL a field from it, which must
  * never pop a permission prompt the reader did not ask for.
  */
 export function canReadClipboardQuietly() {
-  return NATIVE;
+  return NATIVE || isDesktopApp;
 }
