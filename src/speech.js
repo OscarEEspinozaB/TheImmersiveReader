@@ -17,6 +17,12 @@
 
 import { getReadingLang, getTtsRate, getTtsVoice } from './settings.js';
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
+import {
+  desktopVoices,
+  speakWithDesktopVoice,
+  stopDesktopVoice,
+  usesDesktopVoice,
+} from './desktopVoice.js';
 
 // On Android/iOS the app runs inside a Capacitor WebView whose engine has NO
 // Web Speech API (window.speechSynthesis is absent), so every 🔊 button and the
@@ -27,7 +33,7 @@ const NATIVE = !!globalThis.Capacitor?.isNativePlatform?.();
 
 /** Whether speech is available at all (native engine, or Web Speech on the web). */
 export function canSpeak() {
-  if (NATIVE) return true;
+  if (NATIVE || usesDesktopVoice) return true;
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
@@ -105,6 +111,34 @@ function speakNative(text, lang, { rate, onEnd, onBoundary }) {
   return true;
 }
 
+// --- Desktop (Linux) backend: local neural voices, see desktopVoice.js --------------
+function speakDesktop(text, lang, { rate, onEnd, onBoundary }) {
+  invalidate();
+  const token = speakToken;
+  activeOnEnd = onEnd || null;
+  activeOnBoundary = onBoundary || null;
+  active = true;
+  schedulePill(token);
+  const finish = (completed) => {
+    if (token !== speakToken) return;
+    active = false;
+    activeOnBoundary = null;
+    if (completed) hidePillSoon();
+    else hidePill();
+    const cb = activeOnEnd;
+    activeOnEnd = null;
+    cb?.(completed);
+  };
+  speakWithDesktopVoice(chunksOf(text, lang || 'en'), lang || 'en', {
+    rate,
+    voiceUri: getTtsVoice(),
+    onBoundary: (offset) => {
+      if (token === speakToken) activeOnBoundary?.(offset);
+    },
+  }).then(finish, () => finish(false));
+  return true;
+}
+
 const CANCEL_SETTLE_MS = 120; // beat between cancel() and the next speak()
 
 // --- Voices ---------------------------------------------------------------------
@@ -126,6 +160,7 @@ if (!NATIVE && 'speechSynthesis' in window) {
 /** Installed voices, freshest available list. */
 export function listVoices() {
   if (NATIVE) return nativeVoices;
+  if (usesDesktopVoice) return desktopVoices();
   if (canSpeak() && !voices.length) refreshVoices();
   return voices;
 }
@@ -288,6 +323,7 @@ function cancelEngine() {
 export function speak(text, lang, { rate = getTtsRate(), onEnd, onBoundary } = {}) {
   if (!canSpeak() || !text) return false;
   if (NATIVE) return speakNative(text, lang, { rate, onEnd, onBoundary });
+  if (usesDesktopVoice) return speakDesktop(text, lang, { rate, onEnd, onBoundary });
   const synth = window.speechSynthesis;
   invalidate();
   // Only poke the engine when something is actually playing/queued: cancelling
@@ -360,6 +396,10 @@ export function stopSpeaking() {
   for (const fn of stopListeners) fn();
   if (NATIVE) {
     TextToSpeech.stop().catch(() => {});
+    return;
+  }
+  if (usesDesktopVoice) {
+    stopDesktopVoice();
     return;
   }
   if (canSpeak()) cancelEngine();

@@ -212,7 +212,11 @@ and installing the new package.
   every value stays user-overridable in Settings.
 - `src/desktop.js` + `src-tauri/` — the Tauri desktop app (Linux): the same web build
   in a native window; new-tab links go to the system browser, and `clipboard.js` /
-  `webImport.js` use its native plugins (see docs/desktop.md).
+  `webImport.js` use its native plugins (see docs/desktop.md). `src/desktopVoice.js` +
+  `src-tauri/src/voice.rs` — Linux read-aloud with local Piper voices, downloaded on
+  request and checked against pinned SHA-256 hashes. `src/desktopFiles.js` +
+  `src-tauri/src/files.rs` — files dropped on the window or sent by "Open with"; the
+  web side only ever gets one-use ids, never paths.
 - `src/appUpdate.js` — Android OTA: pulls a newer web bundle from the home server
   and stages it for the next start. Never a dependency (no-op on web/offline).
 - `src/diagnostics.js` — in-app log capture (a WebView has no devtools): a bounded

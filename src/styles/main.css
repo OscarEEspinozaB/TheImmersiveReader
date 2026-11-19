@@ -3067,6 +3067,28 @@ button.kb-form:focus-visible {
   color: var(--word-unknown);
 }
 
+/* Files dragged over the desktop app's window (src/desktopFiles.js). */
+.file-drop {
+  position: fixed;
+  inset: 0.75rem;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  font-size: 1.1rem;
+  text-align: center;
+  color: var(--text);
+  background: rgb(0 0 0 / 70%);
+  border: 2px dashed var(--word-learning);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.file-drop[hidden] {
+  display: none;
+}
+
 /* OTA update notice (Android only, src/appUpdate.js). The new web bundle is
    already staged for the next start; this bar only offers to skip the wait, so it
    is dismissible and never blocks the app. Sits above the bottom chrome. */

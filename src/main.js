@@ -34,6 +34,7 @@ import {
 import { readClipboardText, canReadClipboardQuietly } from './clipboard.js';
 import { initShareTarget } from './shareTarget.js';
 import { initDesktop } from './desktop.js';
+import { fileDestination, initDesktopFiles, readOfferedFile, setFileStatus } from './desktopFiles.js';
 import { renderServerShelf } from './serverShelf.js';
 import { initVocabSync, syncNow } from './vocabSync.js';
 import { pullPosition, pushPosition } from './positionSync.js';
@@ -502,17 +503,21 @@ async function addBookFromFile(file) {
   setView('reader');
   reader.innerHTML = '<p class="reader__placeholder">Loading…</p>';
   try {
-    const { text, images, blocks, marks } = await ingest(file);
-    // The document's own cover: the image it opens with, if it has one. An
-    // illustration deep in the text is not a cover (see cover.js).
-    const cover = documentCover(images)?.blob || null;
-    const title = file.name.replace(/\.[^.]+$/, '');
-    const id = await addBook({ title, text, images, blocks, marks, cover, lang, wordData: bookWordData(text) });
-    await openBook(id);
+    await openBook(await createBookFromFile(file, lang));
   } catch (err) {
     console.error(err);
     reader.innerHTML = `<p class="reader__placeholder">Could not read this file: ${err.message}</p>`;
   }
+}
+
+// Expects `lang` to be the active reading language (the word data is built with it).
+async function createBookFromFile(file, lang) {
+  const { text, images, blocks, marks } = await ingest(file);
+  // The document's own cover: the image it opens with, if it has one. An
+  // illustration deep in the text is not a cover (see cover.js).
+  const cover = documentCover(images)?.blob || null;
+  const title = file.name.replace(/\.[^.]+$/, '');
+  return addBook({ title, text, images, blocks, marks, cover, lang, wordData: bookWordData(text) });
 }
 
 // --- Floating menu ---
@@ -1422,14 +1427,101 @@ async function loadSample() {
   await openBook(id);
 }
 
+// --- Files from outside (desktop app: dropped on the window, or "Open with") ---
+// One file behaves exactly like picking it: same questions, and it opens. Several are
+// added together under one language question and the library is shown afterwards.
+async function receiveDesktopFiles({ source, files, skipped }) {
+  dismissDialog();
+  setMenuOpen(false);
+  const where = { view: activeView, source };
+  const problems = skipped.length ? [`Not a file this app can read: ${skipped.join(', ')}.`] : [];
+  try {
+    if (activeView === 'editor') {
+      await addFilesToOpenNote(files, problems);
+    } else if (files.length === 1) {
+      const file = await readOfferedFile(files[0]);
+      if (fileDestination(file.name, where) === 'note') await addNoteFromFile(file);
+      else await addBookFromFile(file);
+    } else if (files.length) {
+      await addSeveralFiles(files, where, problems);
+    }
+  } catch (err) {
+    logDiagError('desktop-files', err);
+    problems.push(`Could not read this file: ${err.message}`);
+  }
+  if (problems.length) await alertDialog(problems.join(' '));
+}
+
+// A draft is never thrown away: text goes in at the cursor, like a share.
+async function addFilesToOpenNote(files, problems) {
+  for (const offered of files) {
+    if (fileDestination(offered.name, { view: 'editor', source: 'drop' }) === 'note') {
+      insertIntoEditor(await (await readOfferedFile(offered)).text());
+    } else {
+      problems.push(`Save this note first to add “${offered.name}”.`);
+    }
+  }
+}
+
+async function addSeveralFiles(files, where, problems) {
+  const destination = (f) => fileDestination(f.name, where);
+  const needLanguage = files.filter((f) => !/\.tir$/i.test(f.name));
+  let lang = null;
+  if (needLanguage.length) {
+    const allNotes = needLanguage.every((f) => destination(f) === 'note');
+    lang = await pickReadingLang(
+      'What language are these files in?',
+      allNotes ? nativeLangCode() : getDefaultReadingLang(),
+    );
+    if (!lang) return;
+  }
+
+  const showResult = files.some((f) => destination(f) === 'book') ? showShelf : showNotes;
+  await showResult();
+  if (lang) setActiveReadingLang(lang);
+  const repeated = [];
+  const failed = [];
+  for (const [index, offered] of files.entries()) {
+    setFileStatus(`Adding ${index + 1} of ${files.length}: ${offered.name}`);
+    try {
+      const file = await readOfferedFile(offered);
+      if (!(await addFileIfNew(file, destination(offered), lang))) repeated.push(offered.name);
+    } catch (err) {
+      logDiagError('desktop-files', err);
+      failed.push(`${offered.name} (${err.message})`);
+    }
+  }
+  setFileStatus(null);
+  await showResult();
+  if (repeated.length) problems.push(`Already in your library: ${repeated.join(', ')}.`);
+  if (failed.length) problems.push(`Could not read: ${failed.join(', ')}.`);
+}
+
+/** @returns {Promise<boolean>} false when a copy already exists (nothing is added) */
+async function addFileIfNew(file, destination, lang) {
+  if (/\.tir$/i.test(file.name)) return !(await importTir(file)).duplicate;
+  const title = file.name.replace(/\.[^.]+$/, '');
+  if (destination === 'book') {
+    if (await findBookByTitle(title)) return false;
+    await createBookFromFile(file, lang);
+    return true;
+  }
+  const text = await file.text();
+  if (!text.trim()) throw new Error('it is empty');
+  if ((await listNotes()).some((n) => sameTitle(n.title, title))) return false;
+  await addNote({ title, text, lang });
+  return true;
+}
+
 // --- Startup: migrate any old single document, then show the shelf ---
-// Shares from other apps are taken only once the shelf is up, so the startup
-// navigation can never land on top of a share that cold-started the app.
+// Shares from other apps and files from the desktop are taken only once the shelf is
+// up, so the startup navigation can never land on top of one that started the app.
 migrateOldDocument()
   .catch(() => {})
   .finally(async () => {
     await showShelf();
     initShareTarget(receiveShare);
+    initDesktopFiles(receiveDesktopFiles);
   });
 
 // --- Page navigation ---

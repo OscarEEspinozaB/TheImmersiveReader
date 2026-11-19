@@ -97,13 +97,7 @@ plugin for each native gap below.
 
 The Linux app exists (docs/desktop.md). Still to build:
 
-- **Native read-aloud on Linux.** WebKitGTK's speech has no Spanish voice, no word
-  boundaries, and can stall. Put a local engine behind `speech.js`, chosen for
-  pronunciation quality because this is a language-learning app, with word highlighting
-  derived from it.
-- **Getting files in.** Drag and drop onto the window, several files at once, and "Open
-  with" for `.pdf`, `.epub`, `.md`, `.txt`, `.tir`. Optionally upload to the server
-  library on import.
+- **Upload on import.** Optionally send a file added on the laptop to the server library.
 - **Updates, two layers.** The web bundle uses the existing `/app/latest` +
   `/app/bundle.zip` with the same rules as `appUpdate.js` (staged for next start,
   rollback, manual way back), keeping one stable origin so local data survives. The

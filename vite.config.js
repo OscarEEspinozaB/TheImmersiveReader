@@ -15,5 +15,8 @@ export default defineConfig({
     // websocket forever) when it is only the wrong port. Better to refuse to start
     // and say so.
     strictPort: true,
+    // The native projects' build folders hold far more files than the system lets
+    // one process watch, and nothing in them is part of the web app.
+    watch: { ignored: ['**/android/**', '**/src-tauri/**'] },
   },
 });
