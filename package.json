@@ -19,7 +19,8 @@
     "cap:open": "cap open android",
     "cap:icons": "capacitor-assets generate --android --iconBackgroundColor '#000000' --iconBackgroundColorDark '#000000'",
     "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build"
+    "desktop:build": "tauri build",
+    "desktop:packages": "src-tauri/linux/build-packages.sh"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^5.1.0",

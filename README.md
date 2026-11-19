@@ -127,7 +127,8 @@ Set `server.defaultUrl` in `app.config.json` to the server's LAN IP before build
 
 ```bash
 npm run desktop:dev    # run it in a native window
-npm run desktop:build  # build the AppImage and .deb
+npm run desktop:build  # build the AppImage, .deb and .rpm
+npm run desktop:packages  # build the .deb and .rpm for other machines (needs podman)
 ```
 
 It needs Rust and the WebKitGTK development packages. See

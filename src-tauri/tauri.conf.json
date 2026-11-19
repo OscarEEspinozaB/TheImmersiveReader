@@ -25,7 +25,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["appimage", "deb"],
+    "targets": ["appimage", "deb", "rpm"],
     "category": "Education",
     "shortDescription": "Read and learn vocabulary by immersion",
     "fileAssociations": [
@@ -38,7 +38,12 @@
     "linux": {
       "appimage": { "bundleMediaFramework": true },
       "deb": {
-        "depends": ["gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"],
+        "depends": ["libc6 (>= 2.35)", "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"],
+        "desktopTemplate": "linux/app.desktop",
+        "files": { "/usr/share/mime/packages/the-immersive-reader.xml": "linux/tir-mime.xml" }
+      },
+      "rpm": {
+        "depends": ["gstreamer1-plugins-base", "gstreamer1-plugins-good"],
         "desktopTemplate": "linux/app.desktop",
         "files": { "/usr/share/mime/packages/the-immersive-reader.xml": "linux/tir-mime.xml" }
       }

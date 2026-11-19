@@ -27,6 +27,28 @@ npm run desktop:build  # builds the web, then the installers
 |---|---|---|
 | AppImage | `appimage/The Immersive Reader_<version>_amd64.AppImage` | Runs without installing; bundles its libraries and audio components (about 190 MB) |
 | Debian package | `deb/The Immersive Reader_<version>_amd64.deb` | Uses the system's WebKitGTK (about 5 MB) |
+| RPM package | `rpm/The Immersive Reader-<version>-1.x86_64.rpm` | Uses the system's WebKitGTK (about 5 MB) |
+
+These packages only run on systems with this machine's glibc or newer.
+
+### Packages for other machines
+
+```bash
+sudo apt install podman   # once
+npm run desktop:packages
+```
+
+This builds the `.deb` and `.rpm` in an Ubuntu 22.04 container, so they need only glibc
+2.35. They are written to `src-tauri/target/packages/`, for x86-64 only. Both were
+installed and run on:
+
+| Package | Systems |
+|---|---|
+| `.deb` | Debian 12 and 13, Ubuntu 22.04 and 24.04 |
+| `.rpm` | Fedora 42 and 45 |
+
+Install one with `sudo apt install ./<file>.deb` or `sudo dnf install ./<file>.rpm`.
+The `.rpm` depends on Fedora's GStreamer package names.
 
 ## Layout
 
@@ -37,7 +59,7 @@ npm run desktop:build  # builds the web, then the installers
 | `src-tauri/src/lib.rs` | Registers the plugins and native commands |
 | `src-tauri/src/voice.rs` | Downloads the voices and runs the speech engine |
 | `src-tauri/src/files.rs` | Receives dropped files and files sent by "Open with" |
-| `src-tauri/linux/` | The `.deb`'s desktop entry and the `.tir` file type |
+| `src-tauri/linux/` | The packages' desktop entry, the `.tir` file type and the container build |
 | `src-tauri/icons/` | Generated from `assets/icon-only.png` with `npx tauri icon` |
 | `src/desktop.js` | `isDesktopApp` and the link handling below |
 | `src/desktopVoice.js` | Plays the native voices and estimates the spoken word |
@@ -76,7 +98,7 @@ app reads `.pdf`, `.epub`, `.md`, `.markdown`, `.txt`, `.text` and `.tir`.
 - **While the app is running,** "Open with" brings its window forward instead of starting
   a second copy. Files that arrive during a dialog wait for it to finish.
 
-The `.deb` registers the app for these file types, so it appears under "Open with"
+The `.deb` and `.rpm` register the app for these file types, so it appears under "Open with"
 without replacing the default application for any of them. The AppImage does not register
 itself with the desktop. It accepts files by drag and drop, or on its command line:
 

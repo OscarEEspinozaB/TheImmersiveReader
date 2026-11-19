@@ -84,7 +84,9 @@ Two pieces:
   source of truth; web changes reach an installed APK over the air (`app:publish`),
   so `cap:sync` is only for native changes. See [docs/android.md](docs/android.md).
 - `npm run desktop:dev` / `npm run desktop:build` — the Linux desktop app (Tauri): run
-  it in a native window / build its AppImage and `.deb`. See [docs/desktop.md](docs/desktop.md).
+  it in a native window / build its AppImage, `.deb` and `.rpm`.
+  `npm run desktop:packages` — the `.deb` and `.rpm` for other machines, built in an
+  Ubuntu 22.04 container (podman). See [docs/desktop.md](docs/desktop.md).
 
 No test runner. Verify with `npm run dev` (plus `npm run server` for
 KB/sync/AI features) and the "Load sample" button on the empty library.

@@ -1,0 +1,16 @@
+# Build environment for the .deb and .rpm. A Linux binary runs only on systems with
+# the glibc it was built against or newer, so the oldest supported base builds them.
+FROM docker.io/library/ubuntu:22.04
+
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:/opt/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential ca-certificates curl file \
+      libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev \
+      patchelf pkg-config xz-utils \
+ && mkdir -p /opt/node \
+ && curl -fsSL https://nodejs.org/dist/v24.16.0/node-v24.16.0-linux-x64.tar.xz \
+      | tar -xJ --strip-components=1 -C /opt/node \
+ && curl -fsSL https://sh.rustup.rs \
+      | sh -s -- -y --no-modify-path --profile minimal --default-toolchain 1.99.1 \
+ && chmod -R a+rX /opt/cargo /opt/rustup
