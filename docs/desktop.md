@@ -39,15 +39,19 @@ npm run desktop:packages
 ```
 
 This builds the `.deb` and `.rpm` in an Ubuntu 22.04 container, so they need only glibc
-2.35. They are written to `src-tauri/target/packages/`, for x86-64 only. Both were
-installed and run on:
+2.35. They are written to `src-tauri/target/packages/` as `TIR_<version>_amd64.deb` and
+`TIR-<version>-1.x86_64.rpm`, for x86-64 only. Only the file is renamed: the installed
+package is still `the-immersive-reader`, so a newer file upgrades it. Both were installed
+and run on:
 
 | Package | Systems |
 |---|---|
 | `.deb` | Debian 12 and 13, Ubuntu 22.04 and 24.04 |
 | `.rpm` | Fedora 42 and 45 |
 
-Install one with `sudo apt install ./<file>.deb` or `sudo dnf install ./<file>.rpm`.
+Install one with `sudo apt install ./TIR_<version>_amd64.deb` or
+`sudo dnf install ./TIR-<version>-1.x86_64.rpm`. A file with the same version as the
+installed copy needs `sudo dpkg -i` (or `sudo dnf reinstall`) to replace it.
 The `.rpm` depends on Fedora's GStreamer package names.
 
 ## Layout

@@ -104,7 +104,17 @@ The Linux app exists (docs/desktop.md). Still to build:
   native shell uses Tauri's signed updater (AppImage on Linux, installer on Windows).
 - **Windows 11.** Same project, built on Windows or in CI. Test WebView2's Web Speech
   and access to the plain-HTTP home server. Expect a SmartScreen warning on first
-  install without a paid code-signing certificate.
+  install without a paid code-signing certificate. Where the code is Linux-only today:
+  - Read-aloud with Piper: `src-tauri/src/voice.rs` (engine download URL, engine path
+    `engine/piper/piper`, the empty catalog off Linux) and `usesDesktopVoice` in
+    `src/desktopVoice.js`. Use WebView2's own voices if they have Spanish voices and
+    word events; otherwise add Piper's Windows build, with its pinned hash.
+  - `restart_appimage_with_absolute_args` in `src-tauri/src/files.rs` is AppImage-only.
+    Drag and drop, "Open with" (the installer's file associations) and the
+    single-instance handoff need testing on Windows.
+  - Native WebView quirks found on Linux and fixed in shared code (palette
+    `color-scheme` for native controls, the shelf's in-memory cover cache) should be
+    re-checked in WebView2.
 
 ## 3. Reader
 

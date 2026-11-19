@@ -19,7 +19,70 @@ import { bookWordData } from './deck.js';
 import { exportBookToBlob } from './tir.js';
 import { uploadBook } from './serverLibrary.js';
 
-let coverUrls = []; // object URLs for the current render, revoked on re-render
+let renderGeneration = 0; // bumped per render, so a late cover never lands in an old one
+
+/** Generated text cover, for a book without an image (or one that cannot be shown). */
+function textCover(title) {
+  const gen = document.createElement('span');
+  gen.className = 'book__cover-text';
+  gen.textContent = title;
+  return gen;
+}
+
+// Covers already read, kept in memory for the session: book id → { key, url }.
+// WebKitGTK (the Linux desktop app) briefly cannot read a Blob stored in
+// IndexedDB right after its record is written again, and the shelf re-reads every
+// record just as leaving a book saves its reading position: arrayBuffer() fails
+// with NotFoundError and the cover showed as a broken image. A cover read once is
+// therefore never read again while it is unchanged, and a failed read is retried
+// after a pause. `key` changes when the cover is replaced or restored.
+const coverCache = new Map();
+const COVER_RETRY_MS = [300, 1000, 2500];
+
+function coverKey(book) {
+  const c = book.cover;
+  return `${book.coverSource || ''}|${c.size}|${c.type}|${book.coverWidth || ''}x${book.coverHeight || ''}`;
+}
+
+/** Drop cached covers of books no longer on the shelf (or not passed at all). */
+function forgetCovers(books) {
+  const ids = new Set(books.filter((b) => b.cover).map((b) => b.id));
+  for (const [id, entry] of coverCache) {
+    if (!ids.has(id)) {
+      URL.revokeObjectURL(entry.url);
+      coverCache.delete(id);
+    }
+  }
+}
+
+/** @returns {Promise<string>} an object URL of the cover's bytes, held in memory */
+async function coverUrl(book) {
+  const key = coverKey(book);
+  const cached = coverCache.get(book.id);
+  if (cached?.key === key) return cached.url;
+  let source = book.cover;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const bytes = new Blob([await source.arrayBuffer()], { type: source.type || 'image/png' });
+      const url = URL.createObjectURL(bytes);
+      const old = coverCache.get(book.id);
+      if (old) URL.revokeObjectURL(old.url);
+      coverCache.set(book.id, { key, url });
+      return url;
+    } catch (err) {
+      if (attempt >= COVER_RETRY_MS.length) throw err;
+      await new Promise((resolve) => setTimeout(resolve, COVER_RETRY_MS[attempt]));
+      source = (await listBooks()).find((b) => b.id === book.id)?.cover;
+      if (!source) throw err;
+    }
+  }
+}
+
+/** Show a book's cover in `img`; rejects when it cannot be read. */
+async function showCover(img, book, generation) {
+  const url = await coverUrl(book);
+  if (generation === renderGeneration) img.src = url;
+}
 
 const sorters = {
   lastRead: (a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0),
@@ -33,10 +96,10 @@ const sorters = {
  *           onSample?: () => void }} opts
  */
 export async function renderShelf(container, { view, sortBy = 'lastRead', onOpen, onPractice, onSample }) {
-  for (const url of coverUrls) URL.revokeObjectURL(url);
-  coverUrls = [];
+  renderGeneration++;
 
   const books = await listBooks();
+  forgetCovers(books);
   books.sort(sorters[sortBy] || sorters.lastRead);
   container.dataset.view = view;
   container.replaceChildren();
@@ -76,18 +139,14 @@ function bookCard(book, container, opts) {
   cover.title = book.title;
   cover.addEventListener('click', () => onOpen(book.id));
   if (book.cover) {
-    const url = URL.createObjectURL(book.cover);
-    coverUrls.push(url);
     const img = document.createElement('img');
-    img.src = url;
     img.alt = '';
     cover.appendChild(img);
+    showCover(img, book, renderGeneration).catch(() => {
+      if (img.isConnected) cover.replaceChildren(textCover(book.title));
+    });
   } else {
-    // Generated text cover when the book has no image.
-    const gen = document.createElement('span');
-    gen.className = 'book__cover-text';
-    gen.textContent = book.title;
-    cover.appendChild(gen);
+    cover.appendChild(textCover(book.title)); // the book has no image
   }
   card.appendChild(cover);
 

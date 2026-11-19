@@ -22,12 +22,16 @@
 }
 
 /* Color palettes. Each defines surface chrome plus the three word-state colors.
+   `color-scheme` tells the engine whether the palette is dark or light, so native
+   controls match it: WebKitGTK (the Linux desktop app) draws <select> boxes in its
+   own style and ignores their `background`, which left light text on white.
    State hierarchy is preserved in every palette: known ≈ body text (blends in),
    learning = gold/amber (subtle attention), unknown = red (alert / "red sea").
    The preview swatch colors in src/reader/theme.js must mirror these. */
 
 /* --- Dark palettes --- */
 [data-theme='midnight'] {
+  color-scheme: dark;
   --bg: #050505;
   --surface: #161616;
   --border: #2a2a2a;
@@ -39,6 +43,7 @@
 }
 
 [data-theme='slate'] {
+  color-scheme: dark;
   --bg: #0f141a;
   --surface: #1a222c;
   --border: #2c3744;
@@ -50,6 +55,7 @@
 }
 
 [data-theme='ocean'] {
+  color-scheme: dark;
   --bg: #07171c;
   --surface: #0f2730;
   --border: #1d3c46;
@@ -62,6 +68,7 @@
 
 /* --- Light palettes --- */
 [data-theme='paper'] {
+  color-scheme: light;
   --bg: #fbfbf8;
   --surface: #f0f0ea;
   --border: #dcdcd2;
@@ -73,6 +80,7 @@
 }
 
 [data-theme='sepia'] {
+  color-scheme: light;
   --bg: #f7efdd;
   --surface: #efe4cb;
   --border: #ddccab;
@@ -84,6 +92,7 @@
 }
 
 [data-theme='mint'] {
+  color-scheme: light;
   --bg: #eef4ef;
   --surface: #e2ebe4;
   --border: #ccd9ce;
